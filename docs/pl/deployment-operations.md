@@ -35,6 +35,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 |---|---|
 | `APP_NAME` | Wyświetlana nazwa (domyślnie „Baza Wiedzy”) |
 | `APP_VERSION` | Tag obrazu do uruchomienia, na przykład `1.0.0` |
+| `LOG_LEVEL` | `DEBUG`, `INFO` (domyślnie), `WARNING`, `ERROR`; logi to linie JSON (zob. Monitoring) |
 | `ENABLED_MODULES` | Opcjonalne moduły do uruchomienia, oddzielone przecinkami (domyślnie `documents,ingestion,search`); rdzeń jest zawsze włączony |
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |
 | `TLS_MODE` | `internal`, `files` lub `acme` |
@@ -170,7 +171,7 @@ Sprawdzenie kolejki od początku do końca: `docker compose exec worker baza-wie
 
 Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpowiedzi. Endpoint z metrykami i długość kolejki to opcjonalne dodatki na później.
 
-Logi to JSON na stdout. Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`.
+Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
 ## Polecenia dla programisty
 
@@ -192,6 +193,10 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
+
+Znane ostrzeżenia (nieszkodliwe, sprawdzane przy miesięcznym przeglądzie zależności):
+- `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 zapowiada zmianę klienta HTTP używanego przez `TestClient` FastAPI. Testy nie są dotknięte; wrócimy do tego, gdy FastAPI/Starlette opiszą zamiennik.
+- `make up`: Caddy loguje `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (dla serwera przekierowania na porcie 80) i `stapling OCSP` (certyfikat wewnętrzny). Wszystko oczekiwane.
 
 Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydania starsze niż `exclude-newer` (w `pyproject.toml`). Aktualizacje odbywają się w miesięcznym przeglądzie zależności albo, dla poprawek bezpieczeństwa, jako wyjątek; procedura jest w ADR-015 ([decisions.md](decisions.md)).
 

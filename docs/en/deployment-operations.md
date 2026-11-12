@@ -35,6 +35,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 |---|---|
 | `APP_NAME` | Display name (default "Baza Wiedzy") |
 | `APP_VERSION` | Image tag to run, for example `1.0.0` |
+| `LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`; logs are JSON lines (see Monitoring) |
 | `ENABLED_MODULES` | Optional modules to run, comma-separated (default `documents,ingestion,search`); the core is always on |
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |
 | `TLS_MODE` | `internal`, `files` or `acme` |
@@ -170,7 +171,7 @@ Check the queue end to end: `docker compose exec worker baza-wiedzy worker-ping`
 
 Zabbix: an HTTP check on `/ready` (expect 200) plus a trigger on the response time. Metrics endpoint and queue length are optional later additions.
 
-Logs are JSON on stdout. Compose sets Docker log rotation (`max-size 10m`, `max-file 5`). Read them with `docker compose logs -f app worker`.
+Logs are JSON lines, one object per line: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; errors add `exc` with the traceback. `app` writes to stdout, worker processes to stderr. Exception: the Dramatiq main process of `worker` prints its few start and stop lines in Dramatiq's own text format (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` sets the level (default `INFO`). Compose sets Docker log rotation (`max-size 10m`, `max-file 5`). Read them with `docker compose logs -f app worker`; filter with `jq`, for example `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
 ## Developer commands
 
@@ -192,6 +193,10 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
+
+Known warnings (harmless, tracked for the monthly dependency review):
+- `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 announces a change of the HTTP client used by FastAPI's `TestClient`. Tests are not affected; revisit when FastAPI/Starlette document the replacement.
+- `make up`: Caddy logs `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (for the port-80 redirect server) and `stapling OCSP` (internal certificate). All expected.
 
 Dependencies: versions are pinned in `uv.lock` and only releases older than `exclude-newer` (in `pyproject.toml`) are resolved. Upgrades happen in the monthly dependency review or, for security fixes, as an exception; the procedure is in ADR-015 ([decisions.md](decisions.md)).
 

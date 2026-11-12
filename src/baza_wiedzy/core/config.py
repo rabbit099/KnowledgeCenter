@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "Baza Wiedzy"
+    # DEBUG, INFO, WARNING, ERROR. Logs are JSON lines (baza_wiedzy.core.logs).
+    log_level: str = "INFO"
     # Image tag the operator runs; shown on /health and /ready.
     app_version: str = "0.0.0"
     # postgresql+psycopg://user:password@db:5432/name (built in docker-compose.yml).

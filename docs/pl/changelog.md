@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Added
+- Logi to linie JSON (`ts`, `level`, `logger`, `message`, `process`, `exc`) z `app` i procesów workera; nowa zmienna `LOG_LEVEL`.
 - `baza-wiedzy migrate` stosuje migracje wszystkich modułów, niezależnie od `ENABLED_MODULES`; `/ready` porównuje schemat ze wszystkimi głowami migracji. Zasady zależności: wyjątek dla poprawek bezpieczeństwa i miesięczny przegląd (ADR-015).
 - Worker (Dramatiq na Redisie): `WORKER_PROCESSES` procesów, każdy z jednym wątkiem i jednym połączeniem z bazą, heartbeat w Redisie sprawdzany przez `/ready` (`worker`), zadanie testowe `core.ping` i polecenie `baza-wiedzy worker-ping`.
 - Migracje bazy: `baza-wiedzy migrate` (oraz `make migrate`) stosuje gałąź `core` (rozszerzenia `pg_trgm`, `unaccent`) i gałąź `search` (polski słownik, konfiguracje `pl` i `simple_unaccent`) jako zwykły użytkownik aplikacji; `/ready` raportuje stan schematu (`not migrated`, `outdated`, `ok`). `make revision branch=<gałąź> m="..."` tworzy migrację w gałęzi modułu. Testy wzorcowe wyszukiwania działają teraz na prawdziwych migracjach.

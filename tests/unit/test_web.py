@@ -31,7 +31,7 @@ def make_settings(**overrides: object) -> Settings:
 
 @pytest.fixture
 def app() -> FastAPI:
-    app = create_app(make_settings())
+    app = create_app(make_settings(), setup_logging=False)
     app.state.ready_checks = {
         "database": lambda: CheckResult(True),
         "redis": lambda: CheckResult(True),
@@ -74,7 +74,7 @@ def test_home_is_polish_and_uses_app_name(client: TestClient) -> None:
 
 
 def test_app_name_is_escaped() -> None:
-    app = create_app(make_settings(app_name="<b>Baza</b>"))
+    app = create_app(make_settings(app_name="<b>Baza</b>"), setup_logging=False)
     with TestClient(app) as client:
         html = client.get("/").text
     assert "<b>Baza</b>" not in html

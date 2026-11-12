@@ -18,6 +18,7 @@ from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.db.migrate import schema_check
 from baza_wiedzy.core.db.session import make_engine
 from baza_wiedzy.core.events import EventBus
+from baza_wiedzy.core.logs import configure_logging
 from baza_wiedzy.core.queue import heartbeat_check
 from baza_wiedzy.core.registry import load_ref, load_registry
 from baza_wiedzy.core.web import routes as core_routes
@@ -26,8 +27,10 @@ from baza_wiedzy.core.web.templating import TEMPLATE_DIR, make_templates
 STATIC_DIR = TEMPLATE_DIR.parent / "static"
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, setup_logging: bool = True) -> FastAPI:
     settings = settings or Settings()
+    if setup_logging:
+        configure_logging(settings.log_level)
     # Fails with a readable error if ENABLED_MODULES is inconsistent (CLAUDE.md section 6a).
     registry = load_registry(settings.enabled_modules)
     engine = make_engine(settings)

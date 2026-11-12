@@ -56,7 +56,7 @@ def test_worker_heartbeat_and_ready(
     settings: Settings, client: redis.Redis, worker: dramatiq.Worker
 ) -> None:
     assert wait_for(lambda: bool(heartbeats(client)))
-    with TestClient(create_app(settings)) as http:
+    with TestClient(create_app(settings, setup_logging=False)) as http:
         response = http.get("/ready")
     assert response.status_code == 200, response.json()
     assert response.json()["checks"] == {
@@ -89,7 +89,7 @@ def test_heartbeat_disappears_when_worker_stops(settings: Settings, client: redi
     worker.stop()
     broker.close()
     assert heartbeats(client) == []
-    with TestClient(create_app(settings)) as http:
+    with TestClient(create_app(settings, setup_logging=False)) as http:
         response = http.get("/ready")
     assert response.status_code == 503
     assert response.json()["checks"]["worker"] == "no heartbeat"
