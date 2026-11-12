@@ -40,8 +40,8 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
-files = ["src", "tests"]
+mypy_path = "src:scripts"
+files = ["src", "tests", "scripts"]
 explicit_package_bases = true
 
 [tool.pytest.ini_options]
