@@ -8,7 +8,7 @@ RUN uv sync --frozen --no-dev --extra worker --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev --extra worker --no-editable
 
-FROM python:3.12.16-slim-trixie
+FROM python:3.15.0-slim-trixie
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 # OCR (tesseract pol+eng, ghostscript for OCRmyPDF), DOC conversion (LibreOffice Writer, no GUI),
 # file type detection (libmagic).
