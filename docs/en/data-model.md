@@ -1,8 +1,21 @@
 # Data model
 
-> Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-12
 
 PostgreSQL 16. Times are stored as `timestamptz` in UTC. Primary keys are UUIDs unless noted. This is the target model; the Alembic migrations are the source of truth and this page must match them.
+
+## Table ownership
+
+Every module owns its tables, and no module reads or writes the tables of another module directly (it calls that module's `services/api.py`). Table names carry a prefix so the owner is obvious.
+
+| Owner | Prefix | Tables |
+|---|---|---|
+| core | none | `users`, `roles`, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions`, `audit_log`, `app_settings` |
+| `documents` | `doc_` | `doc_categories`, `doc_documents`, `doc_versions`, `doc_email_metadata` |
+| `search` | `srch_` | `srch_parts` |
+| `ingestion` | `ing_` | none in the MVP: processing status and metadata live in `doc_versions` and are updated through `documents.services.api` |
+
+A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads, so after a full migration it contains `search_0001`; `core_0001` is implied by `depends_on`.
 
 ## Tables
 
@@ -21,11 +34,16 @@ PostgreSQL 16. Times are stored as `timestamptz` in UTC. Primary keys are UUIDs 
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `categories` | `id`, `name`, `parent_id` | Optional tree |
-| `documents` | `id`, `title`, `description`, `category_id`, `owner_id`, `status` (`draft`/`published`/`archived`), `published_version_id`, `latest_version_id`, `created_at`, `updated_at`, `published_at`, `published_by`, `archived_at` | Readers see only `published` documents, through `published_version_id` |
-| `document_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename`, `mime_type`, `size_bytes`, `sha256`, `storage_key`, `derived_key`, `processing_status` (`pending`/`processing`/`done`/`failed`), `processing_error`, `processing_warnings` (jsonb), `ocr_applied`, `page_count`, `uploaded_by`, `uploaded_at`, `change_note` | Unique `(document_id, version_no)` |
-| `document_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | One row per PDF page, per e-mail body, per attachment chunk. `tsv_*` are generated from `text_content` |
-| `email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Only for EML/MSG |
+| `doc_categories` | `id`, `name`, `parent_id` | Optional tree |
+| `doc_documents` | `id`, `title`, `description`, `category_id`, `owner_id`, `status` (`draft`/`published`/`archived`), `published_version_id`, `latest_version_id`, `created_at`, `updated_at`, `published_at`, `published_by`, `archived_at` | Readers see only `published` documents, through `published_version_id` |
+| `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename`, `mime_type`, `size_bytes`, `sha256`, `storage_key`, `derived_key`, `processing_status` (`pending`/`processing`/`done`/`failed`), `processing_error`, `processing_warnings` (jsonb), `ocr_applied`, `page_count`, `uploaded_by`, `uploaded_at`, `change_note` | Unique `(document_id, version_no)` |
+| `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Only for EML/MSG |
+
+### Search index
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | One row per PDF page, per e-mail body, per attachment chunk. `tsv_*` are generated from `text_content`. Written by `search` from the event `document.version.extracted` |
 
 ### System
 
@@ -39,27 +57,27 @@ PostgreSQL 16. Times are stored as `timestamptz` in UTC. Primary keys are UUIDs 
 ```
 users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
-documents ─< document_versions ─< document_parts (self-reference via parent_part_id)
-document_versions ─ 0..1 ─ email_metadata
-documents >─ categories
+doc_documents ─< doc_versions ─< srch_parts (self-reference via parent_part_id)
+doc_versions ─ 0..1 ─ doc_email_metadata
+doc_documents >─ doc_categories
 ```
 
 ## Indexes
 
 | Index | Purpose |
 |---|---|
-| GIN on `document_parts.tsv_pl`, `tsv_en`, `tsv_simple` | Full-text search |
-| btree `document_parts(version_id)` | Joins |
-| GIN (`gin_trgm_ops`) on `documents.title`, `document_versions.original_filename`, `email_metadata.subject`, `email_metadata.from_addr` | Fuzzy metadata search |
-| btree `document_versions(sha256)` | Duplicate warning |
-| btree `documents(status, category_id)` | Lists and filters |
+| GIN on `srch_parts.tsv_pl`, `tsv_en`, `tsv_simple` | Full-text search |
+| btree `srch_parts(version_id)` | Joins |
+| GIN (`gin_trgm_ops`) on `doc_documents.title`, `doc_versions.original_filename`, `doc_email_metadata.subject`, `doc_email_metadata.from_addr` | Fuzzy metadata search |
+| btree `doc_versions(sha256)` | Duplicate warning |
+| btree `doc_documents(status, category_id)` | Lists and filters |
 | btree `audit_log(at)`, `(user_id)`, `(entity_type, entity_id)` | Audit viewer |
 
 ## Text-search objects
 
-Created by the init SQL of the `db` image and by Alembic:
-- extensions `pg_trgm`, `unaccent`
-- dictionary `pl_hunspell`, configuration `pl` (Hunspell, then `simple` for unknown words)
+Created only by Alembic migrations, in schema `public`, as the non-superuser application role (the `db` image ships only the dictionary files):
+- extensions `pg_trgm`, `unaccent` (`core_0001`)
+- dictionary `pl_hunspell` (`search_0001`), configuration `pl` (Hunspell, then `simple` for unknown words)
 - configuration `simple_unaccent`
 - built-in `english`
 
@@ -68,7 +86,7 @@ See [search.md](search.md).
 ## Invariants
 
 - At least one active user holds the Admin role.
-- `documents.published_version_id` always points to a version of the same document with `processing_status = done`.
+- `doc_documents.published_version_id` always points to a version of the same document with `processing_status = done`.
 - A document with status `published` has a non-null `published_version_id`.
 - Original files are never modified; `sha256` of the stored file matches the column.
 - `audit_log` rows are never updated or deleted by the application.

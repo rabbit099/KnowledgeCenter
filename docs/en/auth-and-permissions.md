@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-12
 
 ## Authentication
 
@@ -55,6 +55,8 @@ Permissions are fixed codes defined in the application. Roles are sets of permis
 | `audit.view` | View the audit log |
 | `settings.manage` | Change application settings (limits, AD settings that are not secret) |
 | `system.view` | See version, queue and health status |
+
+The catalog is assembled from the manifests of the enabled modules: the core provides `users.manage`, `roles.manage`, `audit.view`, `settings.manage` and `system.view`; the `documents` module provides `documents.*` and `categories.manage`. Permissions of a disabled module are absent from the catalog and ignored in roles (stored role assignments are kept, not deleted). Codes stay fixed in code: a module adds codes in its manifest, admins never invent them.
 
 ### Default roles
 

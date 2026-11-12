@@ -13,11 +13,13 @@ help: ## List commands
 .PHONY: _need-docker
 _need-docker:
 	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
-	@test -f docker-compose.yml || { echo "docker-compose.yml does not exist yet (Phase 0, stage B)."; exit 1; }
+	@test -f .env || { echo "No .env file. Create it: cp .env.example .env (then edit the passwords)."; exit 1; }
 
 .PHONY: up
 up: _need-docker ## Start all services (dev overrides)
 	$(COMPOSE_DEV) up -d --build
+	@$(COMPOSE_DEV) ps --format 'table {{.Service}}\t{{.Status}}'
+	@echo "app/worker stop after 3 failed starts in dev; see 'make logs' if one is not running."
 
 .PHONY: down
 down: _need-docker ## Stop all services
@@ -47,18 +49,30 @@ fmt: ## Format and auto-fix
 test: ## Run tests (unit; integration when the stack is up)
 	uv run pytest
 
+.PHONY: messages
+messages: ## Extract UI strings and update the Polish catalog (then translate msgstr)
+	uv run pybabel extract -F babel.cfg --no-location --sort-output --width 100 \
+		-o src/baza_wiedzy/core/web/locale/messages.pot src
+	uv run pybabel update -i src/baza_wiedzy/core/web/locale/messages.pot \
+		-d src/baza_wiedzy/core/web/locale -l pl --width 100 --no-fuzzy-matching
+
 .PHONY: docs-check
 docs-check: ## Verify EN/PL documentation consistency
 	uv run python scripts/check_docs.py
+
+.PHONY: smoke
+smoke: ## Build all images, start the production Compose file, migrate, require /ready 4x ok
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	./scripts/smoke_test.sh
 
 .PHONY: migrate
 migrate: _need-docker ## Apply database migrations
 	$(COMPOSE_DEV) run --rm app baza-wiedzy migrate
 
 .PHONY: revision
-revision: _need-docker ## Create a migration: make revision m="message"
-	@test -n "$(m)" || { echo 'Usage: make revision m="message"'; exit 1; }
-	$(COMPOSE_DEV) run --rm app alembic revision --autogenerate -m "$(m)"
+revision: ## Create an empty migration: make revision branch=search m="message"
+	@test -n "$(m)" -a -n "$(branch)" || { echo 'Usage: make revision branch=<core|module> m="message"'; exit 1; }
+	uv run baza-wiedzy revision --branch "$(branch)" -m "$(m)"
 
 .PHONY: shell
 shell: _need-docker ## Shell in the app container
@@ -67,3 +81,9 @@ shell: _need-docker ## Shell in the app container
 .PHONY: seed-samples
 seed-samples: _need-docker ## Load synthetic sample documents (not available yet)
 	@echo "Not implemented yet (needs upload and ingestion, Phase 2)."; exit 1
+
+.PHONY: test-db
+test-db: ## Integration and golden search tests in Docker (throwaway DB, no host ports)
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	docker compose -f docker-compose.test.yml run --rm --build tests; \
+	status=$$?; docker compose -f docker-compose.test.yml down --remove-orphans >/dev/null 2>&1; exit $$status

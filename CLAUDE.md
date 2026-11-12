@@ -45,8 +45,8 @@ Out of scope unless explicitly requested: SSO/Kerberos, per-category access cont
 | Auth | Server-side sessions in a cookie (not JWT), argon2id for local passwords, `ldap3` for AD |
 | Proxy / TLS | Caddy |
 | CSS | Plain CSS or a small framework served locally (no CDN calls at runtime) |
-| Quality | ruff, mypy, pytest, pytest-cov, pre-commit |
-| CI/CD | GitHub Actions → images in GHCR (`app`, `worker`, `db`) |
+| Quality | ruff, mypy, pytest, pytest-cov, pre-commit, import-linter (module boundaries) |
+| CI/CD | GitHub Actions → images in GHCR (`app`, `worker`, `db`, `proxy`; ADR-017) |
 
 ## 4. Repository layout
 
@@ -58,36 +58,40 @@ baza-wiedzy/
 ├── pyproject.toml
 ├── docker-compose.yml         # production
 ├── docker-compose.dev.yml     # dev overrides (mounts, reload)
+├── docker-compose.test.yml    # make test-db: throwaway DB (tmpfs) + one-off test runner, no host ports
 ├── .env.example               # every variable documented
 ├── alembic.ini
 ├── alembic/                   # migrations
 ├── docker/
 │   ├── app/Dockerfile
 │   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice
-│   ├── db/Dockerfile          # postgres + hunspell dictionaries + init SQL
-│   └── caddy/Caddyfile
+│   ├── db/                    # Dockerfile, dictionary/ (Hunspell pl + licence, polish.stop), initdb/ (app role only), spike.sql
+│   └── caddy/                 # Dockerfile (non-root) + Caddyfile
 ├── src/baza_wiedzy/
-│   ├── main.py  config.py  cli.py
-│   ├── db/            # models, session
-│   ├── auth/          # local, ldap, sessions, csrf
-│   ├── permissions/   # permission catalog, checks
-│   ├── documents/     # routes, services, storage
-│   ├── ingestion/     # extractors/, ocr.py, language.py, tasks.py
-│   ├── search/        # backend interface, postgres backend, query building
-│   ├── admin/
-│   ├── audit/
-│   └── web/           # templates/, static/, locale/ (gettext)
+│   ├── main.py  cli.py
+│   ├── core/              # always enabled (section 6a)
+│   │   ├── config.py  registry.py  events.py  module.py   # settings, module registry, event bus, core manifest
+│   │   ├── db/            # models, session
+│   │   ├── auth/          # providers (local, ldap), sessions, csrf
+│   │   ├── permissions/   # permission checks (the catalog is assembled from manifests)
+│   │   ├── audit/
+│   │   ├── admin/         # admin panel skeleton
+│   │   └── web/           # base templates, static/, locale/ (gettext)
+│   └── modules/
+│       ├── documents/     # module.py, routes, models, services/api.py, storage
+│       ├── ingestion/     # module.py, extractors/, ocr.py, language.py, tasks.py, services/api.py
+│       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
 ├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic only)
-├── scripts/           # update.sh, rollback.sh, backup.sh, restore.sh, check_docs.py
+├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
 │   └── pl/
-└── .github/workflows/ # ci.yml, release.yml
+└── .github/           # workflows/ci.yml, workflows/release.yml, dependabot.yml
 ```
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make lint` · `make fmt` · `make migrate` · `make revision m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -96,11 +100,29 @@ If you add or rename a command, update this section and `docs/*/deployment-opera
 - Layers: routes (thin) → services (business logic) → db. Permission checks live in services/dependencies, never only in templates.
 - Document visibility is enforced **in the SQL of every query** (search, lists, downloads), not by filtering results afterwards.
 - Ingestion is asynchronous, idempotent and retryable. State lives in `document_versions.processing_status`. The upload request returns immediately.
-- All search code lives in `src/baza_wiedzy/search/` behind a `SearchBackend` interface, so the engine can be replaced (fallback: Meilisearch) without touching the rest.
+- Module boundaries are rules, not suggestions: see section 6a.
+- All search code lives in `src/baza_wiedzy/modules/search/` behind a `SearchBackend` interface, so the engine can be replaced (fallback: Meilisearch) without touching the rest.
 - Configuration only through environment variables (pydantic-settings). Secrets through env or Docker secrets, never in the repo.
 - Database stores UTC; the UI shows Europe/Warsaw.
 - Migrations are forward-only and follow expand/contract so that version N−1 of the app still runs on the schema of version N. Never edit a migration that has been released.
 - Original uploaded files are immutable. Derived files (OCR'd PDF, previews) are stored separately.
+
+## 6a. Modular monolith
+
+One codebase, one container image per role (`app`, `worker`), modules selected at start. Decisions: ADR-013, ADR-014 in `docs/en/decisions.md`.
+
+- **Core** (always on): config, db, auth, permissions, audit, admin panel skeleton, module registry, event bus. **Modules**: `documents`, `ingestion`, `search` in `src/baza_wiedzy/modules/<name>/`. The core never imports a module.
+- Enabled through `ENABLED_MODULES` (env). At startup the registry validates `requires` and fails with a readable error if a required module is missing. `ingestion` and `search` require `documents`.
+- **Manifest** (`module.py`, `manifest = ModuleManifest(...)`): name, version, requires, permissions, menu items, routers, templates, migrations branch and path, settings schema, background tasks, CLI commands, event subscriptions (`on_register`). Code references in a manifest are lazy strings (`package.module:attr`), so reading manifests imports nothing heavy.
+- **Boundaries**: a module never imports the internals of another module. Allowed: `baza_wiedzy.core.*` and another module's `services/api.py` (only if declared in `requires`). Everything else goes through in-process events defined in `core/events.py`. Enforced by import-linter (`make lint`, CI). Do not weaken the contracts to make a change compile; change the design.
+- **Events** are synchronous, in-process and not persisted. Handlers must be idempotent. Current events: `document.version.uploaded`, `document.version.extracted`, `document.published`. New events and their payloads are added to `core/events.py` and documented in the module docs.
+- **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `search` owns the indexed text and indexes (`srch_parts`); `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` updates status through `documents.services.api` and hands extracted text to `search` through the `document.version.extracted` event.
+- **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility; `search` injects it into its queries (details in Phase 3). Visibility stays in SQL.
+- **Migrations**: one Alembic branch per module (`branch_labels`) plus a `core` branch; a branch that `requires` another has `depends_on` it. `baza-wiedzy migrate` upgrades **all** branches, independent of `ENABLED_MODULES` (the schema is always complete); `/ready` compares the database with all script heads.
+- **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes.
+- **Extension points** (inside the repository only, no dynamic plugin loading): extractor registry (new format = new file in `ingestion/extractors/`), `SearchBackend`, login providers (local, LDAP), file storage (in `documents`).
+- A new module needs: manifest, `services/api.py`, import-linter contract, docs `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`, tests.
+- Keep it thin. No dependency injection framework, no plugin system, no per-module deployments.
 
 ## 7. Search rules (critical)
 
@@ -126,13 +148,13 @@ If you add or rename a command, update this section and `docs/*/deployment-opera
 
 The documentation is part of the product and you maintain it.
 
-- Bilingual: for every topic there is `docs/en/<topic>.md` and `docs/pl/<topic>.md` with the same section structure (same headings, same order, translated). Update **both** in the same change.
+- Bilingual: for every topic there is `docs/en/<topic>.md` and `docs/pl/<topic>.md` with the same section structure (same headings, same order, translated). Update **both** in the same change. Each module has `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`.
 - Any change that affects behaviour, configuration, data model, permissions, search, deployment, operations or security must update the relevant docs in the same commit/PR.
 - Every doc starts with the line `> Applies to: <version> · Last reviewed: <YYYY-MM-DD>` (Polish: `> Dotyczy: <wersja> · Ostatnia aktualizacja: <RRRR-MM-DD>`). Update it when you touch the file.
 - Add an entry under `[Unreleased]` in `docs/en/changelog.md` and `docs/pl/changelog.md` for every user-visible or operator-visible change.
 - Architectural or technology decisions go to `docs/en/decisions.md` / `docs/pl/decisions.md` as a new ADR entry. Do not rewrite old ADRs; supersede them.
 - Tick the checklist in `docs/*/README.md` when a roadmap item is finished.
-- `scripts/check_docs.py` (run by `make docs-check` and in CI) verifies: same file set in `en/` and `pl/`, same number of H2/H3 headings per file pair, the header line is present, `[Unreleased]` exists in both changelogs. Keep it passing.
+- `scripts/check_docs.py` (run by `make docs-check` and in CI) verifies: same file set in `en/` and `pl/`, same number of H2/H3 headings per file pair, the header line is present, `[Unreleased]` exists in both changelogs, every module in `src/baza_wiedzy/modules/` has `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`. Keep it passing.
 - Write for a future operator who has not seen the code: exact commands, expected output, what to do when it fails.
 
 ## 10. Testing rules
@@ -147,7 +169,7 @@ The documentation is part of the product and you maintain it.
 
 - Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 - `main` is protected; CI (lint, types, tests, docs-check, image build) must pass.
-- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The changelog `[Unreleased]` section becomes the new version.
+- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages.
 
 ## 12. Definition of done
 
@@ -162,8 +184,11 @@ Code works and is typed; tests pass; `make lint` and `make docs-check` pass; doc
 
 ## 14. Open questions (mirror of `docs/en/decisions.md`)
 
-1. Can a Publisher publish documents uploaded by other people? Current default: only their own. A separate permission `documents.publish_any` covers the rest.
+1. Decided 2026-11-12: a Publisher publishes only their own documents; `documents.publish_any` is not part of the Publisher role.
 2. Retention policy for archived documents and audit log (GDPR/RODO).
-3. TLS: internal CA certificate or Let's Encrypt (`TLS_MODE` is configurable).
-4. Backup destination and monitoring integration (scripts and `/ready` endpoint exist; destination decided later).
-5. Expected size: "about 200" at start — documents or users? Design for 20,000 documents and 100 users until confirmed.
+3. TLS: working assumption internal CA (`TLS_MODE=files`), Let's Encrypt (`acme`) as a variant; to be confirmed with the domain administrator.
+4. Backup destination and monitoring integration (`/ready` exists; backup scripts come in Phase 6; destination decided later).
+5. Decided 2026-11-12: Readers do not see archived documents.
+6. Is a virus scan (ClamAV) required by company policy? Default: optional `antivirus` profile, off.
+7. Expected size: "about 200" at start — documents or users? Design for 20,000 documents and 100 users until confirmed.
+8. Phase 2: in-process events are not persisted; choose between `processing_status` + reprocess command and an outbox table.

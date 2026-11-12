@@ -1,0 +1,37 @@
+# Development overrides: images are built locally, source code is mounted,
+# the web server reloads on change. Use through the Makefile (make up / make down).
+services:
+  app:
+    image: baza-wiedzy-app:dev
+    # Development: give up after 3 failed starts instead of restarting forever.
+    restart: on-failure:3
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ./src:/src:ro
+      - ./alembic:/opt/app/alembic:ro
+    command: ["uvicorn", "--factory", "baza_wiedzy.main:create_app", "--host", "0.0.0.0", "--port", "8000",
+              "--reload", "--reload-dir", "/src", "--proxy-headers", "--forwarded-allow-ips", "*"]
+
+  worker:
+    image: baza-wiedzy-worker:dev
+    restart: on-failure:3
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ./src:/src:ro
+      - ./alembic:/opt/app/alembic:ro
+
+  db:
+    image: baza-wiedzy-db:dev
+    build: docker/db
+
+  proxy:
+    image: baza-wiedzy-proxy:dev
+    build: docker/caddy

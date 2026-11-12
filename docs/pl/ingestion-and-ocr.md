@@ -1,14 +1,14 @@
 # Przetwarzanie dokumentów i OCR
 
-> Dotyczy: v0.0.0 (przed pierwszym wydaniem) · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
 
-Jak wgrany plik staje się przeszukiwalnym tekstem.
+Jak wgrany plik staje się przeszukiwalnym tekstem. Walidacja uploadu i zapis plików należą do modułu `documents`; opisane tu przetwarzanie należy do modułu `ingestion` (zobacz [modules/ingestion.md](modules/ingestion.md)).
 
 ## Obsługiwane formaty
 
 | Format | Ekstraktor | Uwagi |
 |---|---|---|
-| PDF z tekstem | pypdfium2, strona po stronie | Jeden wiersz `document_parts` na stronę |
+| PDF z tekstem | pypdfium2, strona po stronie | Jeden wiersz `srch_parts` na stronę |
 | PDF skan | OCRmyPDF + Tesseract (`pol+eng`) | OCR tylko dla stron bez tekstu |
 | DOCX | python-docx (akapity, tabele, nagłówki, stopki) + zapasowo surowy XML | Pola tekstowe i przypisy czytane z XML |
 | DOC | Konwersja LibreOffice headless do tekstu | Izolowany profil, timeout |
@@ -16,7 +16,7 @@ Jak wgrany plik staje się przeszukiwalnym tekstem.
 | EML | `email` ze standardowej biblioteki | Nagłówki, treść tekstowa (treść HTML zamieniana na tekst), załączniki |
 | MSG | `extract-msg` | Ten sam wynik co dla EML |
 
-Załączniki EML/MSG będące PDF, DOCX, DOC, TXT, EML lub MSG są wyciągane rekurencyjnie (głębokość ≤ 3) i zapisywane jako `document_parts` typu `attachment`. Pozostałe załączniki (obrazy, archiwa) są tylko wymieniane z nazwy; ich nazwy plików pozostają przeszukiwalne. OCR samodzielnych obrazów jest poza zakresem MVP.
+Załączniki EML/MSG będące PDF, DOCX, DOC, TXT, EML lub MSG są wyciągane rekurencyjnie (głębokość ≤ 3) i zapisywane jako `srch_parts` typu `attachment`. Pozostałe załączniki (obrazy, archiwa) są tylko wymieniane z nazwy; ich nazwy plików pozostają przeszukiwalne. OCR samodzielnych obrazów jest poza zakresem MVP.
 
 ## Walidacja uploadu (w `app`)
 
@@ -26,7 +26,7 @@ Załączniki EML/MSG będące PDF, DOCX, DOC, TXT, EML lub MSG są wyciągane re
 4. Zapis pod kluczem UUID; nazwa pliku użytkownika jest tylko metadaną i nigdy nie służy jako ścieżka.
 5. Jeśli taki SHA-256 już istnieje, użytkownik dostaje ostrzeżenie (bez blokady).
 6. Opcjonalne skanowanie antywirusowe ClamAV, gdy włączony jest profil `antivirus`.
-7. Tworzone są wiersze w bazie, zadanie trafia do kolejki, zapisywany jest wpis audytowy.
+7. Tworzone są wiersze w bazie, publikowane jest zdarzenie `document.version.uploaded` (`ingestion` kolejkuje zadanie), zapisywany jest wpis audytowy.
 
 ## Przetwarzanie (w `worker`)
 
@@ -42,11 +42,11 @@ Kroki:
 2. Uruchom ekstraktor. Wynikiem jest lista części: tekst, numer strony, nazwa, rodzic.
 3. Podziel tekst dłuższy niż 100 000 znaków.
 4. Wykryj język każdej części (polski/angielski przez lingua; krótki tekst → `unknown`).
-5. Zapisz `document_parts`; baza liczy `tsv_pl`, `tsv_en`, `tsv_simple`.
-6. Dla EML/MSG wypełnij `email_metadata`.
-7. Ustaw `processing_status = done` i zapisz w logu (niezależnie od audytu) czas trwania i liczby elementów.
+5. Opublikuj zdarzenie `document.version.extracted` z częściami i metadanymi; moduł `search` zapisuje je w `srch_parts` (baza liczy `tsv_pl`, `tsv_en`, `tsv_simple`).
+6. Dla EML/MSG wypełnij `doc_email_metadata` przez `documents.services.api`.
+7. Ustaw `processing_status = done` przez `documents.services.api` i zapisz w logu (niezależnie od audytu) czas trwania i liczby elementów.
 
-Zadania są idempotentne: ponowne przetworzenie usuwa istniejące części wersji i tworzy je od nowa. Ponowienia: do 3 z narastającą przerwą dla błędów przejściowych (baza, Redis, timeouty); błędy trwałe kończą się od razu czytelnym komunikatem.
+Zadania są idempotentne: ponowne przetworzenie publikuje zdarzenie jeszcze raz, a `search` zastępuje istniejące części wersji. Ponowienia: do 3 z narastającą przerwą dla błędów przejściowych (baza, Redis, timeouty); błędy trwałe kończą się od razu czytelnym komunikatem.
 
 ## OCR
 

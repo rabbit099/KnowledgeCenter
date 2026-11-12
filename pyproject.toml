@@ -1,19 +1,34 @@
 [project]
 name = "baza-wiedzy"
-version = "0.0.0"
+version = "0.1.0"
 description = "Internal company knowledge base with full-text search"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.13",
+    "babel>=2.14",
+    "dramatiq[redis]>=1.17",
+    "fastapi>=0.115",
+    "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "redis>=5.0",
+    "sqlalchemy>=2.0.30",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
 baza-wiedzy = "baza_wiedzy.cli:main"
 
+[project.optional-dependencies]
+worker = [
+    "ocrmypdf>=16",
+]
+
 [dependency-groups]
 dev = [
+    "httpx>=0.27",
     "import-linter>=2.1",
     "mypy>=1.13",
     "pre-commit>=4.0",
@@ -21,6 +36,11 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.8",
 ]
+
+[tool.uv]
+# Supply-chain hygiene: resolve only releases published before this date (at least two weeks
+# old when set). Move it forward deliberately when upgrading dependencies (ADR-015).
+exclude-newer = "2026-10-29T00:00:00Z"
 
 [build-system]
 requires = ["hatchling"]
@@ -40,8 +60,8 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
-files = ["src", "tests"]
+mypy_path = "src:scripts"
+files = ["src", "tests", "scripts"]
 explicit_package_bases = true
 
 [tool.pytest.ini_options]
@@ -54,3 +74,43 @@ markers = [
 
 [tool.coverage.run]
 source = ["src/baza_wiedzy"]
+
+# Module boundaries (ADR-014). Modules may import only another module's services/api.py.
+[tool.importlinter]
+root_package = "baza_wiedzy"
+
+[[tool.importlinter.contracts]]
+name = "Core does not depend on modules"
+type = "forbidden"
+source_modules = ["baza_wiedzy.core"]
+forbidden_modules = ["baza_wiedzy.modules"]
+
+[[tool.importlinter.contracts]]
+name = "documents does not import other modules"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.documents"]
+forbidden_modules = ["baza_wiedzy.modules.ingestion", "baza_wiedzy.modules.search"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "ingestion uses only the public API of documents"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.ingestion"]
+forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.search"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "baza_wiedzy.modules.ingestion.** -> baza_wiedzy.modules.documents.services.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "search uses only the public API of documents"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.search"]
+forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.ingestion"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.documents.services.api",
+]

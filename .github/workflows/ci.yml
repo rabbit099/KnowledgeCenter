@@ -1,0 +1,69 @@
+# Continuous integration: quality checks, tests against real PostgreSQL and Redis, image build
+# and a smoke test of the production Compose file. Also called by release.yml before publishing.
+#
+# Security: actions are pinned to commit SHAs (tag in the comment); the token is read-only;
+# no secrets are used, so pull requests from forks run with nothing to leak (the default
+# `pull_request` event gives them a read-only token and no repository secrets).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.13.7"
+
+jobs:
+  quality:
+    name: Lint, types, boundaries, unit tests, docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - name: Install dependencies from uv.lock
+        run: uv sync --frozen
+      - name: ruff, mypy, import-linter
+        run: make lint
+      - name: Unit tests
+        run: make test
+      - name: Documentation consistency (EN/PL)
+        run: make docs-check
+
+  integration:
+    name: Integration and golden search tests (PostgreSQL + Redis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The database must be the project's db image (Polish dictionary), which a GitHub
+      # service container cannot build; the same throwaway stack as locally is used instead.
+      - name: make test-db
+        run: make test-db
+
+  images:
+    name: Build images (linux/amd64) and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build app, worker, db, proxy; start docker-compose.yml; migrate; /ready 4x ok
+        run: make smoke

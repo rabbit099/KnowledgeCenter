@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.0.0 (przed pierwszym wydaniem) · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -16,6 +16,7 @@ Angielska wersja tej dokumentacji: [`../en/`](../en/README.md).
 | [ingestion-and-ocr.md](ingestion-and-ocr.md) | Przetwarzanie uploadu, wyciąganie tekstu z każdego formatu, OCR |
 | [auth-and-permissions.md](auth-and-permissions.md) | Logowanie przez Active Directory, role, katalog uprawnień, audyt |
 | [deployment-operations.md](deployment-operations.md) | Instalacja, konfiguracja, aktualizacje, rollback, backup, monitoring |
+| [modules/documents.md](modules/documents.md), [modules/ingestion.md](modules/ingestion.md), [modules/search.md](modules/search.md) | Dla każdego modułu: zakres, zależności, uprawnienia, tabele, zdarzenia, punkty rozszerzeń |
 | [decisions.md](decisions.md) | Rejestr decyzji (ADR), założenia i otwarte pytania |
 | [changelog.md](changelog.md) | Co zmieniło się w każdej wersji |
 
@@ -24,12 +25,13 @@ Angielska wersja tej dokumentacji: [`../en/`](../en/README.md).
 Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 
 ### Faza 0 — Fundament
-- [ ] Repozytorium, `pyproject.toml`, Makefile, pre-commit
-- [ ] Docker Compose: proxy, app, worker, db, redis (+ opcjonalny profil ClamAV)
-- [ ] Własny obraz Postgresa ze słownikiem Hunspell dla polskiego; wynik spike'a opisany w `search.md`
-- [ ] Baza Alembica, `/health` i `/ready`
-- [ ] CI (lint, typy, testy, docs-check, budowanie obrazów)
-- [ ] `scripts/check_docs.py`
+- [x] Repozytorium, `pyproject.toml`, Makefile, pre-commit
+- [x] Rejestr modułów: manifesty, `ENABLED_MODULES`, magistrala zdarzeń, kontrola granic (import-linter)
+- [x] Docker Compose: proxy, app, worker, db, redis (+ opcjonalny profil ClamAV)
+- [x] Własny obraz Postgresa ze słownikiem Hunspell dla polskiego; wynik spike'a opisany w `search.md`
+- [x] Baza Alembica, `/health` i `/ready`
+- [x] CI (lint, typy, testy, docs-check, budowanie obrazów, test dymny); workflow wydania przygotowany, jeszcze nieuruchamiany. Zweryfikowane lokalnie tymi samymi celami make; pierwszy przebieg na GitHubie nastąpi przy pierwszym pushu
+- [x] `scripts/check_docs.py`
 
 ### Faza 1 — Użytkownicy i uprawnienia
 - [ ] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania

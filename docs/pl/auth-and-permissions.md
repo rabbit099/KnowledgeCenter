@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.0.0 (przed pierwszym wydaniem) · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
 
 ## Uwierzytelnianie
 
@@ -55,6 +55,8 @@ Uprawnienia to stałe kody zdefiniowane w aplikacji. Role są zestawami uprawnie
 | `audit.view` | Przeglądanie logu audytowego |
 | `settings.manage` | Zmianę ustawień aplikacji (limity, niesekretne ustawienia AD) |
 | `system.view` | Podgląd wersji, kolejki i stanu zdrowia |
+
+Katalog jest składany z manifestów włączonych modułów: rdzeń dostarcza `users.manage`, `roles.manage`, `audit.view`, `settings.manage` i `system.view`; moduł `documents` dostarcza `documents.*` oraz `categories.manage`. Uprawnień wyłączonego modułu nie ma w katalogu i są pomijane w rolach (zapisane przypisania zostają, nie są kasowane). Kody pozostają stałe w kodzie: moduł dodaje kody w swoim manifeście, admin nigdy ich nie wymyśla.
 
 ### Role domyślne
 

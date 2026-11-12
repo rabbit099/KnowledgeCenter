@@ -1,0 +1,8 @@
+{% set labels = {"database": _("Database"), "redis": _("Job queue"), "schema": _("Database schema"), "worker": _("Background worker")} %}
+<h2>{{ _("System status") }}</h2>
+<p class="{{ 'ok' if ok else 'fail' }}">{{ _("All systems are working.") if ok else _("Some systems are not working.") }}</p>
+<ul class="checks">
+  {% for name, result in results.items() %}
+  <li class="{{ 'ok' if result.ok else 'fail' }}">{{ labels.get(name, name) }}: {{ _("OK") if result.ok else result.detail }}</li>
+  {% endfor %}
+</ul>

@@ -1,0 +1,47 @@
+# Reverse proxy and TLS. TLS_MODE (from .env) selects one of the snippets below:
+#   internal - certificate from Caddy's own internal CA (development, closed networks)
+#   files    - certificate and key provided in ./secrets/tls/ (company CA)
+#   acme     - Let's Encrypt (needs a public DNS name and port 80/443 reachable from the internet)
+{
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	skip_install_trust
+	admin off
+}
+
+(tls-internal) {
+	tls internal
+}
+
+(tls-files) {
+	tls /certs/cert.pem /certs/key.pem
+}
+
+(tls-acme) {
+	tls {$ACME_EMAIL}
+}
+
+http://{$PUBLIC_HOSTNAME} {
+	redir https://{host}{uri} permanent
+}
+
+https://{$PUBLIC_HOSTNAME} {
+	import tls-{$TLS_MODE}
+	encode zstd gzip
+	request_body {
+		max_size {$MAX_REQUEST_MB:110}MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+	reverse_proxy app:8000
+	log {
+		output stdout
+		format json
+	}
+}
