@@ -28,3 +28,6 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY dictionary/polish.stop dictionary/LICENSE-pl_pl-dictionary.txt /usr/share/postgresql/16/tsearch_data/
+
+# Bootstrap only: creates the non-superuser application role and database on an empty volume.
+COPY --chmod=0755 initdb/10-app-role.sh /docker-entrypoint-initdb.d/

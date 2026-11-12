@@ -13,6 +13,11 @@ dependencies = [
 [project.scripts]
 baza-wiedzy = "baza_wiedzy.cli:main"
 
+[project.optional-dependencies]
+worker = [
+    "ocrmypdf>=16",
+]
+
 [dependency-groups]
 dev = [
     "import-linter>=2.1",

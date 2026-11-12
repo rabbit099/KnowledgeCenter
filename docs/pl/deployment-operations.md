@@ -18,10 +18,13 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 /srv/baza-wiedzy/
 ├── docker-compose.yml
 ├── .env                 # konfiguracja i sekrety (chmod 600)
+├── docker/caddy/        # Dockerfile i Caddyfile proxy (budowane na serwerze)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
-├── data/                # wolumeny: storage/, postgres/, caddy/
+├── secrets/tls/         # cert.pem i key.pem, tylko przy TLS_MODE=files
 └── backups/             # tworzone przez backup.sh
 ```
+
+Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `files` (pliki wgrane i pochodne), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
 
 ## Konfiguracja
 
@@ -35,20 +38,34 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |
 | `TLS_MODE` | `internal`, `files` lub `acme` |
 | `SECRET_KEY` | Klucz podpisujący sesje/CSRF |
-| `DATABASE_URL` / `POSTGRES_PASSWORD` | Dostęp do bazy |
-| `REDIS_URL` | Kolejka |
+| `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy |
+| `POSTGRES_PASSWORD` | Hasło superużytkownika PostgreSQL; używane tylko wewnątrz kontenera `db` |
+| `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Zwykły użytkownik (nie superużytkownik), właściciel bazy aplikacji; używają go aplikacja i migracje. `DATABASE_URL` jest z nich składany w `docker-compose.yml` |
+| `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
+| `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
+| `REDIS_URL` | Kolejka; ustawiona na stałe na wewnętrzną usługę `redis` w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
 
 `ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje wyłącznie gałęzie migracji włączonych modułów; po późniejszym włączeniu modułu uruchom `migrate` ponownie. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
-Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach.
+Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach. Przy pierwszym starcie z pustym wolumenem `pgdata` obraz `db` tworzy tego użytkownika i bazę z `APP_DB_USER`, `APP_DB_PASSWORD` i `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Późniejsza zmiana tych zmiennych **nie** zmienia istniejącej bazy; hasło zmień przez `ALTER ROLE` jako `postgres` i jednocześnie zaktualizuj `.env`.
+
+### Połączenia z bazą i pamięć
+
+Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu i trzyma go w pamięci: około 27–30 MB na połączenie (zmierzone w spike'u, zob. [search.md](search.md)). Dlatego limit połączeń jest ustawiony jawnie, a limit pamięci `db` z niego wynika:
+
+- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 1 na proces workera, plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 1 + 6 = 28, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
+- Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
+- Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
+- Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
 
 ## Pierwsza instalacja
 
-1. Skopiuj `docker-compose.yml`, `.env.example` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
+1. Skopiuj `docker-compose.yml`, `.env.example`, `docker/caddy/` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
 2. Zaloguj się do rejestru: `docker login ghcr.io` tokenem z prawem odczytu pakietów.
-3. Ustaw `APP_VERSION` i uruchom: `docker compose pull && docker compose up -d`.
+3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull --ignore-buildable && docker compose build proxy && docker compose up -d`. Obraz proxy jest budowany na serwerze z `docker/caddy/` (kilka sekund; potrzebuje obrazu bazowego `caddy` z Docker Huba).
 4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`.
 5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin <username>`.
 6. Sprawdź, czy `https://<PUBLIC_HOSTNAME>/ready` zwraca OK.
@@ -157,6 +174,8 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
 
+Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Stan Fazy 0: dopóki nie są gotowe etapy B4 (aplikacja WWW) i B6 (actory workera), `app` i `worker` kończą się przy starcie, a proxy odpowiada `502`; `db` i `redis` osiągają stan `healthy`.
+
 ## Rozwiązywanie problemów
 
 | Objaw | Prawdopodobna przyczyna | Co sprawdzić |
@@ -173,6 +192,8 @@ Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na p
 ## Uwagi bezpieczeństwa dla operatorów
 
 - Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci.
+- Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
+- Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.
 - Regularnie aktualizuj obrazy bazowe (nowe wydanie je przebudowuje).
 - Nie dawaj aplikacji dostępu do `docker.sock`; aktualizacje robi się z hosta.

@@ -61,6 +61,7 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Phase 0, stage B (added when first used): `fastapi` and `uvicorn` (web framework and its server), `jinja2` (templates, required for server-rendered pages), `python-multipart` (FastAPI form and file upload parsing), `babel` (gettext catalogs: extract, compile, Polish translation), `sqlalchemy`, `alembic`, `psycopg` (database access and migrations from the stack), `dramatiq` and `redis` (queue and Redis client, also used by the `/ready` check).
 
 - Phase 0, stage B2: `psycopg[binary]` instead of plain `psycopg` (the `binary` extra bundles libpq, so the images need no compiler or `libpq-dev`). Test tooling, not a Python dependency: the image `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` runs `make test-db` (same `uv` as development, pinned tag).
+- Phase 0, stage B3: `ocrmypdf` as the optional extra `worker` (installed only in the worker image; OCR engine from the stack, used as a Python library). Base images, pinned to exact tags: `python:3.12.16-slim-trixie`, `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` (build stage), `caddy:2.10.2-alpine`, `redis:8.2.3-alpine`, `clamav/clamav:1.4.3`.
 
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
 

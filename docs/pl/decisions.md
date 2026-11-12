@@ -61,6 +61,7 @@ Status: przyjęta. Nic spoza stacku z `CLAUDE.md`, sekcja 3, bez wpisu tutaj.
 - Faza 0, etap B (dodawane przy pierwszym użyciu): `fastapi` i `uvicorn` (framework WWW i jego serwer), `jinja2` (szablony, wymagane dla stron renderowanych na serwerze), `python-multipart` (parsowanie formularzy i uploadu plików w FastAPI), `babel` (katalogi gettext: ekstrakcja, kompilacja, tłumaczenie na polski), `sqlalchemy`, `alembic`, `psycopg` (dostęp do bazy i migracje ze stacku), `dramatiq` i `redis` (kolejka i klient Redis, używany także przez sprawdzanie `/ready`).
 
 - Faza 0, etap B2: `psycopg[binary]` zamiast samego `psycopg` (dodatek `binary` zawiera libpq, więc obrazy nie potrzebują kompilatora ani `libpq-dev`). Narzędzie testowe, nie zależność Pythona: obraz `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` uruchamia `make test-db` (ten sam `uv` co w rozwoju, przypięty tag).
+- Faza 0, etap B3: `ocrmypdf` jako opcjonalny dodatek `worker` (instalowany tylko w obrazie workera; silnik OCR ze stacku, używany jako biblioteka Pythona). Obrazy bazowe, przypięte do konkretnych tagów: `python:3.12.16-slim-trixie`, `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` (etap budowania), `caddy:2.10.2-alpine`, `redis:8.2.3-alpine`, `clamav/clamav:1.4.3`.
 
 Każda wersja jest przypięta w `uv.lock`. Kolejne fazy dodają własne wpisy (na przykład `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) w miarę wprowadzania.
 

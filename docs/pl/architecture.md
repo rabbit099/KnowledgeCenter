@@ -23,11 +23,11 @@ Przeglądarka ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 
 | Usługa | Obraz | Rola | Port wystawiony |
 |---|---|---|---|
-| `proxy` | Caddy | Terminacja TLS, reverse proxy, limit rozmiaru żądania | 80, 443 |
+| `proxy` | `baza-wiedzy-proxy` (Caddy, budowany lokalnie z `docker/caddy`) | Terminacja TLS, reverse proxy, limit rozmiaru żądania; działa bez roota na portach 8080/8443 wewnątrz kontenera | 80, 443 |
 | `app` | `baza-wiedzy-app` | Interfejs WWW, API, uprawnienia, zapytania wyszukiwania | wewnętrzny |
 | `worker` | `baza-wiedzy-worker` | Wyciąganie tekstu, OCR, indeksacja (w środku Tesseract i LibreOffice) | brak |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + słownik Hunspell dla polskiego | brak |
-| `redis` | `redis` | Tylko kolejka zadań (bez trwałych danych biznesowych) | brak |
+| `redis` | `redis` 8.2 | Tylko kolejka zadań (bez danych biznesowych); włączony plik append-only, więc zadania w kolejce przetrwają restart | brak |
 | `clamav` | `clamav` | Opcjonalne skanowanie antywirusowe, profil compose `antivirus`, domyślnie wyłączone | brak |
 
 `app` i `worker` mają wspólny kod Pythona i modele bazy; różnią się zawartością obrazu (obraz workera ma OCR i LibreOffice) oraz poleceniem startowym.

@@ -6,10 +6,12 @@ name: baza-wiedzy-test
 services:
   db-test:
     build: docker/db
+    # The image's init script creates the non-superuser owner of kb_test.
     environment:
       POSTGRES_PASSWORD: test-superuser-only
-    volumes:
-      - ./tests/docker/init-app-role.sql:/docker-entrypoint-initdb.d/01-app-role.sql:ro
+      APP_DB_USER: app
+      APP_DB_PASSWORD: test
+      APP_DB_NAME: kb_test
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

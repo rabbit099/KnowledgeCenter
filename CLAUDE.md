@@ -58,14 +58,15 @@ baza-wiedzy/
 ├── pyproject.toml
 ├── docker-compose.yml         # production
 ├── docker-compose.dev.yml     # dev overrides (mounts, reload)
+├── docker-compose.test.yml    # make test-db: throwaway DB (tmpfs) + one-off test runner, no host ports
 ├── .env.example               # every variable documented
 ├── alembic.ini
 ├── alembic/                   # migrations
 ├── docker/
 │   ├── app/Dockerfile
 │   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice
-│   ├── db/Dockerfile          # postgres + hunspell dictionaries + init SQL
-│   └── caddy/Caddyfile
+│   ├── db/                    # Dockerfile, dictionary/ (Hunspell pl + licence, polish.stop), initdb/ (app role only), spike.sql
+│   └── caddy/                 # Dockerfile (non-root) + Caddyfile
 ├── src/baza_wiedzy/
 │   ├── main.py  cli.py
 │   ├── core/              # always enabled (section 6a)

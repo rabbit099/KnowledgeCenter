@@ -13,7 +13,7 @@ help: ## List commands
 .PHONY: _need-docker
 _need-docker:
 	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
-	@test -f docker-compose.yml || { echo "docker-compose.yml does not exist yet (Phase 0, stage B)."; exit 1; }
+	@test -f .env || { echo "No .env file. Create it: cp .env.example .env (then edit the passwords)."; exit 1; }
 
 .PHONY: up
 up: _need-docker ## Start all services (dev overrides)

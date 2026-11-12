@@ -18,10 +18,13 @@ Everything an operator needs: installing, configuring, updating, rolling back, b
 /srv/baza-wiedzy/
 ├── docker-compose.yml
 ├── .env                 # configuration and secrets (chmod 600)
+├── docker/caddy/        # Dockerfile and Caddyfile of the proxy (built on the server)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
-├── data/                # volumes: storage/, postgres/, caddy/
+├── secrets/tls/         # cert.pem and key.pem, only with TLS_MODE=files
 └── backups/             # created by backup.sh
 ```
+
+Data lives in Docker named volumes of the Compose project `baza-wiedzy`: `pgdata` (database), `files` (uploaded and derived files), `redis-data` (queue), `caddy-data` and `caddy-config` (certificates, including Caddy's internal CA), `clamav-db` (only with the `antivirus` profile). List them with `docker volume ls --filter name=baza-wiedzy`. `docker compose down` keeps them; `docker compose down -v` **deletes all data**.
 
 ## Configuration
 
@@ -35,20 +38,34 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |
 | `TLS_MODE` | `internal`, `files` or `acme` |
 | `SECRET_KEY` | Signing key for sessions/CSRF |
-| `DATABASE_URL` / `POSTGRES_PASSWORD` | Database access |
-| `REDIS_URL` | Queue |
+| `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy |
+| `POSTGRES_PASSWORD` | Password of the PostgreSQL superuser; used only inside the `db` container |
+| `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Non-superuser that owns the application database; the application and migrations use it. `DATABASE_URL` is built from these in `docker-compose.yml` |
+| `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
+| `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Container memory limits |
+| `REDIS_URL` | Queue; fixed to the internal `redis` service in `docker-compose.yml` |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | See [auth-and-permissions.md](auth-and-permissions.md) |
 
 `ENABLED_MODULES` must have the same value for `app` and `worker` (both read the same `.env`). At startup the application checks module dependencies and refuses to start with a message such as `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` applies the migration branches of the enabled modules only; after enabling a module later, run `migrate` again. Disabling a module does not delete its tables or data.
 
-Database user and privileges: the application and `baza-wiedzy migrate` connect as one database user that is **not** a superuser but **owns the application database**. That is enough for everything the migrations do: `CREATE EXTENSION pg_trgm` and `CREATE EXTENSION unaccent` (both are "trusted" extensions in PostgreSQL 13+, so the database owner may create them; the extension files are already in the `db` image), and `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (need `CREATE` on schema `public`, which the database owner has in PostgreSQL 15+). If the database is created by someone else, grant: `GRANT CREATE ON DATABASE <db> TO <user>; GRANT CREATE ON SCHEMA public TO <user>;`. `make test-db` runs the search objects as such a non-superuser, so a regression shows up in tests.
+Database user and privileges: the application and `baza-wiedzy migrate` connect as one database user that is **not** a superuser but **owns the application database**. That is enough for everything the migrations do: `CREATE EXTENSION pg_trgm` and `CREATE EXTENSION unaccent` (both are "trusted" extensions in PostgreSQL 13+, so the database owner may create them; the extension files are already in the `db` image), and `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (need `CREATE` on schema `public`, which the database owner has in PostgreSQL 15+). If the database is created by someone else, grant: `GRANT CREATE ON DATABASE <db> TO <user>; GRANT CREATE ON SCHEMA public TO <user>;`. `make test-db` runs the search objects as such a non-superuser, so a regression shows up in tests. On the first start of an empty `pgdata` volume, the `db` image creates this user and database from `APP_DB_USER`, `APP_DB_PASSWORD` and `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Changing these variables later does **not** change an existing database; change the password with `ALTER ROLE` as `postgres` and update `.env` at the same time.
+
+### Database connections and memory
+
+Every PostgreSQL connection loads the Polish dictionary on first use and keeps it: about 27–30 MB per connection (measured in the spike, see [search.md](search.md)). The connection limit is therefore set explicitly and the `db` memory limit is derived from it:
+
+- Connection budget: app 5 + 5 overflow per app process, worker 1 per worker process, plus a few for migrations, backups and manual `psql`. With 2 app processes and 2 worker processes: 2 × 10 + 2 × 1 + 6 = 28, so the default `POSTGRES_MAX_CONNECTIONS=40` leaves room.
+- Memory: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Defaults: 256 MB + 40 × 35 MB + 300 MB ≈ 1.95 GB → `DB_MEMORY_LIMIT=2g`.
+- If you raise `POSTGRES_MAX_CONNECTIONS`, raise `DB_MEMORY_LIMIT` by 35 MB per extra connection. Otherwise the kernel may kill PostgreSQL (`docker compose ps` shows `db` restarting; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` prints `true`).
+- Check the current values: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
 
 ## First installation
 
-1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
+1. Copy `docker-compose.yml`, `.env.example`, `docker/caddy/` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
 2. Log in to the registry: `docker login ghcr.io` with a token that can read packages.
-3. Set `APP_VERSION` and start: `docker compose pull && docker compose up -d`.
+3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull --ignore-buildable && docker compose build proxy && docker compose up -d`. The proxy image is built on the server from `docker/caddy/` (a few seconds; it needs the `caddy` base image from Docker Hub).
 4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
 5. Create the first admin: `docker compose exec app baza-wiedzy create-admin <username>`.
 6. Check `https://<PUBLIC_HOSTNAME>/ready` returns OK.
@@ -157,6 +174,8 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
 
+Local stack: `cp .env.example .env` once (the defaults are fine for development), then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. State of Phase 0: until stage B4 (web application) and B6 (worker actors) are done, `app` and `worker` exit at start and the proxy answers `502`; `db` and `redis` become `healthy`.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to check |
@@ -173,6 +192,8 @@ If `make` is not available, run the same tools through `uv run`, for example `uv
 ## Security notes for operators
 
 - Only ports 80/443 are published. Database and Redis are not reachable from the network.
+- Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
+- Docker logs rotate: at most 5 files × 10 MB per container.
 - `.env` and backups contain secrets and personal data; restrict permissions.
 - Update the base images regularly (a new release rebuilds them).
 - Do not give the application access to `docker.sock`; updates are done from the host.

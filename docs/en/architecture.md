@@ -23,11 +23,11 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 
 | Service | Image | Purpose | Published port |
 |---|---|---|---|
-| `proxy` | Caddy | TLS termination, reverse proxy, request size limit | 80, 443 |
+| `proxy` | `baza-wiedzy-proxy` (Caddy, built locally from `docker/caddy`) | TLS termination, reverse proxy, request size limit; runs as non-root on 8080/8443 inside the container | 80, 443 |
 | `app` | `baza-wiedzy-app` | Web UI, API, permissions, search queries | internal |
 | `worker` | `baza-wiedzy-worker` | Extraction, OCR, indexing (Tesseract, LibreOffice inside) | none |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + Polish Hunspell dictionary | none |
-| `redis` | `redis` | Job queue only (no persistent business data) | none |
+| `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
 
 `app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.

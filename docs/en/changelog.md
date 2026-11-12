@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- Docker Compose stack (`docker-compose.yml`, `docker-compose.dev.yml`): proxy (Caddy, non-root, TLS modes `internal`/`files`/`acme`), app, worker, db, redis, optional `antivirus` profile (ClamAV); log rotation, memory limits, explicit `max_connections`; app and worker images (non-root; worker with Tesseract `pol`+`eng`, OCRmyPDF, LibreOffice Writer); the `db` image creates a non-superuser application role on first start. New variables in `.env.example`.
 - Polish dictionary spike done: Hunspell is sufficient (results, measured memory and gaps in `search.md`, ADR-016). Golden search tests in `tests/search_golden/` and `make test-db`, which runs them against a throwaway database in Docker without publishing a port.
 - Database image `docker/db` (PostgreSQL 16.15 on Debian 13) with the Polish Hunspell dictionary (`pl_pl.dict`, `pl_pl.affix`, UTF-8), the project's `polish.stop` list and the dictionary licence file; `docker/db/spike.sql` is a diagnostic script for the dictionary.
 - Repository skeleton: Python 3.12 project managed with `uv`, `Makefile` as the single command entry point, pre-commit (ruff, mypy), `.env.example`, LF line endings.

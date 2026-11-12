@@ -1,0 +1,28 @@
+# Development overrides: images are built locally, source code is mounted,
+# the web server reloads on change. Use through the Makefile (make up / make down).
+services:
+  app:
+    image: baza-wiedzy-app:dev
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ./src:/src:ro
+    command: ["uvicorn", "baza_wiedzy.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--reload", "--reload-dir", "/src"]
+
+  worker:
+    image: baza-wiedzy-worker:dev
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ./src:/src:ro
+
+  db:
+    image: baza-wiedzy-db:dev
+    build: docker/db
