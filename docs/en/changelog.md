@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- Database image `docker/db` (PostgreSQL 16.15 on Debian 13) with the Polish Hunspell dictionary (`pl_pl.dict`, `pl_pl.affix`, UTF-8), the project's `polish.stop` list and the dictionary licence file; `docker/db/spike.sql` is a diagnostic script for the dictionary.
 - Repository skeleton: Python 3.12 project managed with `uv`, `Makefile` as the single command entry point, pre-commit (ruff, mypy), `.env.example`, LF line endings.
 - `scripts/check_docs.py` and `make docs-check`: verify that the English and Polish documentation (including `modules/`) have the same files, headings and header lines, that both changelogs have `[Unreleased]`, and that every module in `src/baza_wiedzy/modules/` has a page in `docs/en/modules/` and `docs/pl/modules/`.
 - Modular structure: always-on core plus modules `documents`, `ingestion`, `search` (empty manifests for now) selected with `ENABLED_MODULES`; dependency check at startup with readable errors; permission catalog assembled from module manifests; in-process event bus; module boundaries checked by import-linter in `make lint`.
