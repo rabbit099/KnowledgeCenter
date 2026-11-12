@@ -18,6 +18,8 @@ _need-docker:
 .PHONY: up
 up: _need-docker ## Start all services (dev overrides)
 	$(COMPOSE_DEV) up -d --build
+	@$(COMPOSE_DEV) ps --format 'table {{.Service}}\t{{.Status}}'
+	@echo "app/worker stop after 3 failed starts in dev; see 'make logs' if one is not running."
 
 .PHONY: down
 down: _need-docker ## Stop all services

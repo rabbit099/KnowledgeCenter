@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- Redis requires a password (`REDIS_PASSWORD`, new variable). The file volume is named `storage` and mounted at `/data/storage`. In development `app` and `worker` stop after 3 failed starts instead of restarting forever.
 - Docker Compose stack (`docker-compose.yml`, `docker-compose.dev.yml`): proxy (Caddy, non-root, TLS modes `internal`/`files`/`acme`), app, worker, db, redis, optional `antivirus` profile (ClamAV); log rotation, memory limits, explicit `max_connections`; app and worker images (non-root; worker with Tesseract `pol`+`eng`, OCRmyPDF, LibreOffice Writer); the `db` image creates a non-superuser application role on first start. New variables in `.env.example`.
 - Polish dictionary spike done: Hunspell is sufficient (results, measured memory and gaps in `search.md`, ADR-016). Golden search tests in `tests/search_golden/` and `make test-db`, which runs them against a throwaway database in Docker without publishing a port.
 - Database image `docker/db` (PostgreSQL 16.15 on Debian 13) with the Polish Hunspell dictionary (`pl_pl.dict`, `pl_pl.affix`, UTF-8), the project's `polish.stop` list and the dictionary licence file; `docker/db/spike.sql` is a diagnostic script for the dictionary.

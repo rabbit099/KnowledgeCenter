@@ -19,7 +19,8 @@ RUN set -eux; \
         ghostscript libreoffice-writer-nogui libmagic1t64 fonts-dejavu-core; \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app
+    && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app \
+    && mkdir -p /data/storage /data/tmp && chown -R app:app /data
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /opt/app
 USER app

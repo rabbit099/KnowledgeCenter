@@ -27,8 +27,10 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `app` | `baza-wiedzy-app` | Web UI, API, permissions, search queries | internal |
 | `worker` | `baza-wiedzy-worker` | Extraction, OCR, indexing (Tesseract, LibreOffice inside) | none |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + Polish Hunspell dictionary | none |
-| `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart | none |
+| `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
+
+Redis licence: Redis 8 is offered under AGPLv3 (among others), which is acceptable for internal, unmodified use. If that is ever in doubt, [Valkey](https://valkey.io) (BSD-3-Clause) is a 1:1 replacement: change the `redis` image to `valkey/valkey` with a pinned tag; nothing else changes.
 
 `app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.
 

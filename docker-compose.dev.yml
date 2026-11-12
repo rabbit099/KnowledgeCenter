@@ -3,6 +3,8 @@
 services:
   app:
     image: baza-wiedzy-app:dev
+    # Development: give up after 3 failed starts instead of restarting forever.
+    restart: on-failure:3
     build:
       context: .
       dockerfile: docker/app/Dockerfile
@@ -15,6 +17,7 @@ services:
 
   worker:
     image: baza-wiedzy-worker:dev
+    restart: on-failure:3
     build:
       context: .
       dockerfile: docker/worker/Dockerfile

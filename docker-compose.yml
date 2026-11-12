@@ -20,7 +20,7 @@ x-app-env: &app-env
   ENABLED_MODULES: ${ENABLED_MODULES:-documents,ingestion,search}
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
   DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-baza_wiedzy}:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@db:5432/${APP_DB_NAME:-baza_wiedzy}
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
   DATA_DIR: /data
 
 services:
@@ -51,7 +51,7 @@ services:
     <<: *hardening
     environment: *app-env
     volumes:
-      - files:/data
+      - storage:/data/storage
     depends_on:
       db:
         condition: service_healthy
@@ -69,7 +69,7 @@ services:
     <<: *hardening
     environment: *app-env
     volumes:
-      - files:/data
+      - storage:/data/storage
     depends_on:
       db:
         condition: service_healthy
@@ -118,7 +118,11 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    # The password comes from the environment, so it never appears in `docker inspect` args.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --save '' --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     volumes:
       - redis-data:/data
     healthcheck:
@@ -149,7 +153,7 @@ services:
 volumes:
   pgdata:
   redis-data:
-  files:
+  storage:
   caddy-data:
   caddy-config:
   clamav-db:

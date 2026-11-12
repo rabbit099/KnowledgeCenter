@@ -21,10 +21,11 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 ├── docker/caddy/        # Dockerfile i Caddyfile proxy (budowane na serwerze)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem i key.pem, tylko przy TLS_MODE=files
+├── logs/                # update.log, backup.log
 └── backups/             # tworzone przez backup.sh
 ```
 
-Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `files` (pliki wgrane i pochodne), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
+Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `storage` (pliki wgrane i pochodne, zamontowany w `/data/storage` w `app` i `worker`), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
 
 ## Konfiguracja
 
@@ -44,7 +45,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Zwykły użytkownik (nie superużytkownik), właściciel bazy aplikacji; używają go aplikacja i migracje. `DATABASE_URL` jest z nich składany w `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
-| `REDIS_URL` | Kolejka; ustawiona na stałe na wewnętrzną usługę `redis` w `docker-compose.yml` |
+| `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
 
@@ -94,7 +95,7 @@ Co robi `update.sh`:
 6. Ustawia `APP_VERSION` w `.env` i uruchamia wszystko (`docker compose up -d`).
 7. Czeka na `/ready` (do 120 s).
 8. Przy porażce: automatyczny rollback do poprzedniej wersji obrazów i komunikat, czy trzeba odtworzyć bazę.
-9. Dopisuje wynik do `data/update.log`.
+9. Dopisuje wynik do `logs/update.log`.
 
 Migracje stosują zasadę expand/contract, więc poprzednia wersja aplikacji zwykle nadal działa z nowym schematem. Jeśli wydanie zawiera migrację niezgodną wstecz, notatki wydania o tym informują, a rollback wymaga odtworzenia backupu.
 
@@ -118,9 +119,9 @@ Dotyczy to każdej zmiany polskiego słownika, listy stop words lub konfiguracji
 
 ## Backup
 
-`scripts/backup.sh` tworzy `/srv/baza-wiedzy/backups/RRRR-MM-DD_GGMMSS/` zawierający:
-- `db.dump` — `pg_dump -Fc`
-- `storage.tar` — pliki oryginalne i pochodne
+`scripts/backup.sh` (Faza 6) tworzy `/srv/baza-wiedzy/backups/RRRR-MM-DD_GGMMSS/` zawierający:
+- `db.dump` — `docker compose exec -T db pg_dump -Fc -U postgres <APP_DB_NAME>` (spójny zrzut przy działającej aplikacji)
+- `storage.tar` — wolumen `storage` (pliki oryginalne i pochodne), czytany przez krótko żyjący kontener: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <obraz app> tar -C /data -cf /backup/storage.tar storage`
 - `env.backup` — kopia `.env` (zawiera sekrety; zabezpiecz miejsce backupu)
 - `SHA256SUMS`
 
@@ -129,10 +130,10 @@ Domyślna retencja: 7 dziennych, 4 tygodniowe, 6 miesięcznych (`BACKUP_KEEP_*`)
 Harmonogram (cron, codziennie w nocy):
 
 ```
-15 2 * * * /srv/baza-wiedzy/scripts/backup.sh >> /srv/baza-wiedzy/data/backup.log 2>&1
+15 2 * * * /srv/baza-wiedzy/scripts/backup.sh >> /srv/baza-wiedzy/logs/backup.log 2>&1
 ```
 
-Redis przechowuje tylko kolejkę zadań; nie wymaga backupu (niedokończone zadania są kolejkowane ponownie przez `baza-wiedzy reprocess --pending`).
+Wolumenów Dockera nie kopiuje się bezpośrednio (kopia `pgdata` działającej bazy nie jest spójna); baza idzie przez `pg_dump`, pliki przez `tar`. Redis przechowuje tylko kolejkę zadań; nie wymaga backupu (niedokończone zadania są kolejkowane ponownie przez `baza-wiedzy reprocess --pending`).
 
 ## Odtwarzanie
 
@@ -174,7 +175,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
 
-Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Stan Fazy 0: dopóki nie są gotowe etapy B4 (aplikacja WWW) i B6 (actory workera), `app` i `worker` kończą się przy starcie, a proxy odpowiada `502`; `db` i `redis` osiągają stan `healthy`.
+Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Stan Fazy 0: dopóki nie są gotowe etapy B4 (aplikacja WWW) i B6 (actory workera), `app` i `worker` kończą się przy starcie (w dev poddają się po 3 próbach, `restart: on-failure:3`, zamiast restartować się w nieskończoność), a proxy odpowiada `502`; `db` i `redis` osiągają stan `healthy`.
 
 ## Rozwiązywanie problemów
 
@@ -191,7 +192,7 @@ Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozw
 
 ## Uwagi bezpieczeństwa dla operatorów
 
-- Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci.
+- Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci; Redis wymaga też hasła (`REDIS_PASSWORD`).
 - Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.

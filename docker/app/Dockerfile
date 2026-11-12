@@ -12,7 +12,8 @@ RUN uv sync --frozen --no-dev --no-editable
 FROM python:3.12.16-slim-trixie
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app
+    && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app \
+    && mkdir -p /data/storage /data/tmp && chown -R app:app /data
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /opt/app
 USER app

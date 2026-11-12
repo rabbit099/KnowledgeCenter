@@ -27,8 +27,10 @@ Przeglądarka ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `app` | `baza-wiedzy-app` | Interfejs WWW, API, uprawnienia, zapytania wyszukiwania | wewnętrzny |
 | `worker` | `baza-wiedzy-worker` | Wyciąganie tekstu, OCR, indeksacja (w środku Tesseract i LibreOffice) | brak |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + słownik Hunspell dla polskiego | brak |
-| `redis` | `redis` 8.2 | Tylko kolejka zadań (bez danych biznesowych); włączony plik append-only, więc zadania w kolejce przetrwają restart | brak |
+| `redis` | `redis` 8.2 | Tylko kolejka zadań (bez danych biznesowych); włączony plik append-only, więc zadania w kolejce przetrwają restart; wymagane hasło | brak |
 | `clamav` | `clamav` | Opcjonalne skanowanie antywirusowe, profil compose `antivirus`, domyślnie wyłączone | brak |
+
+Licencja Redisa: Redis 8 jest dostępny m.in. na AGPLv3, co jest akceptowalne przy użyciu wewnętrznym bez modyfikacji. Gdyby to kiedyś budziło wątpliwości, zamiennikiem 1:1 jest [Valkey](https://valkey.io) (BSD-3-Clause): zmień obraz `redis` na `valkey/valkey` z przypiętym tagiem; nic więcej się nie zmienia.
 
 `app` i `worker` mają wspólny kod Pythona i modele bazy; różnią się zawartością obrazu (obraz workera ma OCR i LibreOffice) oraz poleceniem startowym.
 

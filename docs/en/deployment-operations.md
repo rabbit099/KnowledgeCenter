@@ -21,10 +21,11 @@ Everything an operator needs: installing, configuring, updating, rolling back, b
 ├── docker/caddy/        # Dockerfile and Caddyfile of the proxy (built on the server)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem and key.pem, only with TLS_MODE=files
+├── logs/                # update.log, backup.log
 └── backups/             # created by backup.sh
 ```
 
-Data lives in Docker named volumes of the Compose project `baza-wiedzy`: `pgdata` (database), `files` (uploaded and derived files), `redis-data` (queue), `caddy-data` and `caddy-config` (certificates, including Caddy's internal CA), `clamav-db` (only with the `antivirus` profile). List them with `docker volume ls --filter name=baza-wiedzy`. `docker compose down` keeps them; `docker compose down -v` **deletes all data**.
+Data lives in Docker named volumes of the Compose project `baza-wiedzy`: `pgdata` (database), `storage` (uploaded and derived files, mounted at `/data/storage` in `app` and `worker`), `redis-data` (queue), `caddy-data` and `caddy-config` (certificates, including Caddy's internal CA), `clamav-db` (only with the `antivirus` profile). List them with `docker volume ls --filter name=baza-wiedzy`. `docker compose down` keeps them; `docker compose down -v` **deletes all data**.
 
 ## Configuration
 
@@ -44,7 +45,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Non-superuser that owns the application database; the application and migrations use it. `DATABASE_URL` is built from these in `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Container memory limits |
-| `REDIS_URL` | Queue; fixed to the internal `redis` service in `docker-compose.yml` |
+| `REDIS_PASSWORD` | Password required by Redis (`requirepass`); URL-safe characters only. `REDIS_URL` is built from it in `docker-compose.yml` |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | See [auth-and-permissions.md](auth-and-permissions.md) |
 
@@ -94,7 +95,7 @@ What `update.sh` does:
 6. Sets `APP_VERSION` in `.env` and starts everything (`docker compose up -d`).
 7. Waits for `/ready` (up to 120 s).
 8. On failure: automatic rollback to the previous image version and a message explaining whether the database needs to be restored.
-9. Appends the result to `data/update.log`.
+9. Appends the result to `logs/update.log`.
 
 Migrations follow expand/contract, so the previous app version normally still works with the new schema. If a release contains a migration that is not backward compatible, the release notes say so and rollback requires restoring the backup.
 
@@ -118,9 +119,9 @@ This applies to every change of the Polish dictionary, the stop-word list or a t
 
 ## Backup
 
-`scripts/backup.sh` creates `/srv/baza-wiedzy/backups/YYYY-MM-DD_HHMMSS/` containing:
-- `db.dump` — `pg_dump -Fc`
-- `storage.tar` — original and derived files
+`scripts/backup.sh` (Phase 6) creates `/srv/baza-wiedzy/backups/YYYY-MM-DD_HHMMSS/` containing:
+- `db.dump` — `docker compose exec -T db pg_dump -Fc -U postgres <APP_DB_NAME>` (consistent snapshot while the application runs)
+- `storage.tar` — the `storage` volume (original and derived files), read through a short-lived container: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <app image> tar -C /data -cf /backup/storage.tar storage`
 - `env.backup` — copy of `.env` (contains secrets; protect the backup location)
 - `SHA256SUMS`
 
@@ -129,10 +130,10 @@ Default retention: 7 daily, 4 weekly, 6 monthly (`BACKUP_KEEP_*`). Copying backu
 Schedule (cron, daily at night):
 
 ```
-15 2 * * * /srv/baza-wiedzy/scripts/backup.sh >> /srv/baza-wiedzy/data/backup.log 2>&1
+15 2 * * * /srv/baza-wiedzy/scripts/backup.sh >> /srv/baza-wiedzy/logs/backup.log 2>&1
 ```
 
-Redis holds only the job queue; it needs no backup (unfinished jobs are re-queued with `baza-wiedzy reprocess --pending`).
+Docker volumes are not copied directly (copying `pgdata` of a running database is not consistent); the database goes through `pg_dump`, the files through `tar`. Redis holds only the job queue; it needs no backup (unfinished jobs are re-queued with `baza-wiedzy reprocess --pending`).
 
 ## Restore
 
@@ -174,7 +175,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
 
-Local stack: `cp .env.example .env` once (the defaults are fine for development), then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. State of Phase 0: until stage B4 (web application) and B6 (worker actors) are done, `app` and `worker` exit at start and the proxy answers `502`; `db` and `redis` become `healthy`.
+Local stack: `cp .env.example .env` once (the defaults are fine for development), then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. On a machine with little memory (for example WSL2, which by default gets half of the host RAM) lower the limits in your development `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; check the memory available to Docker with `docker info --format '{{.MemTotal}}'`. The defaults are sized for the server. State of Phase 0: until stage B4 (web application) and B6 (worker actors) are done, `app` and `worker` exit at start (in development they give up after 3 attempts, `restart: on-failure:3`, instead of restarting forever) and the proxy answers `502`; `db` and `redis` become `healthy`.
 
 ## Troubleshooting
 
@@ -191,7 +192,7 @@ Local stack: `cp .env.example .env` once (the defaults are fine for development)
 
 ## Security notes for operators
 
-- Only ports 80/443 are published. Database and Redis are not reachable from the network.
+- Only ports 80/443 are published. Database and Redis are not reachable from the network; Redis also requires a password (`REDIS_PASSWORD`).
 - Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
 - Docker logs rotate: at most 5 files × 10 MB per container.
 - `.env` and backups contain secrets and personal data; restrict permissions.
