@@ -6,6 +6,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 
 ## [Unreleased]
 
+### Added
+- Tabele rdzenia dla Fazy 1 (migracje `core_0002`, `core_0003`): `users`, `roles` z rolami systemowymi Admin, Publisher i Reader, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions` oraz `audit_log` tylko do dopisywania (wyzwalacz odrzuca UPDATE, DELETE, TRUNCATE). Migracja `documents_0001` nadaje uprawnienia `documents.*` rolom Publisher i Reader.
+
 ### Changed
 - Workflow wydania odmawia tagu, którego commit nie należy do `main`.
 - Aplikacja podaje wersję z zainstalowanego pakietu (`pyproject.toml`); `APP_VERSION` wybiera wyłącznie tag obrazu w `docker-compose.yml` i nie jest już przekazywany do kontenerów. `.env.example` ma teraz `APP_VERSION=0.1.0`.

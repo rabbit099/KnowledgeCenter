@@ -17,4 +17,5 @@ manifest = ModuleManifest(
     ),
     menu=(MenuItem(label="Documents", path="/documents", permission="documents.read", order=20),),
     migrations_branch="documents",
+    migrations_path="baza_wiedzy.modules.documents.migrations",
 )

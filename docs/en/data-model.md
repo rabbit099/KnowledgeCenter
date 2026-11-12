@@ -15,7 +15,7 @@ Every module owns its tables, and no module reads or writes the tables of anothe
 | `search` | `srch_` | `srch_parts` |
 | `ingestion` | `ing_` | none in the MVP: processing status and metadata live in `doc_versions` and are updated through `documents.services.api` |
 
-A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads, so after a full migration it contains `search_0001`; `core_0001` is implied by `depends_on`.
+A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `core_0002` (identity tables and system roles), `core_0003` (audit log), `documents_0001` (default grants of `documents.*`, `depends_on` `core_0002`), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads; revisions implied by `depends_on` are not listed. SQLAlchemy models (`core/db/models.py`) must match the migrations; `make test-db` compares them.
 
 ## Tables
 
@@ -23,12 +23,12 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `users` | `id`, `username`, `display_name`, `email`, `source` (`local`/`ad`), `password_hash` (local only), `ad_object_guid`, `is_active`, `last_login_at` | Local users exist only for the break-glass admin |
-| `roles` | `id`, `name`, `description`, `is_system` | System roles: Admin, Publisher, Reader. Not deletable |
-| `role_permissions` | `role_id`, `permission_code` | Permission codes come from the catalog in code ([auth-and-permissions.md](auth-and-permissions.md)) |
-| `user_roles` | `user_id`, `role_id`, `source` (`manual`/`ad`) | Effective permissions = union of all roles |
-| `ad_group_role_map` | `ad_group_dn`, `role_id` | Edited by an admin in the UI |
-| `sessions` | `id_hash`, `user_id`, `created_at`, `last_seen_at`, `expires_at`, `ip`, `user_agent` | Server-side, revocable |
+| `users` | `id` (uuid), `username`, `display_name`, `email`, `source` (`local`/`ad`), `password_hash` (local only), `ad_object_guid`, `ad_dn`, `is_active`, `created_at`, `updated_at`, `last_login_at`, `password_changed_at` | `username` is unique ignoring case (`lower(username)`), across local and AD accounts. A check enforces: local ⇔ password hash present. Local users exist only for the break-glass admin (CLI). AD users are created at first login or in advance by an admin (no `ad_object_guid` until the first login links them) |
+| `roles` | `id`, `name` (unique ignoring case), `description`, `system_key` (`admin`/`publisher`/`reader` or NULL), `created_at`, `updated_at` | The three system roles are created by `core_0002`; code recognises them by `system_key`, so renaming is harmless |
+| `role_permissions` | `role_id`, `permission_code` | Permission codes come from the catalog in code ([auth-and-permissions.md](auth-and-permissions.md)). **Admin has no rows**: it always holds the full catalog, computed in code. Default grants of module permissions come from the module's migration (`documents_0001`: Reader `documents.read`; Publisher `documents.read`, `documents.upload`, `documents.publish`) |
+| `user_roles` | `user_id`, `role_id`, `source` (`manual`/`ad`), `created_at` | Primary key `(user_id, role_id, source)`. Effective permissions = union of all roles. Rows with `source = ad` are recalculated at each AD login |
+| `ad_group_role_map` | `id`, `ad_group_dn`, `role_id`, `created_at`, `created_by` | Unique `(lower(ad_group_dn), role_id)`. Edited by an admin in the UI |
+| `sessions` | `id_hash` (SHA-256 of the cookie token), `user_id`, `created_at`, `last_seen_at`, `expires_at` (absolute end), `ip`, `user_agent` | Server-side, revocable (revocation deletes the row). The token itself is never stored |
 
 ### Documents
 
@@ -49,14 +49,15 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `audit_log` | `id` (bigserial), `at`, `user_id`, `action`, `entity_type`, `entity_id`, `ip`, `details` (jsonb) | Append-only. Actions: login, login_failed, upload, publish, unpublish, download, archive, delete, role_change, permission_change, setting_change |
-| `app_settings` | `key`, `value` (jsonb), `updated_by`, `updated_at` | Non-secret settings editable in the admin UI |
+| `audit_log` | `id` (bigint identity), `at`, `actor_user_id`, `actor_label` (user name at the time, or `cli`), `action`, `entity_type`, `entity_id`, `ip`, `details` (jsonb) | Append-only: a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE` (`core_0003`). No foreign keys, so entries outlive the rows they describe. Action names: [auth-and-permissions.md](auth-and-permissions.md#audit-log). Known limitation: the application role owns the table (it runs the migrations), so someone using that database role directly could disable the trigger; the protection is against the application, not against a database administrator. Separate database roles are planned for Phase 7 |
+| `app_settings` | `key`, `value` (jsonb), `updated_by`, `updated_at` | Planned, not created yet: non-secret settings editable in the admin UI |
 
 ## Relations
 
 ```
 users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
+users ─< sessions
 doc_documents ─< doc_versions ─< srch_parts (self-reference via parent_part_id)
 doc_versions ─ 0..1 ─ doc_email_metadata
 doc_documents >─ doc_categories
@@ -71,7 +72,9 @@ doc_documents >─ doc_categories
 | GIN (`gin_trgm_ops`) on `doc_documents.title`, `doc_versions.original_filename`, `doc_email_metadata.subject`, `doc_email_metadata.from_addr` | Fuzzy metadata search |
 | btree `doc_versions(sha256)` | Duplicate warning |
 | btree `doc_documents(status, category_id)` | Lists and filters |
-| btree `audit_log(at)`, `(user_id)`, `(entity_type, entity_id)` | Audit viewer |
+| btree `audit_log(at)`, `(actor_user_id)`, `(action)`, `(entity_type, entity_id)` | Audit viewer |
+| unique `users(lower(username))`, `users(ad_object_guid)`, `roles(lower(name))`, `roles(system_key)` | Case-insensitive names, AD identity |
+| btree `sessions(user_id)`, `sessions(expires_at)`, `user_roles(role_id)` | Revocation, cleanup of expired sessions, role usage |
 
 ## Text-search objects
 

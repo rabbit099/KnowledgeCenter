@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Added
+- Database tables of the core for Phase 1 (migrations `core_0002`, `core_0003`): `users`, `roles` with the system roles Admin, Publisher and Reader, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions` and the append-only `audit_log` (a trigger rejects UPDATE, DELETE, TRUNCATE). Migration `documents_0001` grants `documents.*` permissions to Publisher and Reader.
+
 ### Changed
 - Release workflow refuses a tag whose commit is not on `main`.
 - The application reports its version from the installed package (`pyproject.toml`); `APP_VERSION` only selects the image tag in `docker-compose.yml` and is no longer passed to the containers. `.env.example` now uses `APP_VERSION=0.1.0`.
