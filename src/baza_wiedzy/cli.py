@@ -103,6 +103,44 @@ def _create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unlock_login(args: argparse.Namespace) -> int:
+    import redis
+
+    from baza_wiedzy.core.audit.service import CLI_ACTOR, record
+    from baza_wiedzy.core.auth.accounts import find_user
+    from baza_wiedzy.core.auth.ratelimit import Limits, LoginLimiter
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    if not args.user and not args.ip:
+        raise _CliError("Give --user and/or --ip.")
+    settings = Settings()
+    client = redis.Redis.from_url(settings.redis_url)
+    limiter = LoginLimiter(client, Limits(0, 0, 0, 0, 0))  # thresholds are not used here
+    removed = limiter.unlock(username=args.user, ip=args.ip)
+    client.close()
+    engine = make_engine(settings)
+    try:
+        with make_session_factory(engine).begin() as db:
+            user = find_user(db, args.user) if args.user else None
+            record(
+                db,
+                "cli.unlock_login",
+                CLI_ACTOR,
+                entity_type="user" if user else None,
+                entity_id=user.id if user else None,
+                details={
+                    "known_user": user is not None,
+                    "ip": args.ip,
+                    "removed_keys": removed,
+                },
+            )
+    finally:
+        engine.dispose()
+    print(f"Login limits cleared ({removed} counter/lock key(s) removed).")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -131,6 +169,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="read the password from standard input (one line) instead of asking twice",
     )
     create_admin.set_defaults(handler=_create_admin)
+
+    unlock = commands.add_parser(
+        "unlock-login", help="clear failed-login counters and locks for a user name and/or address"
+    )
+    unlock.add_argument("--user", help="user name (all addresses)")
+    unlock.add_argument("--ip", help="client address (all user names)")
+    unlock.set_defaults(handler=_unlock_login)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"

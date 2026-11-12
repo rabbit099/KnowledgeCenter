@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 11:27+0100\n"
+"POT-Creation-Date: 2026-11-12 13:28+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Access denied"
+msgstr ""
 
 msgid "All systems are working."
 msgstr ""
@@ -32,10 +35,22 @@ msgstr ""
 msgid "Database schema"
 msgstr ""
 
+msgid "Invalid user name or password."
+msgstr ""
+
 msgid "Job queue"
 msgstr ""
 
+msgid "Log in"
+msgstr ""
+
+msgid "Log out"
+msgstr ""
+
 msgid "OK"
+msgstr ""
+
+msgid "Password"
 msgstr ""
 
 msgid "Some systems are not working."
@@ -44,12 +59,22 @@ msgstr ""
 msgid "System status"
 msgstr ""
 
-msgid ""
-"The company knowledge base is being prepared. Document search will be "
-"available here soon."
+msgid "The company knowledge base is being prepared. Document search will be available here soon."
+msgstr ""
+
+msgid "Too many failed attempts. Try again in a few minutes."
+msgstr ""
+
+msgid "User name"
 msgstr ""
 
 #, python-format
 msgid "Version %(version)s"
+msgstr ""
+
+msgid "You do not have permission to open this page. Contact an administrator if you need access."
+msgstr ""
+
+msgid "Your account has no permissions yet. Contact an administrator to get access."
 msgstr ""
 

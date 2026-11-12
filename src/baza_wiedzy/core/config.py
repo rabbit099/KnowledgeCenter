@@ -27,6 +27,19 @@ class Settings(BaseSettings):
     alembic_ini: str = "alembic.ini"
     # redis://:password@redis:6379/0 (built in docker-compose.yml).
     redis_url: str = "redis://localhost:6379/0"
+    # Signs CSRF tokens. The web application refuses to start with fewer than 32 characters.
+    secret_key: str = ""
+    # Sessions (ADR-007): idle limit and absolute lifetime.
+    session_idle_minutes: int = 120
+    session_absolute_hours: int = 12
+    # Only for local experiments without TLS; production always uses Secure cookies.
+    session_cookie_secure: bool = True
+    # Failed logins (counted in Redis, fixed window). Locks expire by themselves.
+    login_window_minutes: int = 15
+    login_lockout_minutes: int = 15
+    login_max_failures_account: int = 30
+    login_max_failures_account_ip: int = 5
+    login_max_failures_ip: int = 20
     # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id
     # hashes computed at the same time per process (each one uses 64 MiB of memory).
     local_password_min_length: int = 14

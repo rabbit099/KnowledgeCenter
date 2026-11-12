@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Added
+- Logowanie kontem lokalnym (`/login`, `/logout`): sesje po stronie serwera z rotacją przy logowaniu, limitem bezczynności (120 min) i bezwzględnym (12 h), ochrona CSRF każdego żądania zmieniającego stan, limity nieudanych logowań dla nazwy, pary nazwa + adres i adresu (`baza-wiedzy unlock-login`), jeden ogólny komunikat błędu, nagłówki bezpieczeństwa (CSP), adres klienta tylko od stałego adresu proxy (`DOCKER_SUBNET`, `PROXY_IP`). Wszystkie strony poza `/login`, `/health`, `/ready` i plikami statycznymi wymagają sesji. Aplikacja odmawia startu przy `SECRET_KEY` krótszym niż 32 znaki.
 - `baza-wiedzy create-admin <nazwa>` tworzy lokalnego admina awaryjnego albo resetuje jego hasło (pytanie dwa razy albo `--password-stdin`); Argon2id z limitem równoczesnych hashy; 14–256 znaków; audytowane jako `cli.create_admin` / `cli.reset_password`. Nowe zmienne `LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`, `ARGON2_MAX_CONCURRENT`.
 - Tabele rdzenia dla Fazy 1 (migracje `core_0002`, `core_0003`): `users`, `roles` z rolami systemowymi Admin, Publisher i Reader, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions` oraz `audit_log` tylko do dopisywania (wyzwalacz odrzuca UPDATE, DELETE, TRUNCATE). Migracja `documents_0001` nadaje uprawnienia `documents.*` rolom Publisher i Reader.
 

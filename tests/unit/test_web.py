@@ -1,4 +1,4 @@
-"""Web application without external services: checks are replaced by stubs."""
+"""Web application without external services: checks are replaced by stubs, no login needed."""
 
 from __future__ import annotations
 
@@ -15,15 +15,17 @@ from baza_wiedzy import __version__
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.health import CheckResult
 from baza_wiedzy.core.web.i18n import LOCALE_DIR
-from baza_wiedzy.main import create_app
+from baza_wiedzy.main import ConfigurationError, create_app
 
 SRC = LOCALE_DIR.parents[3]  # .../src
+SECRET = "unit-test-secret-key-0123456789abcdef"
 
 
 def make_settings(**overrides: object) -> Settings:
     values: dict[str, Any] = {
         "app_name": "Testowa Baza",
         "enabled_modules": "documents,ingestion,search",
+        "secret_key": SECRET,
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]  # pydantic-settings init kwarg
@@ -41,7 +43,7 @@ def app() -> FastAPI:
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app) as client:
+    with TestClient(app, base_url="https://testserver") as client:
         yield client
 
 
@@ -65,35 +67,66 @@ def test_ready_fails_when_a_check_fails(app: FastAPI, client: TestClient) -> Non
     assert response.json()["checks"]["redis"] == "unreachable"
 
 
-def test_home_is_polish_and_uses_app_name(client: TestClient) -> None:
-    html = client.get("/").text
+@pytest.mark.parametrize("path", ["/", "/status"])
+def test_pages_need_a_session(client: TestClient, path: str) -> None:
+    response = client.get(path, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/login?next={path}"
+
+
+def test_htmx_request_without_session_gets_hx_redirect(client: TestClient) -> None:
+    response = client.get("/status", headers={"HX-Request": "true"}, follow_redirects=False)
+    assert response.status_code == 401
+    assert response.headers["hx-redirect"] == "/login?next=/status"
+
+
+def test_login_page_is_polish_with_csrf_field(client: TestClient) -> None:
+    response = client.get("/login")
+    html = response.text
     assert '<html lang="pl">' in html
-    assert "<title>Testowa Baza</title>" in html
-    assert "Firmowa baza wiedzy jest w przygotowaniu" in html
+    assert "Zaloguj się · Testowa Baza" in html
     assert f"Wersja {__version__}" in html
+    assert 'name="csrf_token"' in html
+    assert "__Host-bw_pre=" in response.headers["set-cookie"]
 
 
 def test_app_name_is_escaped() -> None:
     app = create_app(make_settings(app_name="<b>Baza</b>"), setup_logging=False)
-    with TestClient(app) as client:
-        html = client.get("/").text
+    with TestClient(app, base_url="https://testserver") as client:
+        html = client.get("/login").text
     assert "<b>Baza</b>" not in html
     assert "&lt;b&gt;Baza&lt;/b&gt;" in html
 
 
-def test_htmx_is_served_locally(client: TestClient) -> None:
-    html = client.get("/").text
+def test_htmx_is_served_locally_with_strict_config(client: TestClient) -> None:
+    html = client.get("/login").text
     assert 'src="http' not in html  # no CDN
     assert "/static/vendor/htmx-2.0.11.min.js" in html
+    assert '"allowEval": false' in html and '"includeIndicatorStyles": false' in html
     assert client.get("/static/vendor/htmx-2.0.11.min.js").status_code == 200
 
 
-def test_status_fragment(app: FastAPI, client: TestClient) -> None:
-    app.state.ready_checks["database"] = lambda: CheckResult(False, "unreachable")
-    html = client.get("/status").text
-    assert "Niektóre usługi nie działają." in html
-    assert "Baza danych: unreachable" in html
-    assert "Kolejka zadań: OK" in html
+def test_security_headers(client: TestClient) -> None:
+    response = client.get("/login")
+    csp = response.headers["content-security-policy"]
+    for directive in (
+        "default-src 'self'",
+        "script-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ):
+        assert directive in csp
+    assert "unsafe-inline" not in csp and "unsafe-eval" not in csp
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "no-store"
+    assert "cache-control" not in client.get("/static/css/app.css").headers
+
+
+@pytest.mark.parametrize("secret", ["", "change-me", "x" * 31])
+def test_weak_secret_key_refuses_to_start(secret: str) -> None:
+    with pytest.raises(ConfigurationError, match="SECRET_KEY"):
+        create_app(make_settings(secret_key=secret), setup_logging=False)
 
 
 def test_every_ui_string_has_a_polish_translation() -> None:

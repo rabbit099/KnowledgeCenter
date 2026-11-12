@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 11:27+0100\n"
+"POT-Creation-Date: 2026-11-12 13:28+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -15,6 +15,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "Access denied"
+msgstr "Brak dostępu"
 
 msgid "All systems are working."
 msgstr "Wszystkie usługi działają."
@@ -31,11 +34,23 @@ msgstr "Baza danych"
 msgid "Database schema"
 msgstr "Schemat bazy danych"
 
+msgid "Invalid user name or password."
+msgstr "Nieprawidłowa nazwa użytkownika lub hasło."
+
 msgid "Job queue"
 msgstr "Kolejka zadań"
 
+msgid "Log in"
+msgstr "Zaloguj się"
+
+msgid "Log out"
+msgstr "Wyloguj"
+
 msgid "OK"
 msgstr "OK"
+
+msgid "Password"
+msgstr "Hasło"
 
 msgid "Some systems are not working."
 msgstr "Niektóre usługi nie działają."
@@ -46,7 +61,21 @@ msgstr "Stan systemu"
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
 msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
 
+msgid "Too many failed attempts. Try again in a few minutes."
+msgstr "Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut."
+
+msgid "User name"
+msgstr "Nazwa użytkownika"
+
 #, python-format
 msgid "Version %(version)s"
 msgstr "Wersja %(version)s"
+
+msgid "You do not have permission to open this page. Contact an administrator if you need access."
+msgstr "Nie masz uprawnień do tej strony. Jeśli potrzebujesz dostępu, skontaktuj się z administratorem."
+
+msgid "Your account has no permissions yet. Contact an administrator to get access."
+msgstr ""
+"Twoje konto nie ma jeszcze żadnych uprawnień. Skontaktuj się z administratorem, aby uzyskać "
+"dostęp."
 

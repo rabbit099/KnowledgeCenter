@@ -20,4 +20,7 @@ COPY alembic /opt/app/alembic
 WORKDIR /opt/app
 USER app
 EXPOSE 8000
-CMD ["uvicorn", "--factory", "baza_wiedzy.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Client address from X-Forwarded-For only for FORWARDED_ALLOW_IPS (set to the proxy's fixed
+# address in docker-compose.yml); the default trusts nobody but localhost.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["uvicorn", "--factory", "baza_wiedzy.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
