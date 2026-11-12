@@ -122,7 +122,7 @@ services:
 
   redis:
     # Tag for readability, digest for integrity (offline bundle lists the same reference).
-    image: redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
+    image: redis:8.10.2-alpine@sha256:9f8d2d789b9a1d1e3f283f979aa9cbf393373806472e1ccd460e2f9c869b833b
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
