@@ -18,7 +18,6 @@ x-hardening: &hardening
 
 x-app-env: &app-env
   APP_NAME: ${APP_NAME:-Baza Wiedzy}
-  APP_VERSION: ${APP_VERSION:?set APP_VERSION in .env}
   ENABLED_MODULES: ${ENABLED_MODULES:-documents,ingestion,search}
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
   DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-baza_wiedzy}:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@db:5432/${APP_DB_NAME:-baza_wiedzy}

@@ -16,6 +16,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import Engine, text
 
+from baza_wiedzy import __version__
+
 log = logging.getLogger(__name__)
 
 
@@ -66,7 +68,7 @@ router = APIRouter()
 
 @router.get("/health", include_in_schema=False)
 def health(request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "version": request.app.state.settings.app_version})
+    return JSONResponse({"status": "ok", "version": __version__})
 
 
 @router.get("/ready", include_in_schema=False)
@@ -74,7 +76,7 @@ def ready(request: Request) -> JSONResponse:
     ok, results = run_checks(request.app.state.ready_checks)
     body = {
         "status": "ok" if ok else "fail",
-        "version": request.app.state.settings.app_version,
+        "version": __version__,
         "checks": {name: r.detail for name, r in results.items()},
     }
     return JSONResponse(body, status_code=200 if ok else 503)

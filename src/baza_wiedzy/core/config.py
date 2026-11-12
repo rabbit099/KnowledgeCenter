@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     app_name: str = "Baza Wiedzy"
     # DEBUG, INFO, WARNING, ERROR. Logs are JSON lines (baza_wiedzy.core.logs).
     log_level: str = "INFO"
-    # Image tag the operator runs; shown on /health and /ready.
-    app_version: str = "0.0.0"
     # postgresql+psycopg://user:password@db:5432/name (built in docker-compose.yml).
     database_url: str = "postgresql+psycopg://baza_wiedzy@localhost:5432/baza_wiedzy"
     # Small fixed pool: every connection holds the Polish dictionary (~27 MB, ADR-016).

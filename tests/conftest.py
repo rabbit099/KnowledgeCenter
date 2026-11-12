@@ -29,7 +29,6 @@ def test_settings() -> Settings:
         _env_file=None,
         database_url=database_url,
         redis_url=_env("TEST_REDIS_URL"),
-        app_version="test",
         db_pool_size=1,
         db_max_overflow=0,
     )

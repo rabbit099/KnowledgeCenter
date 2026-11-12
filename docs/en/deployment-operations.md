@@ -33,7 +33,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | Variable | Meaning |
 |---|---|
 | `APP_NAME` | Display name (default "Baza Wiedzy") |
-| `APP_VERSION` | Image tag to run, for example `1.0.0` |
+| `APP_VERSION` | Tag of the project images to run, for example `0.1.0` (required by `docker-compose.yml`). It only selects images: the application reports its own version from the installed package (`version` in `pyproject.toml`), shown on `/health`, `/ready` and in the page footer |
 | `LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`; logs are JSON lines (see Monitoring) |
 | `ENABLED_MODULES` | Optional modules to run, comma-separated (default `documents,ingestion,search`); the core is always on |
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |

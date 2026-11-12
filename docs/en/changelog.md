@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Changed
+- The application reports its version from the installed package (`pyproject.toml`); `APP_VERSION` only selects the image tag in `docker-compose.yml` and is no longer passed to the containers. `.env.example` now uses `APP_VERSION=0.1.0`.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

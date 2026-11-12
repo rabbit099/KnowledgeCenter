@@ -33,7 +33,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | Zmienna | Znaczenie |
 |---|---|
 | `APP_NAME` | Wyświetlana nazwa (domyślnie „Baza Wiedzy”) |
-| `APP_VERSION` | Tag obrazu do uruchomienia, na przykład `1.0.0` |
+| `APP_VERSION` | Tag obrazów projektu do uruchomienia, na przykład `0.1.0` (wymagany przez `docker-compose.yml`). Wybiera wyłącznie obrazy: aplikacja podaje własną wersję z zainstalowanego pakietu (`version` w `pyproject.toml`), widoczną w `/health`, `/ready` i w stopce strony |
 | `LOG_LEVEL` | `DEBUG`, `INFO` (domyślnie), `WARNING`, `ERROR`; logi to linie JSON (zob. Monitoring) |
 | `ENABLED_MODULES` | Opcjonalne moduły do uruchomienia, oddzielone przecinkami (domyślnie `documents,ingestion,search`); rdzeń jest zawsze włączony |
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |

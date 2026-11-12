@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from baza_wiedzy import __version__
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.web.i18n import DEFAULT_LOCALE, get_translations
 
@@ -21,6 +22,6 @@ def make_templates(settings: Settings) -> Jinja2Templates:
     )
     env.install_gettext_translations(get_translations(DEFAULT_LOCALE), newstyle=True)  # type: ignore[attr-defined]
     env.globals["app_name"] = settings.app_name
-    env.globals["app_version"] = settings.app_version
+    env.globals["app_version"] = __version__
     env.globals["lang"] = DEFAULT_LOCALE
     return Jinja2Templates(env=env)

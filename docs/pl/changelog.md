@@ -6,6 +6,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 
 ## [Unreleased]
 
+### Changed
+- Aplikacja podaje wersję z zainstalowanego pakietu (`pyproject.toml`); `APP_VERSION` wybiera wyłącznie tag obrazu w `docker-compose.yml` i nie jest już przekazywany do kontenerów. `.env.example` ma teraz `APP_VERSION=0.1.0`.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

@@ -11,6 +11,7 @@ from babel.messages.pofile import read_po
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from baza_wiedzy import __version__
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.health import CheckResult
 from baza_wiedzy.core.web.i18n import LOCALE_DIR
@@ -22,7 +23,6 @@ SRC = LOCALE_DIR.parents[3]  # .../src
 def make_settings(**overrides: object) -> Settings:
     values: dict[str, Any] = {
         "app_name": "Testowa Baza",
-        "app_version": "9.9.9",
         "enabled_modules": "documents,ingestion,search",
     }
     values.update(overrides)
@@ -48,7 +48,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "9.9.9"}
+    assert response.json() == {"status": "ok", "version": __version__}
 
 
 def test_ready_ok(client: TestClient) -> None:
@@ -70,7 +70,7 @@ def test_home_is_polish_and_uses_app_name(client: TestClient) -> None:
     assert '<html lang="pl">' in html
     assert "<title>Testowa Baza</title>" in html
     assert "Firmowa baza wiedzy jest w przygotowaniu" in html
-    assert "Wersja 9.9.9" in html
+    assert f"Wersja {__version__}" in html
 
 
 def test_app_name_is_escaped() -> None:
