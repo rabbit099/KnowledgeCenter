@@ -30,9 +30,12 @@ Gdy AD jest nieosiągalne, użytkownicy AD nie mogą się zalogować; lokalny ad
 
 ### Lokalny administrator awaryjny
 
-- Tworzony poleceniem `docker compose exec app baza-wiedzy create-admin <username>`.
-- Hasło haszowane argon2id.
-- Przeznaczony na sytuacje awaryjne i pierwszą konfigurację; jego użycie jest audytowane. Zalecane silne hasło w firmowym menedżerze haseł.
+- Tworzony poleceniem `docker compose exec app baza-wiedzy create-admin <username>`; polecenie dwa razy pyta o hasło (nigdy w argumentach, nigdy w logach). Oczekiwany wynik: `Created the local admin 'bw-admin'.` Do automatyzacji: `--password-stdin` czyta jedną linię ze standardowego wejścia, na przykład `docker compose exec -T app baza-wiedzy create-admin bw-admin --password-stdin < pw.txt`.
+- **To samo polecenie resetuje hasło** istniejącego lokalnego admina: dodatkowo aktywuje konto, przywraca rolę Admin i unieważnia wszystkie jego sesje (`Password reset for the local admin 'bw-admin'; account active, Admin role ensured, 2 session(s) revoked.`).
+- Wybierz nazwę, której nie ma w AD (na przykład `bw-admin`). Nazwy użytkowników są unikalne bez względu na wielkość liter, łącznie dla kont lokalnych i AD; polecenie odrzuca nazwę konta AD. Konto lokalne zawsze loguje się hasłem lokalnym, także gdy AD jest włączony.
+- Zasady hasła: od 14 do 256 znaków (`LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`), bez reguł złożoności, bez spacji na początku i końcu; Unicode jest normalizowany (NFKC). Przechowuj je w firmowym menedżerze haseł.
+- Haszowane Argon2id (domyślne argon2-cffi: 3 iteracje, 64 MiB, 4 wątki). Jednocześnie liczy się najwyżej `ARGON2_MAX_CONCURRENT` (domyślnie 3) hashy na proces, co ogranicza pamięć zużywaną przez serię prób logowania.
+- Przeznaczony na sytuacje awaryjne i pierwszą konfigurację. Akcje audytu: `cli.create_admin`, `cli.reset_password` (aktor `cli`).
 
 ## Model uprawnień
 

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
+    "argon2-cffi>=23.1",
     "babel>=2.14",
     "dramatiq[redis]>=1.17",
     "fastapi>=0.115",

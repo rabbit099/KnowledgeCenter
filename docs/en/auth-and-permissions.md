@@ -30,9 +30,12 @@ If AD is unreachable, AD users cannot log in; the local break-glass admin still 
 
 ### Local break-glass admin
 
-- Created with `docker compose exec app baza-wiedzy create-admin <username>`.
-- Password hashed with argon2id.
-- Intended for emergencies and first setup; its use is audited. A strong password stored in the company password manager is recommended.
+- Created with `docker compose exec app baza-wiedzy create-admin <username>`; the command asks for the password twice (never in arguments, never logged). Expected output: `Created the local admin 'bw-admin'.` For automation: `--password-stdin` reads one line from standard input, for example `docker compose exec -T app baza-wiedzy create-admin bw-admin --password-stdin < pw.txt`.
+- The **same command resets the password** of an existing local admin: it also reactivates the account, restores the Admin role and revokes all its sessions (`Password reset for the local admin 'bw-admin'; account active, Admin role ensured, 2 session(s) revoked.`).
+- Choose a name that does not exist in AD (for example `bw-admin`). User names are unique ignoring case across local and AD accounts; the command refuses the name of an AD account. A local account always logs in with its local password, also when AD is enabled.
+- Password policy: 14 to 256 characters (`LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`), no composition rules, no leading or trailing spaces; Unicode is normalized (NFKC). Store it in the company password manager.
+- Hashed with Argon2id (argon2-cffi defaults: 3 iterations, 64 MiB, 4 lanes). At most `ARGON2_MAX_CONCURRENT` (default 3) hashes run at the same time per process, which caps the memory used by bursts of login attempts.
+- Intended for emergencies and first setup. Audit actions: `cli.create_admin`, `cli.reset_password` (actor `cli`).
 
 ## Permission model
 

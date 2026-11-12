@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     alembic_ini: str = "alembic.ini"
     # redis://:password@redis:6379/0 (built in docker-compose.yml).
     redis_url: str = "redis://localhost:6379/0"
+    # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id
+    # hashes computed at the same time per process (each one uses 64 MiB of memory).
+    local_password_min_length: int = 14
+    local_password_max_length: int = 256
+    argon2_max_concurrent: int = 3
     # Each worker process writes a heartbeat key this often; the key expires after 4 intervals,
     # so /ready reports "no heartbeat" about a minute after the last worker stopped.
     worker_heartbeat_seconds: int = 15

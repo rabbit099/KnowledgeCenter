@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- `baza-wiedzy create-admin <name>` creates the local break-glass admin or resets its password (asked twice, or `--password-stdin`); Argon2id with a limit of concurrent hashes; 14-256 characters; audited as `cli.create_admin` / `cli.reset_password`. New variables `LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`, `ARGON2_MAX_CONCURRENT`.
 - Database tables of the core for Phase 1 (migrations `core_0002`, `core_0003`): `users`, `roles` with the system roles Admin, Publisher and Reader, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions` and the append-only `audit_log` (a trigger rejects UPDATE, DELETE, TRUNCATE). Migration `documents_0001` grants `documents.*` permissions to Publisher and Reader.
 
 ### Changed
