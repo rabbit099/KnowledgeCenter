@@ -39,7 +39,6 @@ def test_settings() -> Settings:
 def migrated(test_settings: Settings) -> Settings:
     """The test database after `baza-wiedzy migrate` (run once per test session)."""
     from baza_wiedzy.core.db.migrate import upgrade
-    from baza_wiedzy.core.registry import load_registry
 
-    upgrade(test_settings, load_registry(test_settings.enabled_modules))
+    upgrade(test_settings)
     return test_settings

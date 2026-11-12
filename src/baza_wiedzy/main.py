@@ -58,7 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ready_checks = {
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),
-        "schema": schema_check(engine, settings, registry),
+        "schema": schema_check(engine, settings),
         "worker": heartbeat_check(redis_client),
     }
     registry.register_events(app.state.events)

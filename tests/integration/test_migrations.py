@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.db.migrate import applied_revisions, make_config, upgrade
-from baza_wiedzy.core.registry import load_registry
 from baza_wiedzy.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -43,10 +42,17 @@ def test_creates_extensions_dictionary_and_configurations(settings: Settings) ->
 def test_second_run_changes_nothing(settings: Settings) -> None:
     with _connect(settings) as conn:
         before = {r[0] for r in conn.execute("SELECT version_num FROM alembic_version")}
-    upgrade(settings, load_registry(settings.enabled_modules))
+    upgrade(settings)
     with _connect(settings) as conn:
         after = {r[0] for r in conn.execute("SELECT version_num FROM alembic_version")}
     assert before == after == {"search_0001"}
+
+
+def test_partial_module_set_still_migrates_everything(settings: Settings) -> None:
+    only_documents = settings.model_copy(update={"enabled_modules": ("documents",)})
+    assert upgrade(only_documents) == ["core_0001", "search_0001"]
+    with TestClient(create_app(only_documents)) as client:
+        assert client.get("/ready").json()["checks"]["schema"] == "ok"
 
 
 def test_ready_reports_schema_ok(settings: Settings) -> None:

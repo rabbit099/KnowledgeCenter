@@ -12,7 +12,6 @@ from baza_wiedzy.core.db.migrate import (
     make_config,
     schema_status,
 )
-from baza_wiedzy.core.registry import load_registry
 
 
 def settings() -> Settings:
@@ -25,13 +24,9 @@ def test_all_manifests_include_disabled_modules() -> None:
     assert {"documents", "ingestion", "search"} <= set(names)
 
 
-def test_expected_heads_follow_enabled_modules() -> None:
-    cfg = make_config(settings())
-    assert expected_heads(cfg, load_registry(["documents", "search"])) == {
-        "core_0001",
-        "search_0001",
-    }
-    assert expected_heads(cfg, load_registry(["documents"])) == {"core_0001"}
+def test_expected_heads_are_all_script_heads() -> None:
+    # Independent of ENABLED_MODULES: the schema is always complete.
+    assert expected_heads(make_config(settings())) == {"core_0001", "search_0001"}
 
 
 @pytest.mark.parametrize(

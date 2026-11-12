@@ -12,12 +12,9 @@ from baza_wiedzy import __version__
 def _migrate(_: argparse.Namespace) -> int:
     from baza_wiedzy.core.config import Settings
     from baza_wiedzy.core.db.migrate import upgrade
-    from baza_wiedzy.core.registry import load_registry
 
-    settings = Settings()
-    registry = load_registry(settings.enabled_modules)
-    targets = upgrade(settings, registry)
-    print(f"Database schema is up to date ({', '.join(targets)}).")
+    heads = upgrade(Settings())
+    print(f"Database schema is up to date (heads: {', '.join(heads)}).")
     return 0
 
 
@@ -59,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     migrate = commands.add_parser(
-        "migrate", help="apply database migrations of the core and the enabled modules"
+        "migrate", help="apply all database migrations (core and every module)"
     )
     migrate.set_defaults(handler=_migrate)
 

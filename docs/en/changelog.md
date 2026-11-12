@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- `baza-wiedzy migrate` applies the migrations of all modules, independent of `ENABLED_MODULES`; `/ready` compares the schema with all migration heads. Dependency policy: security-fix exception and monthly review (ADR-015).
 - Worker (Dramatiq on Redis): `WORKER_PROCESSES` processes with one thread and one database connection each, heartbeat in Redis checked by `/ready` (`worker`), test job `core.ping` and the command `baza-wiedzy worker-ping`.
 - Database migrations: `baza-wiedzy migrate` (and `make migrate`) applies the `core` branch (extensions `pg_trgm`, `unaccent`) and the `search` branch (Polish dictionary, configurations `pl` and `simple_unaccent`) as the non-superuser application role; `/ready` reports the schema state (`not migrated`, `outdated`, `ok`). `make revision branch=<branch> m="..."` creates a migration in a module's branch. Golden search tests now run on the real migrations.
 - Web application (FastAPI): start page in Polish with the configured `APP_NAME` (Jinja2, HTMX served locally, gettext catalog `pl`), `/health`, `/ready` (database and Redis checks; JSON, 503 when a check fails) and an HTMX status fragment. New command `make messages`. Dependency resolution only picks releases older than a fixed date (`exclude-newer`).

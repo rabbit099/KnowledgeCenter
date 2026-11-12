@@ -1,8 +1,10 @@
 """Alembic integration: one migration branch per module plus `core` (CLAUDE.md section 6a).
 
-Version locations are collected from the manifests of ALL modules in the repository, so that
-revisions of a module that was enabled earlier and is disabled now are still known. Only the
-branches of ENABLED modules are upgraded.
+Policy: the schema is always complete. Version locations are collected from the manifests of
+ALL modules in the repository and `migrate` upgrades ALL branches, independent of
+ENABLED_MODULES. Enabling a module later therefore needs no migration step, a module's tables
+exist for foreign keys of other modules, and /ready compares the database with all script
+heads.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from sqlalchemy import Engine
 
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.health import CheckResult, ReadyCheck
-from baza_wiedzy.core.registry import CORE_NAME, ModuleManifest, ModuleRegistry, discover
+from baza_wiedzy.core.registry import CORE_NAME, ModuleManifest, discover
 
 log = logging.getLogger(__name__)
 MODULES_PACKAGE = "baza_wiedzy.modules"
@@ -67,23 +69,16 @@ def make_config(settings: Settings) -> Config:
     return cfg
 
 
-def upgrade(settings: Settings, registry: ModuleRegistry) -> list[str]:
-    """Upgrade the branches of the enabled modules, dependencies first."""
+def upgrade(settings: Settings) -> list[str]:
+    """Upgrade every branch (core and all modules) to its head; return the heads."""
     cfg = make_config(settings)
-    targets = [f"{m.migrations_branch}@head" for m in _with_migrations(registry.modules)]
-    for target in targets:
-        command.upgrade(cfg, target)
-    return targets
+    command.upgrade(cfg, "heads")
+    return sorted(expected_heads(cfg))
 
 
-def expected_heads(cfg: Config, registry: ModuleRegistry) -> set[str]:
-    script = ScriptDirectory.from_config(cfg)
-    heads: set[str] = set()
-    for manifest in _with_migrations(registry.modules):
-        revision = script.get_revision(f"{manifest.migrations_branch}@head")
-        if revision is not None:
-            heads.add(revision.revision)
-    return heads
+def expected_heads(cfg: Config) -> set[str]:
+    """All script heads: one per branch, of every module in the repository."""
+    return set(ScriptDirectory.from_config(cfg).get_heads())
 
 
 def _as_tuple(value: str | Iterable[str] | None) -> tuple[str, ...]:
@@ -132,12 +127,12 @@ def _is_known(script: ScriptDirectory, rev_id: str) -> bool:
         return False
 
 
-def schema_check(engine: Engine, settings: Settings, registry: ModuleRegistry) -> ReadyCheck:
+def schema_check(engine: Engine, settings: Settings) -> ReadyCheck:
     def check() -> CheckResult:
         try:
             cfg = make_config(settings)
             script = ScriptDirectory.from_config(cfg)
-            expected = expected_heads(cfg, registry)
+            expected = expected_heads(cfg)
             with engine.connect() as conn:
                 current = set(MigrationContext.configure(conn).get_current_heads())
             unknown = {r for r in current if not _is_known(script, r)}
