@@ -105,8 +105,8 @@ To szkic: prawdziwa implementacja grupuje po dokumencie, dodaje dopasowania w me
 
 ## Słownik polski (Hunspell) — konfiguracja
 
-1. Obraz `db` kopiuje `pl_pl.dict` i `pl_pl.affix` (UTF-8, nazwy małymi literami) oraz listę stop words `polish.stop` do katalogu `tsearch_data` PostgreSQL.
-2. Init SQL:
+1. Obraz `db` (`docker/db/Dockerfile`) instaluje przypięty pakiet Debiana `hunspell-pl`, sprawdza sumy SHA-256 jego plików, konwertuje je do UTF-8 i kopiuje `pl_pl.dict`, `pl_pl.affix`, własną listę `polish.stop` oraz plik licencji do katalogu `tsearch_data` PostgreSQL. Obraz zawiera tylko pliki i nie uruchamia żadnego init SQL.
+2. Obiekty w bazie tworzą migracje Alembic (rozszerzenia w gałęzi `core`, słownik i konfiguracje w gałęzi `search`). Działają jako użytkownik aplikacji, który nie potrzebuje uprawnień superużytkownika (zob. [deployment-operations.md](deployment-operations.md#konfiguracja)). Obiekty:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -128,7 +128,7 @@ ALTER TEXT SEARCH CONFIGURATION simple_unaccent
   WITH unaccent, simple;
 ```
 
-3. Weryfikacja: `SELECT ts_lexize('pl_hunspell', 'faktury');` zwraca formę podstawową.
+3. Weryfikacja: `SELECT ts_lexize('pl_hunspell', 'faktury');` zwraca `{faktura}`. `docker/db/spike.sql` to skrypt diagnostyczny: tworzy tymczasowe kopie tych obiektów w transakcji wycofywanej na końcu i wypisuje przykładowe wyniki.
 
 ### Spike (Faza 0) — trzeba zrobić na początku
 
@@ -143,7 +143,15 @@ Rozwiązania zapasowe, jeśli Hunspell zawiedzie lub jakość będzie słaba, w 
 1. Lematyzacja w Pythonie (Morfeusz 2 lub polski model spaCy) w workerze, z zapisem lematów w dodatkowym tsvectorze w konfiguracji `simple`.
 2. Zastąpienie backendu Meilisearchem za interfejsem `SearchBackend`.
 
-Wynik spike'a: _jeszcze niewykonany_.
+Wynik spike'a (2026-11-12): **Hunspell wystarcza; rozwiązanie zapasowe nie jest potrzebne.**
+
+- Słownik: pakiet Debiana `hunspell-pl` `1:25.2.3-1` (Debian 13), zbudowany z `libreoffice-dictionaries` 25.2.3; źródło SJP.PL (Marek Futrega). Licencja źródłowa: „GPL or LGPL or MPL or Apache-2.0 or CC-SA-1.0”; projekt używa go na licencji **Apache-2.0** (ADR-016). SHA-256 oryginalnych plików: `pl_PL.aff` `7c37b9bd…54b38e`, `pl_PL.dic` `215fd73a…110aad` (pełne wartości w ADR-016 i w `docker/db/dictionary/LICENSE-pl_pl-dictionary.txt`). Około 308 000 haseł.
+- PostgreSQL 16.15 ładuje pliki po konwersji do UTF-8 (pakiet zawiera ISO-8859-2). Znaleziona pułapka: dopóki pakiet jest zainstalowany, debianowy `postgresql-common` tworzy w `tsearch_data` dowiązania `pl_pl.*`; Dockerfile usuwa pakiet i te dowiązania, zanim skopiuje zwykłe pliki.
+- `ts_lexize('pl_hunspell', …)`: faktura, faktury, fakturze, fakturą → `{faktura}`; umowa → `{umowa}`; umowie → `{umowie,umowa}`; umów → `{umów,umówić,umowa}`; żółw → `{żółw}`; pracownika, pracownikom → `{pracownik}`; zawarł → `{zawrzeć}`; stop word `nie` → `{}`; nieznane słowo → NULL (przechodzi do `simple`).
+- Testy wzorcowe (`make test-db`): 17 zaliczonych, 2 pominięte (przypadki załącznika e-maila i OCR czekają na Fazę 2). Działają jako zwykły użytkownik (nie superużytkownik) będący właścicielem bazy, co dowodzi, że migracje nie będą potrzebować uprawnień superużytkownika.
+- Koszt na połączenie z bazą (zmierzony przez `pg_backend_memory_contexts` i pamięć cgroup kontenera): każdy proces backendu ładuje słownik osobno przy pierwszym użyciu. **Około 27 MB na połączenie** (kontekst „TS dictionary”); 16 równoczesnych połączeń dodało około 480 MiB pamięci kontenera. Pierwsze użycie: około 0,3 s na jednym połączeniu, 0,56–0,80 s, gdy 16 połączeń ładuje słownik jednocześnie. Kolejne wywołania trwają poniżej 1 ms.
+- Znane braki: niektóre słowa dostają dwa lematy (`umowie` → `umowie`, `umowa`; `zaświadczenie` → także `zaświadczyć`), co może dodać kilka luźno powiązanych trafień; `zawarta` zostaje w formach imiesłowu (`zawarta`, `zawarty`) zamiast `zawrzeć`. Słowa spoza słownika (nazwiska, kody, nowe terminy) indeksuje `simple` bez zmian.
+- Konsekwencje: pule połączeń z bazą mają być małe i stałe (na przykład app 5 + nadmiar 5, worker jedno połączenie na proces); licz około 30 MiB pamięci bazy na połączenie; żadnego wzorca „połączenie na żądanie”. Rozszerzenie `shared_ispell`, które współdzieli słownik między backendami, nie jest potrzebne przy tej skali i jest spoza stacku.
 
 ## Reindeksacja
 
@@ -157,7 +165,7 @@ Polecenie przepisuje `text_content` partiami (co przelicza kolumny generowane), 
 
 ## Testy wzorcowe (golden)
 
-`tests/search_golden/` zawiera zapytania z oczekiwanymi dokumentami z syntetycznych fixture'ów. Minimalne przypadki:
+`tests/search_golden/` zawiera zapytania z oczekiwanymi dokumentami z syntetycznych fixture'ów. Uruchamia je `make test-db` (jednorazowy PostgreSQL z `docker/db` na tmpfs, zob. [deployment-operations.md](deployment-operations.md#polecenia-dla-programisty)); `make test` je pomija. Minimalne przypadki:
 
 | Zapytanie | Musi znaleźć dokument zawierający |
 |---|---|

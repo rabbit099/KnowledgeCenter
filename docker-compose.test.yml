@@ -1,0 +1,42 @@
+# Integration and golden search tests: `make test-db`.
+# A throwaway database on tmpfs and a one-off test runner on a private Compose network.
+# No port is published on the host (CLAUDE.md section 8).
+name: baza-wiedzy-test
+
+services:
+  db-test:
+    build: docker/db
+    environment:
+      POSTGRES_PASSWORD: test-superuser-only
+    volumes:
+      - ./tests/docker/init-app-role.sql:/docker-entrypoint-initdb.d/01-app-role.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d kb_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  tests:
+    image: ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim
+    depends_on:
+      db-test:
+        condition: service_healthy
+    working_dir: /src
+    environment:
+      TEST_DATABASE_URL: postgresql://app:test@db-test:5432/kb_test
+      UV_PROJECT_ENVIRONMENT: /venv
+      UV_CACHE_DIR: /uv-cache
+      UV_LINK_MODE: copy
+    volumes:
+      - .:/src:ro
+      - venv:/venv
+      - uv-cache:/uv-cache
+    command: >-
+      sh -c "uv sync --frozen --quiet && uv run --frozen --no-sync
+      pytest -p no:cacheprovider -m integration"
+
+volumes:
+  venv:
+  uv-cache:

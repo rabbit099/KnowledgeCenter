@@ -42,6 +42,8 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 
 `ENABLED_MODULES` must have the same value for `app` and `worker` (both read the same `.env`). At startup the application checks module dependencies and refuses to start with a message such as `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` applies the migration branches of the enabled modules only; after enabling a module later, run `migrate` again. Disabling a module does not delete its tables or data.
 
+Database user and privileges: the application and `baza-wiedzy migrate` connect as one database user that is **not** a superuser but **owns the application database**. That is enough for everything the migrations do: `CREATE EXTENSION pg_trgm` and `CREATE EXTENSION unaccent` (both are "trusted" extensions in PostgreSQL 13+, so the database owner may create them; the extension files are already in the `db` image), and `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (need `CREATE` on schema `public`, which the database owner has in PostgreSQL 15+). If the database is created by someone else, grant: `GRANT CREATE ON DATABASE <db> TO <user>; GRANT CREATE ON SCHEMA public TO <user>;`. `make test-db` runs the search objects as such a non-superuser, so a regression shows up in tests.
+
 ## First installation
 
 1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
@@ -95,6 +97,8 @@ On a machine with internet access: `docker pull` the three images, `docker save`
 
 Run `docker compose exec app baza-wiedzy reindex-search` (see [search.md](search.md)).
 
+This applies to every change of the Polish dictionary, the stop-word list or a text-search configuration, including a new `db` image that ships a different `hunspell-pl` version or `polish.stop` (the changelog says so when it happens). Existing `tsv_*` values were computed with the old dictionary and will not match queries processed with the new one until reindexed. Restarting `db` also drops all connections, so every connection loads the new dictionary on first use.
+
 ## Backup
 
 `scripts/backup.sh` creates `/srv/baza-wiedzy/backups/YYYY-MM-DD_HHMMSS/` containing:
@@ -143,7 +147,8 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make help` | Lists all commands |
 | `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
 | `make fmt` | Formats and auto-fixes with `ruff` |
-| `make test` | Runs the tests with `pytest` |
+| `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
+| `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
 | `make migrate` / `make revision m="text"` | Apply or create database migrations (needs Docker) |
@@ -162,6 +167,7 @@ If `make` is not available, run the same tools through `uv run`, for example `uv
 | Inflected words are not found | Dictionary not loaded or index not rebuilt | `SELECT ts_lexize('pl_hunspell','faktury');`, run `reindex-search` |
 | `/ready` fails after update | Migration not applied | `docker compose run --rm app baza-wiedzy migrate`, then see `update.log` |
 | Disk full | Backups or derived files | Check `backups/`, retention settings |
+| `could not open dictionary file ".../pl_pl.dict"` | The database runs a plain `postgres` image instead of the project's `db` image | `docker compose images db`; rebuild or pull the `db` image |
 | Application refuses to start: `module ... requires ...` | `ENABLED_MODULES` lists a module without one it depends on | Add the required module to `ENABLED_MODULES` in `.env`, or remove the dependent one |
 
 ## Security notes for operators

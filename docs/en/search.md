@@ -105,8 +105,8 @@ This is a sketch: the real implementation groups by document, adds metadata matc
 
 ## Polish dictionary (Hunspell) — setup
 
-1. The `db` image copies `pl_pl.dict` and `pl_pl.affix` (UTF-8, lowercase names) and a `polish.stop` stop-word list into PostgreSQL's `tsearch_data` directory.
-2. Init SQL:
+1. The `db` image (`docker/db/Dockerfile`) installs the pinned Debian package `hunspell-pl`, verifies the SHA-256 of its files, converts them to UTF-8 and copies `pl_pl.dict`, `pl_pl.affix`, the project's `polish.stop` and the licence file into PostgreSQL's `tsearch_data` directory. The image ships files only and runs no init SQL.
+2. Alembic migrations create the database objects (extensions in the `core` branch, dictionary and configurations in the `search` branch). They run as the application user, which needs no superuser rights (see [deployment-operations.md](deployment-operations.md#configuration)). The objects:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -128,7 +128,7 @@ ALTER TEXT SEARCH CONFIGURATION simple_unaccent
   WITH unaccent, simple;
 ```
 
-3. Verify: `SELECT ts_lexize('pl_hunspell', 'faktury');` returns the base form.
+3. Verify: `SELECT ts_lexize('pl_hunspell', 'faktury');` returns `{faktura}`. `docker/db/spike.sql` is a diagnostic script that creates temporary copies of these objects in a rolled-back transaction and prints sample results.
 
 ### Spike (Phase 0) — must be done first
 
@@ -143,7 +143,15 @@ Fallbacks if Hunspell fails or quality is poor, in this order:
 1. Lemmatization in Python (Morfeusz 2 or a spaCy Polish model) in the worker, storing lemmas in an extra tsvector with the `simple` configuration.
 2. Replace the backend with Meilisearch behind the `SearchBackend` interface.
 
-Spike result: _not done yet_.
+Spike result (2026-11-12): **Hunspell is sufficient; no fallback needed.**
+
+- Dictionary: Debian package `hunspell-pl` `1:25.2.3-1` (Debian 13), built from `libreoffice-dictionaries` 25.2.3; upstream SJP.PL (Marek Futrega). Upstream licence: "GPL or LGPL or MPL or Apache-2.0 or CC-SA-1.0"; the project uses it under **Apache-2.0** (ADR-016). SHA-256 of the original files: `pl_PL.aff` `7c37b9bd…54b38e`, `pl_PL.dic` `215fd73a…110aad` (full values in ADR-016 and `docker/db/dictionary/LICENSE-pl_pl-dictionary.txt`). About 308,000 entries.
+- PostgreSQL 16.15 loads the files after conversion to UTF-8 (the package ships ISO-8859-2). Pitfall found: while the package is installed, Debian's `postgresql-common` links `pl_pl.*` into `tsearch_data`; the Dockerfile removes the package and those links before copying plain files.
+- `ts_lexize('pl_hunspell', …)`: faktura, faktury, fakturze, fakturą → `{faktura}`; umowa → `{umowa}`; umowie → `{umowie,umowa}`; umów → `{umów,umówić,umowa}`; żółw → `{żółw}`; pracownika, pracownikom → `{pracownik}`; zawarł → `{zawrzeć}`; stop word `nie` → `{}`; unknown word → NULL (falls through to `simple`).
+- Golden tests (`make test-db`): 17 passed, 2 skipped (e-mail attachment and OCR cases wait for Phase 2). They run as a non-superuser that owns the database, which proves the migrations will not need superuser rights.
+- Cost per database connection (measured with `pg_backend_memory_contexts` and the container's cgroup memory): the dictionary is loaded separately by each backend on first use. **About 27 MB per connection** (context "TS dictionary"); 16 concurrent connections added about 480 MiB to the container. First use: about 0.3 s on one connection, 0.56–0.80 s when 16 connections load it at the same time. Later calls take under 1 ms.
+- Known gaps: some words get two lemmas (`umowie` → `umowie`, `umowa`; `zaświadczenie` → also `zaświadczyć`), which can add a few loosely related matches; `zawarta` keeps the participle forms (`zawarta`, `zawarty`) rather than `zawrzeć`. Words missing from the dictionary (names, codes, new terms) are indexed by `simple` unchanged.
+- Consequences: keep database connection pools small and fixed (for example app 5 + overflow 5, worker one connection per process) and count about 30 MiB of database memory per connection; do not use a connection-per-request pattern. The `shared_ispell` extension, which shares the dictionary between backends, is not needed at this scale and is outside the stack.
 
 ## Reindexing
 
@@ -157,7 +165,7 @@ It rewrites `text_content` in batches (which recomputes the generated columns) a
 
 ## Golden tests
 
-`tests/search_golden/` holds queries with the expected documents from synthetic fixtures. Minimum cases:
+`tests/search_golden/` holds queries with the expected documents from synthetic fixtures. Run them with `make test-db` (a throwaway PostgreSQL from `docker/db` on tmpfs, see [deployment-operations.md](deployment-operations.md#developer-commands)); `make test` skips them. Minimum cases:
 
 | Query | Must find a document containing |
 |---|---|

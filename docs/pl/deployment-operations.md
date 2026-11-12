@@ -42,6 +42,8 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 
 `ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje wyłącznie gałęzie migracji włączonych modułów; po późniejszym włączeniu modułu uruchom `migrate` ponownie. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
+Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach.
+
 ## Pierwsza instalacja
 
 1. Skopiuj `docker-compose.yml`, `.env.example` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
@@ -95,6 +97,8 @@ Na maszynie z internetem: `docker pull` trzech obrazów, `docker save` do pliku,
 
 Uruchom `docker compose exec app baza-wiedzy reindex-search` (zobacz [search.md](search.md)).
 
+Dotyczy to każdej zmiany polskiego słownika, listy stop words lub konfiguracji wyszukiwania tekstowego, także nowego obrazu `db` z inną wersją `hunspell-pl` albo `polish.stop` (dziennik zmian wtedy o tym informuje). Istniejące wartości `tsv_*` zostały wyliczone starym słownikiem i nie będą pasować do zapytań przetworzonych nowym, dopóki nie przebudujesz indeksu. Restart `db` zrywa też wszystkie połączenia, więc każde połączenie załaduje nowy słownik przy pierwszym użyciu.
+
 ## Backup
 
 `scripts/backup.sh` tworzy `/srv/baza-wiedzy/backups/RRRR-MM-DD_GGMMSS/` zawierający:
@@ -143,7 +147,8 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make help` | Wypisuje wszystkie polecenia |
 | `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
-| `make test` | Uruchamia testy `pytest` |
+| `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
+| `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
 | `make migrate` / `make revision m="tekst"` | Stosuje lub tworzy migracje bazy (wymaga Dockera) |
@@ -162,6 +167,7 @@ Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na p
 | Odmienione słowa nie są znajdowane | Słownik niezaładowany lub indeks nieprzebudowany | `SELECT ts_lexize('pl_hunspell','faktury');`, uruchom `reindex-search` |
 | `/ready` nie działa po aktualizacji | Migracja nie została zastosowana | `docker compose run --rm app baza-wiedzy migrate`, potem sprawdź `update.log` |
 | Pełny dysk | Backupy lub pliki pochodne | Sprawdź `backups/`, ustawienia retencji |
+| `could not open dictionary file ".../pl_pl.dict"` | Baza działa na zwykłym obrazie `postgres` zamiast obrazu `db` projektu | `docker compose images db`; przebuduj lub pobierz obraz `db` |
 | Aplikacja nie startuje: `module ... requires ...` | `ENABLED_MODULES` zawiera moduł bez modułu, od którego zależy | Dodaj wymagany moduł do `ENABLED_MODULES` w `.env` albo usuń moduł zależny |
 
 ## Uwagi bezpieczeństwa dla operatorów

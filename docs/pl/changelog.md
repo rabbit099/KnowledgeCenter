@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Added
+- Spike polskiego słownika wykonany: Hunspell wystarcza (wyniki, zmierzona pamięć i braki w `search.md`, ADR-016). Testy wzorcowe wyszukiwania w `tests/search_golden/` i `make test-db`, które uruchamia je na jednorazowej bazie w Dockerze bez publikowania portu.
 - Obraz bazy danych `docker/db` (PostgreSQL 16.15 na Debianie 13) z polskim słownikiem Hunspell (`pl_pl.dict`, `pl_pl.affix`, UTF-8), własną listą `polish.stop` i plikiem licencji słownika; `docker/db/spike.sql` to skrypt diagnostyczny słownika.
 - Szkielet repozytorium: projekt Python 3.12 zarządzany przez `uv`, `Makefile` jako jedyny punkt wejścia dla poleceń, pre-commit (ruff, mypy), `.env.example`, końce linii LF.
 - `scripts/check_docs.py` i `make docs-check`: sprawdzają, że dokumentacja angielska i polska (także `modules/`) ma te same pliki, nagłówki i linie nagłówkowe , że oba dzienniki zmian mają `[Unreleased]` oraz że każdy moduł w `src/baza_wiedzy/modules/` ma stronę w `docs/en/modules/` i `docs/pl/modules/`.

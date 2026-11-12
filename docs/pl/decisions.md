@@ -60,7 +60,15 @@ Status: przyjęta. Nic spoza stacku z `CLAUDE.md`, sekcja 3, bez wpisu tutaj.
 - Faza 0, etap A: `pydantic` i `pydantic-settings` (typowana konfiguracja ze zmiennych środowiskowych, wymagana przez sekcję 6); tylko do rozwoju: `import-linter` (ADR-014), `ruff`, `mypy`, `pytest`, `pytest-cov`, `pre-commit` (wiersz Quality ze stacku).
 - Faza 0, etap B (dodawane przy pierwszym użyciu): `fastapi` i `uvicorn` (framework WWW i jego serwer), `jinja2` (szablony, wymagane dla stron renderowanych na serwerze), `python-multipart` (parsowanie formularzy i uploadu plików w FastAPI), `babel` (katalogi gettext: ekstrakcja, kompilacja, tłumaczenie na polski), `sqlalchemy`, `alembic`, `psycopg` (dostęp do bazy i migracje ze stacku), `dramatiq` i `redis` (kolejka i klient Redis, używany także przez sprawdzanie `/ready`).
 
+- Faza 0, etap B2: `psycopg[binary]` zamiast samego `psycopg` (dodatek `binary` zawiera libpq, więc obrazy nie potrzebują kompilatora ani `libpq-dev`). Narzędzie testowe, nie zależność Pythona: obraz `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` uruchamia `make test-db` (ten sam `uv` co w rozwoju, przypięty tag).
+
 Każda wersja jest przypięta w `uv.lock`. Kolejne fazy dodają własne wpisy (na przykład `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) w miarę wprowadzania.
+
+### ADR-016 — Polski słownik Hunspell z debianowego `hunspell-pl`, na licencji Apache-2.0
+Status: przyjęta. Konfiguracja wyszukiwania `pl` używa słownika Hunspell SJP.PL z pakietu Debiana 13 `hunspell-pl` w wersji `1:25.2.3-1` (z `libreoffice-dictionaries` 25.2.3). Dlaczego: pakiet pochodzi z podpisanego repozytorium, ma stałą wersję i jest już zbudowany dla dystrybucji obrazu bazowego; pobieranie ZIP-a ze strony dodałoby drugą ścieżkę zaufania. Licencja: źródło oferuje „GPL or LGPL or MPL or Apache-2.0 or CC-SA-1.0”; wybieramy permisywną **Apache-2.0**. Obrazy w GHCR są prywatne; tekst licencji i informacja o autorstwie i tak są dołączone do plików (`docker/db/dictionary/LICENSE-pl_pl-dictionary.txt`, kopiowany w obrazie obok `pl_pl.dict`). Integralność: budowanie kończy się błędem, jeśli oryginalne pliki nie mają sum
+`pl_PL.aff` SHA-256 `7c37b9bde78054e43365b488a13859094c88bc66664b5b7a7bb073626454b38e` i
+`pl_PL.dic` SHA-256 `215fd73aa47b11e7fdd2e4d655e9fe37be4acdae16ff833badcfdfce79110aad`.
+Modyfikacje: ISO-8859-2 → UTF-8, `SET UTF-8`, zmiana nazw na `pl_pl.affix` / `pl_pl.dict`. Listę stop words `polish.stop` napisał projekt. Alternatywy: pobranie z sjp.pl z przypiętą sumą kontrolną (odrzucone, patrz wyżej); lematyzacja w Pythonie lub Meilisearch (rozwiązania zapasowe, niepotrzebne: zob. wynik spike'a w `search.md`). Konsekwencje: zmiana wersji pakietu oznacza nowe sumy tutaj, nowy obraz `db`, wpis w dzienniku zmian i `baza-wiedzy reindex-search`. Każde połączenie z bazą trzyma około 27 MB na słownik, więc pule połączeń są małe i stałe.
 
 ## Założenia
 

@@ -60,7 +60,15 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Phase 0, stage A: `pydantic` and `pydantic-settings` (typed configuration from environment variables, required by section 6); development only: `import-linter` (ADR-014), `ruff`, `mypy`, `pytest`, `pytest-cov`, `pre-commit` (the Quality row of the stack).
 - Phase 0, stage B (added when first used): `fastapi` and `uvicorn` (web framework and its server), `jinja2` (templates, required for server-rendered pages), `python-multipart` (FastAPI form and file upload parsing), `babel` (gettext catalogs: extract, compile, Polish translation), `sqlalchemy`, `alembic`, `psycopg` (database access and migrations from the stack), `dramatiq` and `redis` (queue and Redis client, also used by the `/ready` check).
 
+- Phase 0, stage B2: `psycopg[binary]` instead of plain `psycopg` (the `binary` extra bundles libpq, so the images need no compiler or `libpq-dev`). Test tooling, not a Python dependency: the image `ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim` runs `make test-db` (same `uv` as development, pinned tag).
+
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
+
+### ADR-016 — Polish Hunspell dictionary from Debian `hunspell-pl`, used under Apache-2.0
+Status: accepted. The `pl` text-search configuration uses the SJP.PL Hunspell dictionary taken from the Debian 13 package `hunspell-pl`, version `1:25.2.3-1` (from `libreoffice-dictionaries` 25.2.3). Why: the package comes from a signed repository, has a fixed version and is already built for the base image's distribution; downloading a ZIP from a website would add a second trust path. Licence: upstream offers "GPL or LGPL or MPL or Apache-2.0 or CC-SA-1.0"; we choose the permissive **Apache-2.0**. The images are private in GHCR; the licence text and attribution ship with the files anyway (`docker/db/dictionary/LICENSE-pl_pl-dictionary.txt`, copied next to `pl_pl.dict` in the image). Integrity: the build fails unless the original files match
+`pl_PL.aff` SHA-256 `7c37b9bde78054e43365b488a13859094c88bc66664b5b7a7bb073626454b38e` and
+`pl_PL.dic` SHA-256 `215fd73aa47b11e7fdd2e4d655e9fe37be4acdae16ff833badcfdfce79110aad`.
+Modifications: ISO-8859-2 → UTF-8, `SET UTF-8`, renamed to `pl_pl.affix` / `pl_pl.dict`. The stop-word list `polish.stop` is written by the project. Alternatives: download from sjp.pl with a pinned checksum (rejected, see above); lemmatization in Python or Meilisearch (fallbacks, not needed: see the spike result in `search.md`). Consequences: changing the package version means new checksums here, a new `db` image, a changelog entry and `baza-wiedzy reindex-search`. Each database connection holds about 27 MB for the dictionary, so connection pools stay small and fixed.
 
 ## Assumptions
 

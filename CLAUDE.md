@@ -90,7 +90,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make lint` · `make fmt` · `make migrate` · `make revision m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make lint` · `make fmt` · `make migrate` · `make revision m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
