@@ -1,0 +1,169 @@
+# CLAUDE.md — Baza Wiedzy (working name)
+
+Guidance for Claude Code. Read this file at the start of every session. Keep it accurate: if reality and this file disagree, fix this file in the same change.
+
+## 1. Project
+
+Internal company knowledge base. Users upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system extracts and indexes their text (OCR for scans); users type a phrase and get the documents that contain it, with highlighted snippets.
+
+- Runs in Docker (Compose) on a Linux server. One person (Jakub, IT specialist) builds it with Claude Code and operates it. Everything must be simple to run, update, back up and debug.
+- Working name: "Baza Wiedzy". The name is configurable (`APP_NAME`); never hard-code it in code or templates.
+- UI language: Polish, through gettext/Babel catalogs (other languages can be added later). Code, comments, commit messages and this file: English. Documentation: English **and** Polish (section 9).
+- Scale: ~200 documents at start. Design and test for up to 20,000 documents and 100 users.
+
+## 2. MVP scope
+
+Must have:
+- Upload of PDF (text and scanned), DOCX, DOC, TXT, EML, MSG. Email attachments are extracted and indexed too.
+- OCR for scanned PDFs (Polish + English).
+- Full-text search in Polish and English, phrase search, snippets with highlighting, filters.
+- Document lifecycle: draft → published → archived, with versions.
+- Admin module: users, roles (admin can create new roles and assign permissions), categories, audit log, settings.
+- Login through Active Directory (LDAP over TLS) plus one local break-glass admin.
+- Default roles: Admin, Publisher, Reader.
+- Audit log (GDPR/RODO): who uploaded, published, downloaded, deleted, changed permissions, logged in.
+- Update mechanism (`scripts/update.sh`), backup and restore scripts, health endpoints.
+
+Out of scope unless explicitly requested: SSO/Kerberos, per-category access control lists, semantic/AI search, UI in other languages, editing documents in the browser, comments, self-update from the web UI, OCR of standalone image files.
+
+## 3. Stack (decided — change only through an ADR in `docs/en/decisions.md`)
+
+| Area | Choice |
+|---|---|
+| Language | Python 3.12, dependency management with `uv`, `pyproject.toml` |
+| Web | FastAPI + Jinja2 + HTMX (server-rendered, no SPA, no Node build step if avoidable) |
+| DB access | SQLAlchemy 2.x (sync) + psycopg 3, Alembic migrations |
+| Database | PostgreSQL 16 (custom image with the Polish Hunspell dictionary), extensions `pg_trgm`, `unaccent` |
+| Queue | Dramatiq + Redis (OCR and parsing run in the `worker` service) |
+| PDF text | pypdfium2 (per page) |
+| OCR | OCRmyPDF + Tesseract (`pol` + `eng`) |
+| DOCX | python-docx with a raw-XML fallback |
+| DOC | LibreOffice headless conversion (isolated profile, timeout) |
+| EML / MSG | stdlib `email` (policy=default) / `extract-msg` |
+| Encoding | charset-normalizer (TXT in UTF-8, Windows-1250, ISO-8859-2) |
+| Language detection | lingua-language-detector restricted to Polish and English |
+| Auth | Server-side sessions in a cookie (not JWT), argon2id for local passwords, `ldap3` for AD |
+| Proxy / TLS | Caddy |
+| CSS | Plain CSS or a small framework served locally (no CDN calls at runtime) |
+| Quality | ruff, mypy, pytest, pytest-cov, pre-commit |
+| CI/CD | GitHub Actions → images in GHCR (`app`, `worker`, `db`) |
+
+## 4. Repository layout
+
+```
+baza-wiedzy/
+├── CLAUDE.md
+├── README.md                  # short, points to docs/
+├── Makefile
+├── pyproject.toml
+├── docker-compose.yml         # production
+├── docker-compose.dev.yml     # dev overrides (mounts, reload)
+├── .env.example               # every variable documented
+├── alembic.ini
+├── alembic/                   # migrations
+├── docker/
+│   ├── app/Dockerfile
+│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice
+│   ├── db/Dockerfile          # postgres + hunspell dictionaries + init SQL
+│   └── caddy/Caddyfile
+├── src/baza_wiedzy/
+│   ├── main.py  config.py  cli.py
+│   ├── db/            # models, session
+│   ├── auth/          # local, ldap, sessions, csrf
+│   ├── permissions/   # permission catalog, checks
+│   ├── documents/     # routes, services, storage
+│   ├── ingestion/     # extractors/, ocr.py, language.py, tasks.py
+│   ├── search/        # backend interface, postgres backend, query building
+│   ├── admin/
+│   ├── audit/
+│   └── web/           # templates/, static/, locale/ (gettext)
+├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic only)
+├── scripts/           # update.sh, rollback.sh, backup.sh, restore.sh, check_docs.py
+├── docs/
+│   ├── en/
+│   └── pl/
+└── .github/workflows/ # ci.yml, release.yml
+```
+
+## 5. Commands (keep the Makefile as the single entry point)
+
+`make up` · `make down` · `make logs` · `make test` · `make lint` · `make fmt` · `make migrate` · `make revision m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make build`
+
+If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
+
+## 6. Architecture rules
+
+- Layers: routes (thin) → services (business logic) → db. Permission checks live in services/dependencies, never only in templates.
+- Document visibility is enforced **in the SQL of every query** (search, lists, downloads), not by filtering results afterwards.
+- Ingestion is asynchronous, idempotent and retryable. State lives in `document_versions.processing_status`. The upload request returns immediately.
+- All search code lives in `src/baza_wiedzy/search/` behind a `SearchBackend` interface, so the engine can be replaced (fallback: Meilisearch) without touching the rest.
+- Configuration only through environment variables (pydantic-settings). Secrets through env or Docker secrets, never in the repo.
+- Database stores UTC; the UI shows Europe/Warsaw.
+- Migrations are forward-only and follow expand/contract so that version N−1 of the app still runs on the schema of version N. Never edit a migration that has been released.
+- Original uploaded files are immutable. Derived files (OCR'd PDF, previews) are stored separately.
+
+## 7. Search rules (critical)
+
+- Every text part is indexed in three text-search configurations at once: `pl` (Hunspell + simple fallback), `english`, `simple_unaccent`. The detected language is informational and a filter, never a switch that decides which index is used.
+- Queries are built with `websearch_to_tsquery` for each configuration and combined with OR. Quoted phrases and `-exclusion` must work.
+- Title, file name and e-mail headers are matched with tsvector **and** `pg_trgm`.
+- Text is chunked (PDF per page, other text ≤ 100,000 characters per chunk) to stay under the 1 MB tsvector limit.
+- `ts_headline` runs only on the visible page of results. Source text is not HTML-escaped by PostgreSQL: use sentinel markers for the highlight, escape in Python, then replace the sentinels with `<mark>`. Never mark raw snippets as safe.
+- Changing a dictionary or configuration requires `baza-wiedzy reindex-search`. Document this whenever you touch search configuration.
+- Keep the golden search tests in `tests/search_golden/` green (inflected forms, no-diacritics queries, English plurals, phrases, codes and numbers).
+
+## 8. Security rules
+
+- Validate uploads by content (libmagic), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
+- Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
+- Never render the HTML body of an e-mail as HTML. Convert to text.
+- CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
+- Containers run as non-root. Postgres and Redis are not published on host ports.
+- Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
+- Test fixtures are synthetic. Never commit real company documents or real mail.
+
+## 9. Documentation rules (MANDATORY)
+
+The documentation is part of the product and you maintain it.
+
+- Bilingual: for every topic there is `docs/en/<topic>.md` and `docs/pl/<topic>.md` with the same section structure (same headings, same order, translated). Update **both** in the same change.
+- Any change that affects behaviour, configuration, data model, permissions, search, deployment, operations or security must update the relevant docs in the same commit/PR.
+- Every doc starts with the line `> Applies to: <version> · Last reviewed: <YYYY-MM-DD>` (Polish: `> Dotyczy: <wersja> · Ostatnia aktualizacja: <RRRR-MM-DD>`). Update it when you touch the file.
+- Add an entry under `[Unreleased]` in `docs/en/changelog.md` and `docs/pl/changelog.md` for every user-visible or operator-visible change.
+- Architectural or technology decisions go to `docs/en/decisions.md` / `docs/pl/decisions.md` as a new ADR entry. Do not rewrite old ADRs; supersede them.
+- Tick the checklist in `docs/*/README.md` when a roadmap item is finished.
+- `scripts/check_docs.py` (run by `make docs-check` and in CI) verifies: same file set in `en/` and `pl/`, same number of H2/H3 headings per file pair, the header line is present, `[Unreleased]` exists in both changelogs. Keep it passing.
+- Write for a future operator who has not seen the code: exact commands, expected output, what to do when it fails.
+
+## 10. Testing rules
+
+- New behaviour comes with tests. Bug fixes come with a regression test.
+- Unit tests for extractors use small synthetic fixtures for each format, including: a text PDF, a scanned PDF, DOCX with a table, DOC, TXT in UTF-8 and Windows-1250, EML with a PDF attachment, MSG with an attachment.
+- Integration tests run against real Postgres and Redis in Docker (no mocking the database).
+- Permission tests: a matrix of roles × actions, including "reader cannot see drafts" and "reader cannot find drafts through search".
+- A performance test generates a synthetic corpus of 20,000 documents; search p95 target < 500 ms.
+
+## 11. Git workflow
+
+- Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
+- `main` is protected; CI (lint, types, tests, docs-check, image build) must pass.
+- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The changelog `[Unreleased]` section becomes the new version.
+
+## 12. Definition of done
+
+Code works and is typed; tests pass; `make lint` and `make docs-check` pass; docs (EN + PL) and changelog are updated; migrations are included; `.env.example` is updated when variables change; permissions and audit logging are covered for any new action.
+
+## 13. Working style
+
+- Before touching more than one file or making a design choice, state a short plan and wait for approval if the plan deviates from this file.
+- Ask when a requirement is ambiguous. Do not silently expand scope.
+- Prefer boring, well-known solutions. No new dependency without a reason written in the ADR log.
+- At the end of each task report: what changed, how to test it manually, which docs were updated, open questions.
+
+## 14. Open questions (mirror of `docs/en/decisions.md`)
+
+1. Can a Publisher publish documents uploaded by other people? Current default: only their own. A separate permission `documents.publish_any` covers the rest.
+2. Retention policy for archived documents and audit log (GDPR/RODO).
+3. TLS: internal CA certificate or Let's Encrypt (`TLS_MODE` is configurable).
+4. Backup destination and monitoring integration (scripts and `/ready` endpoint exist; destination decided later).
+5. Expected size: "about 200" at start — documents or users? Design for 20,000 documents and 100 users until confirmed.
