@@ -34,7 +34,7 @@ Status: przyjęta. Grupy mapują się na role w panelu admina. Lokalny administr
 Status: przyjęta. Migracje uruchamiają się w jednorazowym kontenerze z `update.sh`, a nie niejawnie przy starcie aplikacji. Nieudana migracja to jasny, pojedynczy punkt awarii. Aplikacja nie zgłasza gotowości, jeśli wersja schematu jest za stara.
 
 ### ADR-010 — Trzy obrazy: app, worker, db
-Status: przyjęta. Obraz workera jest duży (Tesseract, LibreOffice); obraz app pozostaje mały. Obraz db niesie słownik Hunspell.
+Status: zastąpiona przez ADR-017. Obraz workera jest duży (Tesseract, LibreOffice); obraz app pozostaje mały. Obraz db niesie słownik Hunspell.
 
 ### ADR-011 — Synchroniczny SQLAlchemy 2 z psycopg 3
 Status: przyjęta. Maksymalnie ~100 użytkowników; prostszy kod i jeden styl dostępu do danych wspólny dla `app` i `worker`.
@@ -68,6 +68,7 @@ Status: przyjęta. Nic spoza stacku z `CLAUDE.md`, sekcja 3, bez wpisu tutaj.
 - Miesięczny przegląd zależności (pierwszy tydzień roboczy miesiąca): przesuń `exclude-newer` na 14 dni przed przeglądem, `uv lock --upgrade`, przeczytaj `git diff uv.lock`, uruchom `make lint test test-db smoke`, sprawdź tagi obrazów bazowych (Python, Caddy, Redis, PostgreSQL, uv, ClamAV) i wersję debianowego `hunspell-pl`, zatwierdź jako `chore(deps): monthly review RRRR-MM` z wpisem w dzienniku zmian. Zmieniony `hunspell-pl` oznacza nowe sumy kontrolne w ADR-016 i `reindex-search`.
 - Faza 0, etap B5: `alembic` (migracje ze stacku; jedna gałąź na moduł).
 - Faza 0, etap B6: `dramatiq[redis]` (kolejka zadań ze stacku; dodatek `redis` dociąga już wymieniony klient Redis).
+- Faza 0, etap B7 (CI, nie pakiety Pythona): akcje GitHub `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.2, `docker/setup-buildx-action` v4.4.1, `docker/login-action` v4.7.0, `docker/build-push-action` v7.4.0, każda przypięta do SHA commita (starsze niż `exclude-newer`); workflowy sprawdzone przez `actionlint`, skrypty powłoki przez `shellcheck` (oba uruchamiane z obrazów Dockera, nie instalowane w projekcie).
 
 Każda wersja jest przypięta w `uv.lock`. Kolejne fazy dodają własne wpisy (na przykład `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) w miarę wprowadzania.
 
@@ -76,6 +77,9 @@ Status: przyjęta. Konfiguracja wyszukiwania `pl` używa słownika Hunspell SJP.
 `pl_PL.aff` SHA-256 `7c37b9bde78054e43365b488a13859094c88bc66664b5b7a7bb073626454b38e` i
 `pl_PL.dic` SHA-256 `215fd73aa47b11e7fdd2e4d655e9fe37be4acdae16ff833badcfdfce79110aad`.
 Modyfikacje: ISO-8859-2 → UTF-8, `SET UTF-8`, zmiana nazw na `pl_pl.affix` / `pl_pl.dict`. Listę stop words `polish.stop` napisał projekt. Alternatywy: pobranie z sjp.pl z przypiętą sumą kontrolną (odrzucone, patrz wyżej); lematyzacja w Pythonie lub Meilisearch (rozwiązania zapasowe, niepotrzebne: zob. wynik spike'a w `search.md`). Konsekwencje: zmiana wersji pakietu oznacza nowe sumy tutaj, nowy obraz `db`, wpis w dzienniku zmian i `baza-wiedzy reindex-search`. Każde połączenie z bazą trzyma około 27 MB na słownik, więc pule połączeń są małe i stałe.
+
+### ADR-017 — Cztery obrazy: app, worker, db, proxy (zastępuje ADR-010)
+Status: przyjęta. Proxy potrzebuje własnego obrazu: oficjalnego obrazu Caddy nie da się uruchomić jako zwykły użytkownik z zapisywalnym magazynem certyfikatów (`/data` należy do roota), a jego binarka ma capability pliku, której `cap_drop: ALL` nie pozwala uruchomić. `docker/caddy/Dockerfile` dodaje użytkownika `caddy`, nadaje mu `/data` i `/config`, usuwa capability pliku i nasłuchuje na 8080/8443. Budowanie go na serwerze (pierwsze podejście w Fazie 0 B3) wymagałoby dostępu do Docker Huba i psuło procedurę offline, dlatego workflow wydania publikuje go jak pozostałe: `baza-wiedzy-{app,worker,db,proxy}:X.Y.Z` w GHCR, `linux/amd64`, z etykietami wersji i SHA commita. Obrazy zewnętrzne, których nie przebudowujemy (`redis`, opcjonalny `clamav`), są przypięte tagiem i digestem w `docker-compose.yml`. Konsekwencje: serwer nie potrzebuje narzędzi do budowania ani kodu źródłowego; pakiet offline (`scripts/offline_bundle.sh`) powstaje z `docker-compose.yml` i zawiera wszystkie sześć obrazów; każda aktualizacja obrazu bazowego Caddy przechodzi przez wydanie.
 
 ## Założenia
 

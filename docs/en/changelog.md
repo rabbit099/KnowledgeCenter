@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- CI (`ci.yml`): lint, types, module boundaries, unit tests, docs check, integration tests with PostgreSQL and Redis, image build for `linux/amd64` and a smoke test of the production Compose file (`make smoke`). Release workflow (`release.yml`, prepared, not run): checks tag against `pyproject.toml` and changelogs, publishes four images (`app`, `worker`, `db`, `proxy`) to GHCR with commit labels (ADR-017). Offline bundle script with all six images. Redis and ClamAV pinned by digest; proxy host ports configurable (`HTTP_PORT`, `HTTPS_PORT`). The application version comes from `pyproject.toml`.
 - Logs are JSON lines (`ts`, `level`, `logger`, `message`, `process`, `exc`) from `app` and the worker processes; new variable `LOG_LEVEL`.
 - `baza-wiedzy migrate` applies the migrations of all modules, independent of `ENABLED_MODULES`; `/ready` compares the schema with all migration heads. Dependency policy: security-fix exception and monthly review (ADR-015).
 - Worker (Dramatiq on Redis): `WORKER_PROCESSES` processes with one thread and one database connection each, heartbeat in Redis checked by `/ready` (`worker`), test job `core.ping` and the command `baza-wiedzy worker-ping`.

@@ -1,5 +1,7 @@
 # Production stack. Configuration comes from .env (see .env.example and
 # docs/en/deployment-operations.md). Only the proxy publishes ports.
+# Images: <IMAGE_PREFIX>-{app,worker,db,proxy}:<APP_VERSION> from GHCR (ADR-017), plus
+# redis (and clamav with the antivirus profile) pinned by digest.
 name: baza-wiedzy
 
 x-logging: &logging
@@ -25,13 +27,12 @@ x-app-env: &app-env
 
 services:
   proxy:
-    build: docker/caddy
-    image: baza-wiedzy-proxy:local
+    image: ${IMAGE_PREFIX:-ghcr.io/change-me/baza-wiedzy}-proxy:${APP_VERSION:?set APP_VERSION in .env}
     restart: unless-stopped
     <<: *hardening
     ports:
-      - "80:8080"
-      - "443:8443"
+      - "${HTTP_PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"
     environment:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       TLS_MODE: ${TLS_MODE:-internal}
@@ -120,7 +121,8 @@ services:
     logging: *logging
 
   redis:
-    image: redis:8.2.3-alpine
+    # Tag for readability, digest for integrity (offline bundle lists the same reference).
+    image: redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -143,7 +145,7 @@ services:
     logging: *logging
 
   clamav:
-    image: clamav/clamav:1.4.3
+    image: clamav/clamav:1.4.3@sha256:75fb5fd95fcbe1d7e6d240c369c1572b686ee2c95949d1042b5148de8eddebb4
     profiles: ["antivirus"]
     restart: unless-stopped
     security_opt:

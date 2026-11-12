@@ -34,7 +34,7 @@ Status: accepted. Groups map to roles in the admin UI. A local break-glass admin
 Status: accepted. Migrations run in a one-off container from `update.sh`, not implicitly at app start. A failed migration is a clear, single failure point. The app refuses to become ready if the schema version is behind.
 
 ### ADR-010 — Three images: app, worker, db
-Status: accepted. The worker image is large (Tesseract, LibreOffice); the app image stays small. The db image carries the Hunspell dictionary.
+Status: superseded by ADR-017. The worker image is large (Tesseract, LibreOffice); the app image stays small. The db image carries the Hunspell dictionary.
 
 ### ADR-011 — Synchronous SQLAlchemy 2 with psycopg 3
 Status: accepted. At most ~100 users; simpler code and one data-access style shared by `app` and `worker`.
@@ -68,6 +68,7 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Monthly dependency review (first working week of the month): move `exclude-newer` to 14 days before the review, `uv lock --upgrade`, read `git diff uv.lock`, run `make lint test test-db smoke`, check base image tags (Python, Caddy, Redis, PostgreSQL, uv, ClamAV) and the Debian `hunspell-pl` version, commit as `chore(deps): monthly review YYYY-MM` with a changelog entry. A changed `hunspell-pl` means new checksums in ADR-016 and `reindex-search`.
 - Phase 0, stage B5: `alembic` (migrations from the stack; one branch per module).
 - Phase 0, stage B6: `dramatiq[redis]` (job queue from the stack; the `redis` extra pulls the Redis client already listed).
+- Phase 0, stage B7 (CI, not Python packages): GitHub Actions `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.2, `docker/setup-buildx-action` v4.4.1, `docker/login-action` v4.7.0, `docker/build-push-action` v7.4.0, each pinned to its commit SHA (older than `exclude-newer`); workflows were checked with `actionlint` and the shell scripts with `shellcheck` (both run from their Docker images, not installed in the project).
 
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
 
@@ -76,6 +77,9 @@ Status: accepted. The `pl` text-search configuration uses the SJP.PL Hunspell di
 `pl_PL.aff` SHA-256 `7c37b9bde78054e43365b488a13859094c88bc66664b5b7a7bb073626454b38e` and
 `pl_PL.dic` SHA-256 `215fd73aa47b11e7fdd2e4d655e9fe37be4acdae16ff833badcfdfce79110aad`.
 Modifications: ISO-8859-2 → UTF-8, `SET UTF-8`, renamed to `pl_pl.affix` / `pl_pl.dict`. The stop-word list `polish.stop` is written by the project. Alternatives: download from sjp.pl with a pinned checksum (rejected, see above); lemmatization in Python or Meilisearch (fallbacks, not needed: see the spike result in `search.md`). Consequences: changing the package version means new checksums here, a new `db` image, a changelog entry and `baza-wiedzy reindex-search`. Each database connection holds about 27 MB for the dictionary, so connection pools stay small and fixed.
+
+### ADR-017 — Four images: app, worker, db, proxy (supersedes ADR-010)
+Status: accepted. The proxy needs its own image: the official Caddy image cannot run as a non-root user with writable certificate storage (`/data` belongs to root) and its binary carries a file capability that `cap_drop: ALL` refuses to execute. `docker/caddy/Dockerfile` adds a `caddy` user, owns `/data` and `/config`, drops the file capability and listens on 8080/8443. Building it on the server (first approach in Phase 0 B3) would need Docker Hub access and break the offline procedure, so the release workflow publishes it like the others: `baza-wiedzy-{app,worker,db,proxy}:X.Y.Z` in GHCR, `linux/amd64`, labelled with version and commit SHA. Third-party images that are not rebuilt (`redis`, optional `clamav`) are pinned by tag and digest in `docker-compose.yml`. Consequences: the server needs no build tooling and no source; the offline bundle (`scripts/offline_bundle.sh`) is generated from `docker-compose.yml` and contains all six images; every base-image update of Caddy goes through a release.
 
 ## Assumptions
 

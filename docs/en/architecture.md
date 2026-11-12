@@ -23,7 +23,7 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 
 | Service | Image | Purpose | Published port |
 |---|---|---|---|
-| `proxy` | `baza-wiedzy-proxy` (Caddy, built locally from `docker/caddy`) | TLS termination, reverse proxy, request size limit; runs as non-root on 8080/8443 inside the container | 80, 443 |
+| `proxy` | `baza-wiedzy-proxy` (Caddy, from `docker/caddy`) | TLS termination, reverse proxy, request size limit; runs as non-root on 8080/8443 inside the container | 80, 443 |
 | `app` | `baza-wiedzy-app` | Web UI, API, permissions, search queries | internal |
 | `worker` | `baza-wiedzy-worker` | Extraction, OCR, indexing (Tesseract, LibreOffice inside) | none |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + Polish Hunspell dictionary | none |

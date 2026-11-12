@@ -18,7 +18,6 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 /srv/baza-wiedzy/
 ├── docker-compose.yml
 ├── .env                 # konfiguracja i sekrety (chmod 600)
-├── docker/caddy/        # Dockerfile i Caddyfile proxy (budowane na serwerze)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem i key.pem, tylko przy TLS_MODE=files
 ├── logs/                # update.log, backup.log
@@ -40,6 +39,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |
 | `TLS_MODE` | `internal`, `files` lub `acme` |
 | `SECRET_KEY` | Klucz podpisujący sesje/CSRF |
+| `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy |
 | `POSTGRES_PASSWORD` | Hasło superużytkownika PostgreSQL; używane tylko wewnątrz kontenera `db` |
@@ -66,9 +66,9 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 
 ## Pierwsza instalacja
 
-1. Skopiuj `docker-compose.yml`, `.env.example`, `docker/caddy/` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
+1. Skopiuj `docker-compose.yml`, `.env.example` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
 2. Zaloguj się do rejestru: `docker login ghcr.io` tokenem z prawem odczytu pakietów.
-3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull --ignore-buildable && docker compose build proxy && docker compose up -d`. Obraz proxy jest budowany na serwerze z `docker/caddy/` (kilka sekund; potrzebuje obrazu bazowego `caddy` z Docker Huba).
+3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull && docker compose up -d`. Wszystkie cztery obrazy projektu (`app`, `worker`, `db`, `proxy`) pochodzą z GHCR; nic nie jest budowane na serwerze.
 4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`.
 5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin <username>`.
 6. Sprawdź, czy `https://<PUBLIC_HOSTNAME>/ready` zwraca OK.
@@ -77,9 +77,13 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 
 ## Wydania
 
-- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia workflow wydania.
-- Workflow buduje i wypycha trzy obrazy: `baza-wiedzy-app`, `baza-wiedzy-worker`, `baza-wiedzy-db`, otagowane `X.Y.Z` (a `latest` tylko dla wygody w testach, nigdy w produkcji).
-- Przed otagowaniem: przenieś `[Unreleased]` w obu changelogach pod nowy numer wersji i datę.
+- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia `.github/workflows/release.yml`.
+- Przed otagowaniem: ustaw `version = "X.Y.Z"` w `pyproject.toml` (aplikacja czyta stamtąd swoją wersję), przenieś `[Unreleased]` w obu dziennikach zmian pod `## [X.Y.Z] - RRRR-MM-DD`, dodaj nową pustą sekcję `[Unreleased]`, zatwierdź, potem `git tag vX.Y.Z && git push origin vX.Y.Z`. Najpierw sprawdź lokalnie: `uv run python scripts/check_release.py vX.Y.Z` musi wypisać `Release vX.Y.Z matches pyproject.toml and both changelogs.`
+- Workflow (1) odmawia wydania, jeśli tag różni się od `pyproject.toml` albo dziennik zmian nie ma sekcji `## [X.Y.Z]`, (2) uruchamia pełne CI (łącznie z testem dymnym), (3) buduje i wypycha cztery obrazy dla `linux/amd64`: `ghcr.io/<właściciel>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, wszystkie z tagiem `X.Y.Z` (bez `latest`). Każdy obraz ma etykiety `org.opencontainers.image.version`, `.revision` (SHA commita), `.source` i `.created`. Podsumowanie przebiegu wypisuje każdy obraz z digestem; zapisz je w informacji o wydaniu.
+- Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
+- Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
+
+CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje i wymaga, żeby `/ready` zwrócił 4 × `ok`). Przed pushem uruchom to samo lokalnie.
 
 ## Aktualizacja
 
@@ -111,7 +115,33 @@ Przełącza `APP_VERSION` z powrotem i restartuje. Jeśli schemat zmienił się 
 
 ### Serwer offline
 
-Na maszynie z internetem: `docker pull` trzech obrazów, `docker save` do pliku, skopiuj na serwer, `docker load`, a potem uruchom `update.sh` z `SKIP_PULL=1`.
+Na maszynie z dostępem do internetu i po `docker login ghcr.io`, z kopii repozytorium na tagu wydania:
+
+```
+git checkout v1.2.0
+./scripts/offline_bundle.sh 1.2.0 ghcr.io/<właściciel>/baza-wiedzy /tmp/bundle
+```
+
+Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`), pobiera wszystko dla `linux/amd64` i zapisuje do jednego pliku. Dla wersji `X.Y.Z` pakiet zawiera **wszystkie** obrazy potrzebne na serwerze:
+
+| Obraz | Odwołanie |
+|---|---|
+| app | `ghcr.io/<właściciel>/baza-wiedzy-app:X.Y.Z` (digest w podsumowaniu wydania) |
+| worker | `ghcr.io/<właściciel>/baza-wiedzy-worker:X.Y.Z` |
+| db | `ghcr.io/<właściciel>/baza-wiedzy-db:X.Y.Z` |
+| proxy | `ghcr.io/<właściciel>/baza-wiedzy-proxy:X.Y.Z` |
+| redis | `redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba` |
+| clamav (profil opcjonalny) | `clamav/clamav:1.4.3@sha256:75fb5fd95fcbe1d7e6d240c369c1572b686ee2c95949d1042b5148de8eddebb4` |
+
+Wynik: `baza-wiedzy-images-X.Y.Z.tar` (około 0,7 GB), `.tar.sha256` i `baza-wiedzy-images-X.Y.Z.txt` (każde odwołanie z identyfikatorem obrazu). Skopiuj te trzy pliki oraz `docker-compose.yml`, `.env.example` i `scripts/` z wydania na serwer, potem:
+
+```
+sha256sum -c baza-wiedzy-images-X.Y.Z.tar.sha256     # oczekiwane: OK
+docker load -i baza-wiedzy-images-X.Y.Z.tar          # 6 linii "Loaded image"
+docker compose up -d --pull never
+```
+
+Później `update.sh` z `SKIP_PULL=1` (Faza 6). Wymaganie: Docker Engine z magazynem obrazów containerd (domyślny w nowych instalacjach Docker Engine 29+; sprawdzenie: `docker info -f '{{.DriverStatus}}'` pokazuje `io.containerd.snapshotter.v1`). Odwołania `redis` i `clamav` przypięte digestem są rozwiązywane z załadowanych obrazów tylko przy tym magazynie; przy starszym `up --pull never` kończy się dla nich błędem `No such image`.
 
 ### Po zmianie konfiguracji wyszukiwania
 
@@ -183,6 +213,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready reports 4 x ok` (około minuty przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |

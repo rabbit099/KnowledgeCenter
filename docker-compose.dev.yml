@@ -31,3 +31,7 @@ services:
   db:
     image: baza-wiedzy-db:dev
     build: docker/db
+
+  proxy:
+    image: baza-wiedzy-proxy:dev
+    build: docker/caddy

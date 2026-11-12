@@ -18,7 +18,6 @@ Everything an operator needs: installing, configuring, updating, rolling back, b
 /srv/baza-wiedzy/
 ├── docker-compose.yml
 ├── .env                 # configuration and secrets (chmod 600)
-├── docker/caddy/        # Dockerfile and Caddyfile of the proxy (built on the server)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem and key.pem, only with TLS_MODE=files
 ├── logs/                # update.log, backup.log
@@ -40,6 +39,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |
 | `TLS_MODE` | `internal`, `files` or `acme` |
 | `SECRET_KEY` | Signing key for sessions/CSRF |
+| `HTTP_PORT`, `HTTPS_PORT` | Host ports of the proxy (default 80, 443) |
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy |
 | `POSTGRES_PASSWORD` | Password of the PostgreSQL superuser; used only inside the `db` container |
@@ -66,9 +66,9 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 
 ## First installation
 
-1. Copy `docker-compose.yml`, `.env.example`, `docker/caddy/` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
+1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
 2. Log in to the registry: `docker login ghcr.io` with a token that can read packages.
-3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull --ignore-buildable && docker compose build proxy && docker compose up -d`. The proxy image is built on the server from `docker/caddy/` (a few seconds; it needs the `caddy` base image from Docker Hub).
+3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull && docker compose up -d`. All four project images (`app`, `worker`, `db`, `proxy`) come from GHCR; nothing is built on the server.
 4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
 5. Create the first admin: `docker compose exec app baza-wiedzy create-admin <username>`.
 6. Check `https://<PUBLIC_HOSTNAME>/ready` returns OK.
@@ -77,9 +77,13 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 
 ## Releases
 
-- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers the release workflow.
-- The workflow builds and pushes three images: `baza-wiedzy-app`, `baza-wiedzy-worker`, `baza-wiedzy-db`, tagged `X.Y.Z` (and `latest` only for convenience in tests, never used in production).
-- Before tagging: move `[Unreleased]` in both changelogs under the new version number and date.
+- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`.
+- Before tagging: set `version = "X.Y.Z"` in `pyproject.toml` (the application reads its version from there), move `[Unreleased]` in both changelogs under `## [X.Y.Z] - YYYY-MM-DD`, add a new empty `[Unreleased]`, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Check locally first: `uv run python scripts/check_release.py vX.Y.Z` must print `Release vX.Y.Z matches pyproject.toml and both changelogs.`
+- The workflow (1) refuses the release if the tag differs from `pyproject.toml` or a changelog has no `## [X.Y.Z]` section, (2) runs the complete CI (including the smoke test), (3) builds and pushes four images for `linux/amd64`: `ghcr.io/<owner>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, all tagged `X.Y.Z` (no `latest`). Each image carries the labels `org.opencontainers.image.version`, `.revision` (the commit SHA), `.source` and `.created`. The run summary lists every image with its digest; record them in the release notes.
+- Check what a server runs: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>`.
+- Workflow security: actions are pinned to commit SHAs; the default token is read-only (`contents: read`), only the publish job of `release.yml` gets `packages: write`; CI uses no secrets, so pull requests from forks have nothing to leak.
+
+CI (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs three jobs: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL from the project image and Redis) and `images` (`make smoke`: builds the four images for `linux/amd64`, starts `docker-compose.yml`, migrates and requires `/ready` to report 4 × `ok`). Run the same locally before pushing.
 
 ## Updating
 
@@ -111,7 +115,33 @@ Switches `APP_VERSION` back and restarts. If the schema changed incompatibly, re
 
 ### Offline server
 
-On a machine with internet access: `docker pull` the three images, `docker save` to a file, copy it to the server, `docker load`, then run `update.sh` with `SKIP_PULL=1`.
+On a machine with internet access and `docker login ghcr.io`, from a checkout of the release tag:
+
+```
+git checkout v1.2.0
+./scripts/offline_bundle.sh 1.2.0 ghcr.io/<owner>/baza-wiedzy /tmp/bundle
+```
+
+The script takes the image list from `docker-compose.yml` (with the `antivirus` profile), pulls everything for `linux/amd64` and saves it into one file. For version `X.Y.Z` the bundle contains **all** images the server needs:
+
+| Image | Reference |
+|---|---|
+| app | `ghcr.io/<owner>/baza-wiedzy-app:X.Y.Z` (digest in the release summary) |
+| worker | `ghcr.io/<owner>/baza-wiedzy-worker:X.Y.Z` |
+| db | `ghcr.io/<owner>/baza-wiedzy-db:X.Y.Z` |
+| proxy | `ghcr.io/<owner>/baza-wiedzy-proxy:X.Y.Z` |
+| redis | `redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba` |
+| clamav (optional profile) | `clamav/clamav:1.4.3@sha256:75fb5fd95fcbe1d7e6d240c369c1572b686ee2c95949d1042b5148de8eddebb4` |
+
+Output: `baza-wiedzy-images-X.Y.Z.tar` (about 0.7 GB), `.tar.sha256` and `baza-wiedzy-images-X.Y.Z.txt` (each reference with its image ID). Copy the three files and the release's `docker-compose.yml`, `.env.example` and `scripts/` to the server, then:
+
+```
+sha256sum -c baza-wiedzy-images-X.Y.Z.tar.sha256     # expect: OK
+docker load -i baza-wiedzy-images-X.Y.Z.tar          # lists 6 "Loaded image" lines
+docker compose up -d --pull never
+```
+
+Later, `update.sh` with `SKIP_PULL=1` (Phase 6). Requirement: Docker Engine with the containerd image store (default for new installations of Docker Engine 29+; check: `docker info -f '{{.DriverStatus}}'` shows `io.containerd.snapshotter.v1`). The digest-pinned `redis` and `clamav` references are resolved from the loaded images only with that store; with the older store `up --pull never` fails with `No such image` for them.
 
 ### After changing search configuration
 
@@ -183,6 +213,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, removes everything. Expected end: `==> Smoke test passed: /ready reports 4 x ok` (about 1 minute with cached layers) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |

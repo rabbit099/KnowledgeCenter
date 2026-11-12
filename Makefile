@@ -60,6 +60,11 @@ messages: ## Extract UI strings and update the Polish catalog (then translate ms
 docs-check: ## Verify EN/PL documentation consistency
 	uv run python scripts/check_docs.py
 
+.PHONY: smoke
+smoke: ## Build all images, start the production Compose file, migrate, require /ready 4x ok
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	./scripts/smoke_test.sh
+
 .PHONY: migrate
 migrate: _need-docker ## Apply database migrations
 	$(COMPOSE_DEV) run --rm app baza-wiedzy migrate

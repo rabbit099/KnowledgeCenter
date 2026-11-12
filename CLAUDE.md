@@ -46,7 +46,7 @@ Out of scope unless explicitly requested: SSO/Kerberos, per-category access cont
 | Proxy / TLS | Caddy |
 | CSS | Plain CSS or a small framework served locally (no CDN calls at runtime) |
 | Quality | ruff, mypy, pytest, pytest-cov, pre-commit, import-linter (module boundaries) |
-| CI/CD | GitHub Actions → images in GHCR (`app`, `worker`, `db`) |
+| CI/CD | GitHub Actions → images in GHCR (`app`, `worker`, `db`, `proxy`; ADR-017) |
 
 ## 4. Repository layout
 
@@ -82,7 +82,7 @@ baza-wiedzy/
 │       ├── ingestion/     # module.py, extractors/, ocr.py, language.py, tasks.py, services/api.py
 │       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
 ├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic only)
-├── scripts/           # update.sh, rollback.sh, backup.sh, restore.sh, check_docs.py
+├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
 │   └── pl/
@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -169,7 +169,7 @@ The documentation is part of the product and you maintain it.
 
 - Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 - `main` is protected; CI (lint, types, tests, docs-check, image build) must pass.
-- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The changelog `[Unreleased]` section becomes the new version.
+- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages.
 
 ## 12. Definition of done
 
