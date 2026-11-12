@@ -54,3 +54,43 @@ markers = [
 
 [tool.coverage.run]
 source = ["src/baza_wiedzy"]
+
+# Module boundaries (ADR-014). Modules may import only another module's services/api.py.
+[tool.importlinter]
+root_package = "baza_wiedzy"
+
+[[tool.importlinter.contracts]]
+name = "Core does not depend on modules"
+type = "forbidden"
+source_modules = ["baza_wiedzy.core"]
+forbidden_modules = ["baza_wiedzy.modules"]
+
+[[tool.importlinter.contracts]]
+name = "documents does not import other modules"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.documents"]
+forbidden_modules = ["baza_wiedzy.modules.ingestion", "baza_wiedzy.modules.search"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "ingestion uses only the public API of documents"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.ingestion"]
+forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.search"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "baza_wiedzy.modules.ingestion.** -> baza_wiedzy.modules.documents.services.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "search uses only the public API of documents"
+type = "forbidden"
+source_modules = ["baza_wiedzy.modules.search"]
+forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.ingestion"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.documents.services.api",
+]
