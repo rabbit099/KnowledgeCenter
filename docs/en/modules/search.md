@@ -33,4 +33,4 @@ None of its own. Searching needs `documents.read`; seeing drafts needs `document
 
 ## Status
 
-Phase 0: manifest, a menu entry and an empty public interface; the Polish dictionary spike belongs to stage B of Phase 0. Implementation comes in Phase 3.
+Phase 0: manifest, a menu entry, an empty public interface and the migration branch `search` with `search_0001` (dictionary `pl_hunspell`, configurations `pl` and `simple_unaccent`, `depends_on` `core_0001`). The Polish dictionary spike is done (Hunspell is sufficient, ADR-016); golden tests in `tests/search_golden/` run on the real migrations (`make test-db`). Indexing, queries and the UI come in Phase 3.

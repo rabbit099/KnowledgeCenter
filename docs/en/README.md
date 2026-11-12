@@ -30,7 +30,7 @@ Tick items when they are finished and documented.
 - [x] Docker Compose: proxy, app, worker, db, redis (+ optional ClamAV profile)
 - [x] Custom Postgres image with Polish Hunspell dictionary; spike result documented in `search.md`
 - [x] Alembic baseline, `/health` and `/ready`
-- [ ] CI (lint, types, tests, docs-check, image build)
+- [x] CI (lint, types, tests, docs-check, image build, smoke test); release workflow prepared, not run yet. Verified locally with the same make targets; the first GitHub run happens on the first push
 - [x] `scripts/check_docs.py`
 
 ### Phase 1 — Users and permissions

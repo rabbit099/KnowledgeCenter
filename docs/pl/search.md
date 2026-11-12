@@ -105,7 +105,7 @@ To szkic: prawdziwa implementacja grupuje po dokumencie, dodaje dopasowania w me
 
 ## Słownik polski (Hunspell) — konfiguracja
 
-1. Obraz `db` (`docker/db/Dockerfile`) instaluje przypięty pakiet Debiana `hunspell-pl`, sprawdza sumy SHA-256 jego plików, konwertuje je do UTF-8 i kopiuje `pl_pl.dict`, `pl_pl.affix`, własną listę `polish.stop` oraz plik licencji do katalogu `tsearch_data` PostgreSQL. Obraz zawiera tylko pliki i nie uruchamia żadnego init SQL.
+1. Obraz `db` (`docker/db/Dockerfile`) instaluje przypięty pakiet Debiana `hunspell-pl`, sprawdza sumy SHA-256 jego plików, konwertuje je do UTF-8 i kopiuje `pl_pl.dict`, `pl_pl.affix`, własną listę `polish.stop` oraz plik licencji do katalogu `tsearch_data` PostgreSQL. Obraz nie tworzy obiektów wyszukiwania; jego jedyny skrypt init tworzy przy pustym wolumenie zwykłego użytkownika aplikacji i bazę (`docker/db/initdb/10-app-role.sh`).
 2. Obiekty w bazie tworzą migracje Alembic (rozszerzenia w gałęzi `core`, słownik i konfiguracje w gałęzi `search`). Działają jako użytkownik aplikacji, który nie potrzebuje uprawnień superużytkownika (zob. [deployment-operations.md](deployment-operations.md#konfiguracja)). Obiekty:
 
 ```sql

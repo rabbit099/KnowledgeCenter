@@ -30,7 +30,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Docker Compose: proxy, app, worker, db, redis (+ opcjonalny profil ClamAV)
 - [x] Własny obraz Postgresa ze słownikiem Hunspell dla polskiego; wynik spike'a opisany w `search.md`
 - [x] Baza Alembica, `/health` i `/ready`
-- [ ] CI (lint, typy, testy, docs-check, budowanie obrazów)
+- [x] CI (lint, typy, testy, docs-check, budowanie obrazów, test dymny); workflow wydania przygotowany, jeszcze nieuruchamiany. Zweryfikowane lokalnie tymi samymi celami make; pierwszy przebieg na GitHubie nastąpi przy pierwszym pushu
 - [x] `scripts/check_docs.py`
 
 ### Faza 1 — Użytkownicy i uprawnienia

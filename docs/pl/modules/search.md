@@ -33,4 +33,4 @@ Brak własnych. Wyszukiwanie wymaga `documents.read`; widzenie szkiców wymaga `
 
 ## Status
 
-Faza 0: manifest, pozycja menu i pusty interfejs publiczny; spike słownika polskiego należy do etapu B Fazy 0. Implementacja w Fazie 3.
+Faza 0: manifest, pozycja menu, pusty interfejs publiczny i gałąź migracji `search` z `search_0001` (słownik `pl_hunspell`, konfiguracje `pl` i `simple_unaccent`, `depends_on` `core_0001`). Spike słownika polskiego wykonany (Hunspell wystarcza, ADR-016); testy wzorcowe w `tests/search_golden/` działają na prawdziwych migracjach (`make test-db`). Indeksacja, zapytania i interfejs w Fazie 3.

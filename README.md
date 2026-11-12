@@ -19,4 +19,13 @@ make test
 make docs-check
 ```
 
-All commands go through the `Makefile`; run `make help` for the list.
+With Docker (Compose plugin):
+
+```
+make build && make up && make migrate
+curl -k https://localhost/ready   # {"status":"ok", ... 4 checks "ok"}
+make test-db                       # integration and golden search tests
+make smoke                         # production Compose file with fresh images
+```
+
+The browser shows a certificate warning for `https://localhost` (Caddy's internal CA). All commands go through the `Makefile`; run `make help` for the list. Details: [deployment and operations](docs/en/deployment-operations.md).

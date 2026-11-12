@@ -105,7 +105,7 @@ This is a sketch: the real implementation groups by document, adds metadata matc
 
 ## Polish dictionary (Hunspell) — setup
 
-1. The `db` image (`docker/db/Dockerfile`) installs the pinned Debian package `hunspell-pl`, verifies the SHA-256 of its files, converts them to UTF-8 and copies `pl_pl.dict`, `pl_pl.affix`, the project's `polish.stop` and the licence file into PostgreSQL's `tsearch_data` directory. The image ships files only and runs no init SQL.
+1. The `db` image (`docker/db/Dockerfile`) installs the pinned Debian package `hunspell-pl`, verifies the SHA-256 of its files, converts them to UTF-8 and copies `pl_pl.dict`, `pl_pl.affix`, the project's `polish.stop` and the licence file into PostgreSQL's `tsearch_data` directory. The image creates no search objects; its only init script creates the non-superuser application role and database on an empty volume (`docker/db/initdb/10-app-role.sh`).
 2. Alembic migrations create the database objects (extensions in the `core` branch, dictionary and configurations in the `search` branch). They run as the application user, which needs no superuser rights (see [deployment-operations.md](deployment-operations.md#configuration)). The objects:
 
 ```sql
