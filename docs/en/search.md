@@ -15,7 +15,7 @@ Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text fro
 
 ## Indexing
 
-Every `document_parts` row is indexed in three configurations at once:
+Every `srch_parts` row is indexed in three configurations at once:
 
 | Column | Configuration | Handles |
 |---|---|---|
@@ -23,9 +23,11 @@ Every `document_parts` row is indexed in three configurations at once:
 | `tsv_en` | `english` (built-in stemmer) | English inflection |
 | `tsv_simple` | `simple_unaccent`: no stemming, accents removed | Codes, names, numbers, queries without diacritics |
 
-The detected language (`document_parts.language`) is informational and usable as a filter. It never decides which indexes are used, so mixed-language documents work.
+The detected language (`srch_parts.language`) is informational and usable as a filter. It never decides which indexes are used, so mixed-language documents work.
 
 Chunking keeps each tsvector under the 1 MB PostgreSQL limit: PDFs are split per page, other text into chunks of at most 100,000 characters.
+
+The `search` module owns the indexed text and its indexes (table `srch_parts`). It receives text from the `ingestion` module through the event `document.version.extracted` and replaces all parts of that version in one transaction, so repeating the event is harmless. Because the text is stored here, reindexing does not need to read the original files again, and replacing the search engine touches only this module.
 
 ## Query processing
 
@@ -51,12 +53,14 @@ Metadata (title, file name, e-mail subject and sender) is matched with tsvector 
 Enforced in SQL for every query:
 
 - user must have `documents.read`;
-- normal users: `documents.status = 'published'` and the part belongs to `documents.published_version_id`;
+- normal users: `doc_documents.status = 'published'` and the part belongs to `doc_documents.published_version_id`;
 - authors additionally see their own drafts (latest version);
 - holders of `documents.read_drafts` see all drafts;
 - archived documents are excluded unless the filter explicitly asks and the user may see them.
 
 Old versions are not searchable in the MVP.
+
+The visibility rule is owned by the `documents` module: `documents.services.api` provides the SQL fragment and `search` injects it into its queries (design details are settled in Phase 3).
 
 ## Snippets and highlighting
 
@@ -85,9 +89,9 @@ SELECT d.id AS document_id, p.id AS part_id,
        GREATEST(ts_rank_cd(p.tsv_pl, q.q_pl, 32),
                 ts_rank_cd(p.tsv_en, q.q_en, 32),
                 0.8 * ts_rank_cd(p.tsv_simple, q.q_simple, 32)) AS score
-FROM document_parts p
-JOIN document_versions v ON v.id = p.version_id
-JOIN documents d         ON d.id = v.document_id
+FROM srch_parts p
+JOIN doc_versions v  ON v.id = p.version_id
+JOIN doc_documents d ON d.id = v.document_id
 CROSS JOIN q
 WHERE (p.tsv_pl @@ q.q_pl OR p.tsv_en @@ q.q_en OR p.tsv_simple @@ q.q_simple)
   AND ( (d.status = 'published' AND v.id = d.published_version_id)

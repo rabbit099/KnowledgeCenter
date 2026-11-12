@@ -31,6 +31,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 |---|---|
 | `APP_NAME` | Display name (default "Baza Wiedzy") |
 | `APP_VERSION` | Image tag to run, for example `1.0.0` |
+| `ENABLED_MODULES` | Optional modules to run, comma-separated (default `documents,ingestion,search`); the core is always on |
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |
 | `TLS_MODE` | `internal`, `files` or `acme` |
 | `SECRET_KEY` | Signing key for sessions/CSRF |
@@ -38,6 +39,8 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `REDIS_URL` | Queue |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | See [auth-and-permissions.md](auth-and-permissions.md) |
+
+`ENABLED_MODULES` must have the same value for `app` and `worker` (both read the same `.env`). At startup the application checks module dependencies and refuses to start with a message such as `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` applies the migration branches of the enabled modules only; after enabling a module later, run `migrate` again. Disabling a module does not delete its tables or data.
 
 ## First installation
 
@@ -131,6 +134,24 @@ Zabbix: an HTTP check on `/ready` (expect 200) plus a trigger on the response ti
 
 Logs are JSON on stdout. Compose sets Docker log rotation (`max-size 10m`, `max-file 5`). Read them with `docker compose logs -f app worker`.
 
+## Developer commands
+
+Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync` once.
+
+| Command | What it does |
+|---|---|
+| `make help` | Lists all commands |
+| `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
+| `make fmt` | Formats and auto-fixes with `ruff` |
+| `make test` | Runs the tests with `pytest` |
+| `make docs-check` | Checks that the English and Polish documentation are consistent |
+| `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
+| `make migrate` / `make revision m="text"` | Apply or create database migrations (needs Docker) |
+| `make shell` | Shell inside the `app` container (needs Docker) |
+| `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
+
+If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to check |
@@ -141,6 +162,7 @@ Logs are JSON on stdout. Compose sets Docker log rotation (`max-size 10m`, `max-
 | Inflected words are not found | Dictionary not loaded or index not rebuilt | `SELECT ts_lexize('pl_hunspell','faktury');`, run `reindex-search` |
 | `/ready` fails after update | Migration not applied | `docker compose run --rm app baza-wiedzy migrate`, then see `update.log` |
 | Disk full | Backups or derived files | Check `backups/`, retention settings |
+| Application refuses to start: `module ... requires ...` | `ENABLED_MODULES` lists a module without one it depends on | Add the required module to `ENABLED_MODULES` in `.env`, or remove the dependent one |
 
 ## Security notes for operators
 

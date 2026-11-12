@@ -32,6 +32,26 @@ Przeglądarka ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 
 `app` i `worker` mają wspólny kod Pythona i modele bazy; różnią się zawartością obrazu (obraz workera ma OCR i LibreOffice) oraz poleceniem startowym.
 
+## Struktura modularna
+
+Aplikacja to modularny monolit: jedna baza kodu i jeden obraz na rolę (`app`, `worker`), złożone z zawsze włączonego **rdzenia** i opcjonalnych **modułów**. Moduły wybiera się zmienną `ENABLED_MODULES` w `.env`; `app` i `worker` muszą mieć tę samą wartość.
+
+| Część | Wymaga | Jest właścicielem tabel | Publikuje zdarzenia | Subskrybuje |
+|---|---|---|---|---|
+| rdzeń | nic | `users`, `roles`, `sessions`, `audit_log`, `app_settings` | nic | nic |
+| `documents` | nic | `doc_*` | `document.version.uploaded`, `document.published` | nic |
+| `ingestion` | `documents` | brak w MVP (prefiks `ing_*` zarezerwowany) | `document.version.extracted` | `document.version.uploaded` |
+| `search` | `documents` | `srch_*` | nic | `document.version.extracted` |
+
+Zasady (egzekwowane w CI przez import-linter, zobacz ADR-014):
+- Moduł nigdy nie importuje wnętrza innego modułu. Może importować `baza_wiedzy.core` oraz `services/api.py` modułu, którego wymaga. Wszystko inne idzie przez zdarzenia.
+- Zdarzenia są synchroniczne i działają w obrębie procesu: handler wykonuje się w procesie, który publikuje zdarzenie. Dlatego `worker` ładuje także `search` i indeksuje wyciągnięty tekst wewnątrz workera; w `app` handler `ingestion` tylko kolejkuje zadanie.
+- Przy starcie rejestr sprawdza `requires` i zatrzymuje się z czytelnym komunikatem, gdy wymagany moduł nie jest włączony.
+- Uprawnienia, pozycje menu, routery, zadania w tle, polecenia CLI i gałęzie migracji są zbierane z manifestów modułów (`module.py`).
+- Nie ma wtyczek spoza repozytorium.
+
+Dokumentacja poszczególnych modułów: [documents](modules/documents.md), [ingestion](modules/ingestion.md), [search](modules/search.md).
+
 ## Stack technologiczny
 
 Obowiązująca tabela jest w `CLAUDE.md`, sekcja 3. W skrócie: Python 3.12, FastAPI, Jinja2 + HTMX, SQLAlchemy 2 (sync) + psycopg 3, Alembic, wyszukiwanie pełnotekstowe PostgreSQL z `pg_trgm` i `unaccent`, Dramatiq + Redis, pypdfium2, OCRmyPDF + Tesseract, ldap3, Caddy.
@@ -40,12 +60,12 @@ Obowiązująca tabela jest w `CLAUDE.md`, sekcja 3. W skrócie: Python 3.12, Fas
 
 ### Upload
 1. Użytkownik z uprawnieniem `documents.upload` wysyła plik.
-2. `app` waliduje go (rozmiar, typ według zawartości), zapisuje pod kluczem UUID, tworzy wiersze `documents` i `document_versions` ze statusem `processing_status = pending`, kolejkuje `process_version(version_id)` i zapisuje wpis audytowy.
+2. `app` waliduje go (rozmiar, typ według zawartości), zapisuje pod kluczem UUID, tworzy wiersze `doc_documents` i `doc_versions` ze statusem `processing_status = pending`, publikuje zdarzenie `document.version.uploaded` (moduł `ingestion` kolejkuje `process_version(version_id)`) i zapisuje wpis audytowy.
 3. Przeglądarka odpytuje o status wersji (HTMX) i pokazuje postęp.
-4. `worker` wyciąga tekst, w razie potrzeby uruchamia OCR, wykrywa język, zapisuje `document_parts` i ustawia status `done` lub `failed`. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` wyciąga tekst, w razie potrzeby uruchamia OCR, wykrywa język, publikuje `document.version.extracted` z częściami tekstu (moduł `search` zapisuje je i indeksuje w `srch_parts`) i ustawia status `done` lub `failed` przez `documents.services.api`. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publikacja
-Użytkownik z `documents.publish` (własne dokumenty) lub `documents.publish_any` publikuje wersję: ustawiane jest `documents.published_version_id`, a status zmienia się na `published`. Dopiero wtedy czytelnicy widzą dokument i mogą go znaleźć.
+Użytkownik z `documents.publish` (własne dokumenty) lub `documents.publish_any` publikuje wersję: ustawiane jest `doc_documents.published_version_id`, a status zmienia się na `published`. Dopiero wtedy czytelnicy widzą dokument i mogą go znaleźć.
 
 ### Wyszukiwanie
 Użytkownik wpisuje frazę; `app` buduje zapytania dla każdej konfiguracji wyszukiwania, stosuje reguły widoczności wewnątrz SQL, szereguje wyniki, a fragmenty (snippety) dodaje tylko dla widocznej strony wyników. Szczegóły: [search.md](search.md).
@@ -67,6 +87,7 @@ Active Directory przez LDAPS (konto serwisowe znajduje użytkownika, potem bind 
 
 - Widoczność jest wymuszana w SQL. Sprawdzanie uprawnień jest w serwisach i zależnościach.
 - Kod wyszukiwania jest izolowany za interfejsem `SearchBackend`.
+- Moduły rozmawiają ze sobą wyłącznie przez `services/api.py` i zdarzenia.
 - Konfiguracja wyłącznie przez zmienne środowiskowe.
 - Logi: JSON na stdout, zbierane przez Dockera z rotacją.
 - Zdrowie: `/health` (proces żyje), `/ready` (baza, Redis, heartbeat workera, wersja schematu).

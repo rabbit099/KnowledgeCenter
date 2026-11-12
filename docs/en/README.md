@@ -16,6 +16,7 @@ Polish version of this documentation: [`../pl/`](../pl/README.md).
 | [ingestion-and-ocr.md](ingestion-and-ocr.md) | Upload pipeline, text extraction per format, OCR |
 | [auth-and-permissions.md](auth-and-permissions.md) | Active Directory login, roles, permission catalog, audit |
 | [deployment-operations.md](deployment-operations.md) | Installation, configuration, updates, rollback, backup, monitoring |
+| [modules/documents.md](modules/documents.md), [modules/ingestion.md](modules/ingestion.md), [modules/search.md](modules/search.md) | Per module: scope, dependencies, permissions, tables, events, extension points |
 | [decisions.md](decisions.md) | Decision log (ADR), assumptions and open questions |
 | [changelog.md](changelog.md) | What changed in each version |
 
@@ -24,12 +25,13 @@ Polish version of this documentation: [`../pl/`](../pl/README.md).
 Tick items when they are finished and documented.
 
 ### Phase 0 — Foundation
-- [ ] Repository, `pyproject.toml`, Makefile, pre-commit
+- [x] Repository, `pyproject.toml`, Makefile, pre-commit
+- [x] Module registry: manifests, `ENABLED_MODULES`, event bus, boundary checks (import-linter)
 - [ ] Docker Compose: proxy, app, worker, db, redis (+ optional ClamAV profile)
 - [ ] Custom Postgres image with Polish Hunspell dictionary; spike result documented in `search.md`
 - [ ] Alembic baseline, `/health` and `/ready`
 - [ ] CI (lint, types, tests, docs-check, image build)
-- [ ] `scripts/check_docs.py`
+- [x] `scripts/check_docs.py`
 
 ### Phase 1 — Users and permissions
 - [ ] Local break-glass admin (CLI), sessions, CSRF, login rate limit

@@ -31,6 +31,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 |---|---|
 | `APP_NAME` | Wyświetlana nazwa (domyślnie „Baza Wiedzy”) |
 | `APP_VERSION` | Tag obrazu do uruchomienia, na przykład `1.0.0` |
+| `ENABLED_MODULES` | Opcjonalne moduły do uruchomienia, oddzielone przecinkami (domyślnie `documents,ingestion,search`); rdzeń jest zawsze włączony |
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |
 | `TLS_MODE` | `internal`, `files` lub `acme` |
 | `SECRET_KEY` | Klucz podpisujący sesje/CSRF |
@@ -38,6 +39,8 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `REDIS_URL` | Kolejka |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
+
+`ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje wyłącznie gałęzie migracji włączonych modułów; po późniejszym włączeniu modułu uruchom `migrate` ponownie. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
 ## Pierwsza instalacja
 
@@ -131,6 +134,24 @@ Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpow
 
 Logi to JSON na stdout. Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`.
 
+## Polecenia dla programisty
+
+Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync`.
+
+| Polecenie | Co robi |
+|---|---|
+| `make help` | Wypisuje wszystkie polecenia |
+| `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
+| `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
+| `make test` | Uruchamia testy `pytest` |
+| `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
+| `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
+| `make migrate` / `make revision m="tekst"` | Stosuje lub tworzy migracje bazy (wymaga Dockera) |
+| `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
+| `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
+
+Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
+
 ## Rozwiązywanie problemów
 
 | Objaw | Prawdopodobna przyczyna | Co sprawdzić |
@@ -141,6 +162,7 @@ Logi to JSON na stdout. Compose ustawia rotację logów Dockera (`max-size 10m`,
 | Odmienione słowa nie są znajdowane | Słownik niezaładowany lub indeks nieprzebudowany | `SELECT ts_lexize('pl_hunspell','faktury');`, uruchom `reindex-search` |
 | `/ready` nie działa po aktualizacji | Migracja nie została zastosowana | `docker compose run --rm app baza-wiedzy migrate`, potem sprawdź `update.log` |
 | Pełny dysk | Backupy lub pliki pochodne | Sprawdź `backups/`, ustawienia retencji |
+| Aplikacja nie startuje: `module ... requires ...` | `ENABLED_MODULES` zawiera moduł bez modułu, od którego zależy | Dodaj wymagany moduł do `ENABLED_MODULES` w `.env` albo usuń moduł zależny |
 
 ## Uwagi bezpieczeństwa dla operatorów
 

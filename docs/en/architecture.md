@@ -32,6 +32,26 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 
 `app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.
 
+## Modular structure
+
+The application is a modular monolith: one codebase and one image per role (`app`, `worker`), made of an always-on **core** and optional **modules**. `ENABLED_MODULES` in `.env` selects the modules; `app` and `worker` must use the same value.
+
+| Part | Requires | Owns tables | Publishes events | Subscribes to |
+|---|---|---|---|---|
+| core | none | `users`, `roles`, `sessions`, `audit_log`, `app_settings` | none | none |
+| `documents` | none | `doc_*` | `document.version.uploaded`, `document.published` | none |
+| `ingestion` | `documents` | none in the MVP (`ing_*` reserved) | `document.version.extracted` | `document.version.uploaded` |
+| `search` | `documents` | `srch_*` | none | `document.version.extracted` |
+
+Rules (enforced in CI by import-linter, see ADR-014):
+- A module never imports the internals of another module. It may import `baza_wiedzy.core` and the `services/api.py` of a module it requires. Everything else goes through events.
+- Events are synchronous and in-process: a handler runs in the process that publishes the event. The `worker` therefore also loads `search` and indexes extracted text inside the worker; in `app` the `ingestion` handler only enqueues the job.
+- At startup the registry checks `requires` and stops with a readable message when a required module is not enabled.
+- Permissions, menu items, routers, background tasks, CLI commands and migration branches are collected from the module manifests (`module.py`).
+- There are no plugins from outside the repository.
+
+Per-module documentation: [documents](modules/documents.md), [ingestion](modules/ingestion.md), [search](modules/search.md).
+
 ## Technology stack
 
 See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.12, FastAPI, Jinja2 + HTMX, SQLAlchemy 2 (sync) + psycopg 3, Alembic, PostgreSQL 16 full-text search with `pg_trgm` and `unaccent`, Dramatiq + Redis, pypdfium2, OCRmyPDF + Tesseract, ldap3, Caddy.
@@ -40,12 +60,12 @@ See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.1
 
 ### Upload
 1. User with `documents.upload` sends a file.
-2. `app` validates it (size, type by content), stores it under a UUID key, writes `documents` and `document_versions` rows with `processing_status = pending`, enqueues `process_version(version_id)`, writes an audit entry.
+2. `app` validates it (size, type by content), stores it under a UUID key, writes `doc_documents` and `doc_versions` rows with `processing_status = pending`, publishes the event `document.version.uploaded` (the `ingestion` module enqueues `process_version(version_id)`), writes an audit entry.
 3. The browser polls the status of the version (HTMX) and shows progress.
-4. `worker` extracts text, runs OCR if needed, detects language, writes `document_parts`, sets status `done` or `failed`. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` extracts text, runs OCR if needed, detects language, publishes `document.version.extracted` with the text parts (the `search` module stores and indexes them in `srch_parts`) and sets status `done` or `failed` through `documents.services.api`. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publish
-A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.
+A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `doc_documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.
 
 ### Search
 The user types a phrase; `app` builds the queries for each text-search configuration, applies the visibility rules inside SQL, ranks, then adds snippets for the visible page only. Details: [search.md](search.md).
@@ -67,6 +87,7 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 
 - Visibility is enforced in SQL. Permission checks are in services and dependencies.
 - Search code is isolated behind the `SearchBackend` interface.
+- Modules talk to each other only through `services/api.py` and events.
 - Config through environment variables only.
 - Logs: JSON to stdout, collected by Docker with rotation.
 - Health: `/health` (process is alive), `/ready` (database, Redis, worker heartbeat, schema version).

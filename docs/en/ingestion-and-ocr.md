@@ -2,13 +2,13 @@
 
 > Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
 
-How an uploaded file becomes searchable text.
+How an uploaded file becomes searchable text. Upload validation and storage belong to the `documents` module; the processing described here belongs to the `ingestion` module (see [modules/ingestion.md](modules/ingestion.md)).
 
 ## Supported formats
 
 | Format | Extractor | Notes |
 |---|---|---|
-| PDF with text | pypdfium2, per page | One `document_parts` row per page |
+| PDF with text | pypdfium2, per page | One `srch_parts` row per page |
 | PDF scanned | OCRmyPDF + Tesseract (`pol+eng`) | Only pages without text are OCR'd |
 | DOCX | python-docx (paragraphs, tables, headers, footers) + raw XML fallback | Text boxes and footnotes read from the XML |
 | DOC | LibreOffice headless conversion to text | Isolated profile, timeout |
@@ -16,7 +16,7 @@ How an uploaded file becomes searchable text.
 | EML | stdlib `email` | Headers, text body (HTML body converted to text), attachments |
 | MSG | `extract-msg` | Same output as EML |
 
-Attachments of EML/MSG that are PDF, DOCX, DOC, TXT, EML or MSG are extracted recursively (depth ≤ 3) and stored as `document_parts` of type `attachment`. Other attachments (images, archives) are listed by name only; their file names remain searchable. OCR of standalone images is out of scope for the MVP.
+Attachments of EML/MSG that are PDF, DOCX, DOC, TXT, EML or MSG are extracted recursively (depth ≤ 3) and stored as `srch_parts` of type `attachment`. Other attachments (images, archives) are listed by name only; their file names remain searchable. OCR of standalone images is out of scope for the MVP.
 
 ## Upload validation (in `app`)
 
@@ -26,7 +26,7 @@ Attachments of EML/MSG that are PDF, DOCX, DOC, TXT, EML or MSG are extracted re
 4. Stored under a UUID key; the user's file name is kept only as metadata and never used as a path.
 5. If the same SHA-256 already exists, the user gets a warning (not a block).
 6. Optional virus scan with ClamAV when the `antivirus` profile is enabled.
-7. Database rows created, job enqueued, audit entry written.
+7. Database rows created, the event `document.version.uploaded` published (`ingestion` enqueues the job), audit entry written.
 
 ## Processing (in `worker`)
 
@@ -42,11 +42,11 @@ Steps:
 2. Run the extractor. Each result is a list of parts: text, page number, name, parent.
 3. Chunk text longer than 100,000 characters.
 4. Detect language per part (Polish/English via lingua; short text → `unknown`).
-5. Write `document_parts`; the database computes `tsv_pl`, `tsv_en`, `tsv_simple`.
-6. For EML/MSG fill `email_metadata`.
-7. Set `processing_status = done`, write an audit-independent log line with duration and counts.
+5. Publish the event `document.version.extracted` with the parts and metadata; the `search` module stores them in `srch_parts` (the database computes `tsv_pl`, `tsv_en`, `tsv_simple`).
+6. For EML/MSG fill `doc_email_metadata` through `documents.services.api`.
+7. Set `processing_status = done` through `documents.services.api`, write an audit-independent log line with duration and counts.
 
-Jobs are idempotent: reprocessing deletes the existing parts of the version and creates them again. Retries: up to 3 with backoff for transient errors (database, Redis, timeouts); permanent errors fail immediately with a readable message.
+Jobs are idempotent: reprocessing publishes the event again and `search` replaces the existing parts of the version. Retries: up to 3 with backoff for transient errors (database, Redis, timeouts); permanent errors fail immediately with a readable message.
 
 ## OCR
 

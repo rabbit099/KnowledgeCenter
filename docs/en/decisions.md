@@ -42,6 +42,26 @@ Status: accepted. At most ~100 users; simpler code and one data-access style sha
 ### ADR-012 — Updates are performed from the host, not from the web UI
 Status: accepted. Giving the web app control over Docker would be a serious security risk. The UI may show "new version available" later.
 
+### ADR-013 — Modular monolith: always-on core plus modules `documents`, `ingestion`, `search`
+Status: accepted. One codebase and one image per role (`app`, `worker`), no separate services. The core (config, db, auth, permissions, audit, admin skeleton, module registry, event bus) is always on; `documents`, `ingestion` and `search` are modules in `src/baza_wiedzy/modules/<name>/`, enabled through `ENABLED_MODULES`. Each module has a manifest (`module.py`) declaring name, version, `requires`, permissions, menu items, routers, templates, migration branch, settings schema, background tasks, CLI commands and event subscriptions. The registry validates dependencies at startup. Decisions that follow from it:
+- Modules talk through `services/api.py` and synchronous in-process events (`document.version.uploaded`, `document.version.extracted`, `document.published`), never through each other's internals.
+- Every module owns its tables, prefixed `doc_`, `ing_`, `srch_`; the core has no prefix. `search` owns the indexed text (`srch_parts`) so that replacing the engine touches only that module; `ingestion` publishes extracted text as an event and `search` indexes it; processing status, version metadata and e-mail metadata stay in `documents`, and `ingestion` updates them through `documents.services.api`.
+- Direction for visibility: `documents.services.api` provides the SQL fragment implementing the visibility rule and `search` injects it into its queries, so visibility stays in SQL (details in Phase 3).
+- One Alembic branch per module plus `core`; a module that requires another uses `depends_on`.
+- Extension points: extractor registry, `SearchBackend`, login providers, file storage. Only modules inside the repository are loaded; no dynamic plugins.
+
+Alternatives rejected: a plain package layout without manifests (boundaries erode and nothing validates what is enabled), and separate services (operating several deployments is too heavy for one maintainer). Consequences: a thin amount of framework code to maintain; events lost on a crash must be recoverable (handlers are idempotent and reprocessing republishes them); disabling a module does not remove its data.
+
+### ADR-014 — Module boundaries are enforced by import-linter in CI
+Status: accepted. A boundary that exists only in documentation is crossed sooner or later, especially in a long project built with an AI assistant. import-linter checks the import graph in `make lint` and in CI with `forbidden` contracts: the core does not import modules, and a module may import another module only through its `services/api.py` (and only a required one). `allow_indirect_imports` is on, because a public API legitimately imports its module's internals. Alternatives: ruff `banned-api` (cannot express "everything except `services/api.py`") and review only (not reliable). Consequences: adding a module requires adding a contract in `pyproject.toml`; a contract is never weakened to make a change compile, the design is changed instead.
+
+### ADR-015 — Additional dependencies (collective entry)
+Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an entry here.
+- Phase 0, stage A: `pydantic` and `pydantic-settings` (typed configuration from environment variables, required by section 6); development only: `import-linter` (ADR-014), `ruff`, `mypy`, `pytest`, `pytest-cov`, `pre-commit` (the Quality row of the stack).
+- Phase 0, stage B (added when first used): `fastapi` and `uvicorn` (web framework and its server), `jinja2` (templates, required for server-rendered pages), `python-multipart` (FastAPI form and file upload parsing), `babel` (gettext catalogs: extract, compile, Polish translation), `sqlalchemy`, `alembic`, `psycopg` (database access and migrations from the stack), `dramatiq` and `redis` (queue and Redis client, also used by the `/ready` check).
+
+Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
+
 ## Assumptions
 
 - "On start about 200" (answer to the question about expected size) is read as roughly 200 documents. Design target is 20,000 documents and 100 users until confirmed.

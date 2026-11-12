@@ -15,7 +15,7 @@ Wyszukiwanie to pełnotekstowe wyszukiwanie PostgreSQL (FTS), a nie OCR. OCR tyl
 
 ## Indeksacja
 
-Każdy wiersz `document_parts` jest indeksowany jednocześnie w trzech konfiguracjach:
+Każdy wiersz `srch_parts` jest indeksowany jednocześnie w trzech konfiguracjach:
 
 | Kolumna | Konfiguracja | Obsługuje |
 |---|---|---|
@@ -23,9 +23,11 @@ Każdy wiersz `document_parts` jest indeksowany jednocześnie w trzech konfigura
 | `tsv_en` | `english` (wbudowany stemmer) | Angielską fleksję |
 | `tsv_simple` | `simple_unaccent`: bez stemmingu, bez znaków diakrytycznych | Kody, nazwy, numery, zapytania bez polskich znaków |
 
-Wykryty język (`document_parts.language`) ma charakter informacyjny i może służyć jako filtr. Nigdy nie decyduje, których indeksów użyć, dzięki czemu dokumenty dwujęzyczne działają.
+Wykryty język (`srch_parts.language`) ma charakter informacyjny i może służyć jako filtr. Nigdy nie decyduje, których indeksów użyć, dzięki czemu dokumenty dwujęzyczne działają.
 
 Dzielenie na części (chunking) utrzymuje każdy tsvector poniżej limitu 1 MB w PostgreSQL: PDF-y są dzielone na strony, inny tekst na fragmenty do 100 000 znaków.
+
+Moduł `search` jest właścicielem zaindeksowanego tekstu i jego indeksów (tabela `srch_parts`). Tekst dostaje od modułu `ingestion` przez zdarzenie `document.version.extracted` i zastępuje wszystkie części danej wersji w jednej transakcji, więc powtórzenie zdarzenia jest nieszkodliwe. Ponieważ tekst jest przechowywany tutaj, reindeksacja nie wymaga ponownego czytania plików oryginalnych, a wymiana silnika wyszukiwania dotyka wyłącznie tego modułu.
 
 ## Przetwarzanie zapytania
 
@@ -51,12 +53,14 @@ Metadane (tytuł, nazwa pliku, temat i nadawca maila) są dopasowywane przez tsv
 Wymuszana w SQL dla każdego zapytania:
 
 - użytkownik musi mieć `documents.read`;
-- zwykli użytkownicy: `documents.status = 'published'`, a część należy do `documents.published_version_id`;
+- zwykli użytkownicy: `doc_documents.status = 'published'`, a część należy do `doc_documents.published_version_id`;
 - autorzy dodatkowo widzą własne szkice (ostatnia wersja);
 - posiadacze `documents.read_drafts` widzą wszystkie szkice;
 - dokumenty zarchiwizowane są wykluczone, chyba że filtr wyraźnie o nie prosi i użytkownik może je widzieć.
 
 Stare wersje nie są przeszukiwalne w MVP.
+
+Reguła widoczności należy do modułu `documents`: `documents.services.api` udostępnia fragment SQL, a `search` wstrzykuje go do swoich zapytań (szczegóły projektowe zostaną ustalone w Fazie 3).
 
 ## Fragmenty i podświetlanie
 
@@ -85,9 +89,9 @@ SELECT d.id AS document_id, p.id AS part_id,
        GREATEST(ts_rank_cd(p.tsv_pl, q.q_pl, 32),
                 ts_rank_cd(p.tsv_en, q.q_en, 32),
                 0.8 * ts_rank_cd(p.tsv_simple, q.q_simple, 32)) AS score
-FROM document_parts p
-JOIN document_versions v ON v.id = p.version_id
-JOIN documents d         ON d.id = v.document_id
+FROM srch_parts p
+JOIN doc_versions v  ON v.id = p.version_id
+JOIN doc_documents d ON d.id = v.document_id
 CROSS JOIN q
 WHERE (p.tsv_pl @@ q.q_pl OR p.tsv_en @@ q.q_en OR p.tsv_simple @@ q.q_simple)
   AND ( (d.status = 'published' AND v.id = d.published_version_id)
