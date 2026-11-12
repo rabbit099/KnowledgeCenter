@@ -168,6 +168,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
+| `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
 | `make migrate` / `make revision m="tekst"` | Stosuje lub tworzy migracje bazy (wymaga Dockera) |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |

@@ -168,6 +168,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
+| `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
 | `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
 | `make migrate` / `make revision m="text"` | Apply or create database migrations (needs Docker) |
 | `make shell` | Shell inside the `app` container (needs Docker) |

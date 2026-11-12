@@ -49,6 +49,13 @@ fmt: ## Format and auto-fix
 test: ## Run tests (unit; integration when the stack is up)
 	uv run pytest
 
+.PHONY: messages
+messages: ## Extract UI strings and update the Polish catalog (then translate msgstr)
+	uv run pybabel extract -F babel.cfg --no-location --sort-output --width 100 \
+		-o src/baza_wiedzy/core/web/locale/messages.pot src
+	uv run pybabel update -i src/baza_wiedzy/core/web/locale/messages.pot \
+		-d src/baza_wiedzy/core/web/locale -l pl --width 100 --no-fuzzy-matching
+
 .PHONY: docs-check
 docs-check: ## Verify EN/PL documentation consistency
 	uv run python scripts/check_docs.py

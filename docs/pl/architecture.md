@@ -91,5 +91,7 @@ Active Directory przez LDAPS (konto serwisowe znajduje użytkownika, potem bind 
 - Kod wyszukiwania jest izolowany za interfejsem `SearchBackend`.
 - Moduły rozmawiają ze sobą wyłącznie przez `services/api.py` i zdarzenia.
 - Konfiguracja wyłącznie przez zmienne środowiskowe.
+- Teksty interfejsu: identyfikatory komunikatów są po angielsku i opakowane w `_()` w szablonach i kodzie; katalog polski to `src/baza_wiedzy/core/web/locale/pl/LC_MESSAGES/messages.po`. Jest kompilowany w pamięci przy starcie (bez plików `.mo` w repozytorium i obrazie). Po zmianie tekstów uruchom `make messages` i przetłumacz nowe pozycje `msgstr`; test jednostkowy nie przejdzie, dopóki jakikolwiek tekst jest nieprzetłumaczony. `APP_NAME` pochodzi z konfiguracji i nigdy nie jest wpisany na sztywno.
+- Pliki statyczne (CSS, HTMX) serwuje `app` z `src/baza_wiedzy/core/web/static/`; nic nie jest ładowane z CDN. HTMX 2.0.11 jest dołączony w `static/vendor/` razem z licencją (0BSD). Szablony linkują tylko do ścieżek, nigdy do adresów bezwzględnych.
 - Logi: JSON na stdout, zbierane przez Dockera z rotacją.
 - Zdrowie: `/health` (proces żyje), `/ready` (baza, Redis, heartbeat workera, wersja schematu).

@@ -18,5 +18,4 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /opt/app
 USER app
 EXPOSE 8000
-# The ASGI application arrives in Phase 0 stage B4 (src/baza_wiedzy/main.py).
-CMD ["uvicorn", "baza_wiedzy.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "--factory", "baza_wiedzy.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -12,8 +12,8 @@ services:
       PYTHONPATH: /src
     volumes:
       - ./src:/src:ro
-    command: ["uvicorn", "baza_wiedzy.main:app", "--host", "0.0.0.0", "--port", "8000",
-              "--reload", "--reload-dir", "/src"]
+    command: ["uvicorn", "--factory", "baza_wiedzy.main:create_app", "--host", "0.0.0.0", "--port", "8000",
+              "--reload", "--reload-dir", "/src", "--proxy-headers", "--forwarded-allow-ips", "*"]
 
   worker:
     image: baza-wiedzy-worker:dev

@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Added
+- Aplikacja WWW (FastAPI): strona startowa po polsku z nazwą z `APP_NAME` (Jinja2, HTMX serwowany lokalnie, katalog gettext `pl`), `/health`, `/ready` (sprawdzanie bazy i Redisa; JSON, 503 przy błędzie) oraz fragment stanu ładowany przez HTMX. Nowe polecenie `make messages`. Rozwiązywanie zależności wybiera tylko wydania starsze niż ustalona data (`exclude-newer`).
 - Redis wymaga hasła (`REDIS_PASSWORD`, nowa zmienna). Wolumen plików nazywa się `storage` i jest montowany w `/data/storage`. W dev `app` i `worker` zatrzymują się po 3 nieudanych startach zamiast restartować się w nieskończoność.
 - Stos Docker Compose (`docker-compose.yml`, `docker-compose.dev.yml`): proxy (Caddy, bez roota, tryby TLS `internal`/`files`/`acme`), app, worker, db, redis, opcjonalny profil `antivirus` (ClamAV); rotacja logów, limity pamięci, jawne `max_connections`; obrazy app i worker (bez roota; worker z Tesseractem `pol`+`eng`, OCRmyPDF, LibreOffice Writer); obraz `db` przy pierwszym starcie tworzy zwykłego użytkownika aplikacji. Nowe zmienne w `.env.example`.
 - Spike polskiego słownika wykonany: Hunspell wystarcza (wyniki, zmierzona pamięć i braki w `search.md`, ADR-016). Testy wzorcowe wyszukiwania w `tests/search_golden/` i `make test-db`, które uruchamia je na jednorazowej bazie w Dockerze bez publikowania portu.
