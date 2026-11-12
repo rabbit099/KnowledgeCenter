@@ -8,4 +8,5 @@ manifest = ModuleManifest(
     requires=("documents",),
     menu=(MenuItem(label="Search", path="/search", permission="documents.read", order=10),),
     migrations_branch="search",
+    migrations_path="baza_wiedzy.modules.search.migrations",
 )

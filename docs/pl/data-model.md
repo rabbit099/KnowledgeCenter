@@ -15,7 +15,7 @@ Każdy moduł jest właścicielem swoich tabel i żaden moduł nie czyta ani nie
 | `search` | `srch_` | `srch_parts` |
 | `ingestion` | `ing_` | brak w MVP: status przetwarzania i metadane są w `doc_versions` i aktualizowane przez `documents.services.api` |
 
-Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`.
+Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`. Pliki rewizji leżą w pakiecie wskazanym przez `migrations_path` w manifeście (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<nazwa>/migrations/`) i mają nazwy `<gałąź>_<NNNN>_<opis>.py` z identyfikatorem rewizji `<gałąź>_<NNNN>`; `alembic/env.py` i `alembic.ini` są wspólne. `baza-wiedzy migrate` aktualizuje `core`, a potem gałęzie włączonych modułów w kolejności zależności. Rewizje wyłączonych modułów pozostają znane, więc baza zmigrowana z modułem, który teraz jest wyłączony, nadal działa. Nową rewizję tworzy `make revision branch=<gałąź> m="tekst"`. Obecne rewizje: `core_0001` (rozszerzenia), `search_0001` (słownik i konfiguracje wyszukiwania tekstowego, `depends_on` `core_0001`). `alembic_version` przechowuje tylko głowy, więc po pełnej migracji zawiera `search_0001`; `core_0001` wynika z `depends_on`.
 
 ## Tabele
 
@@ -75,9 +75,9 @@ doc_documents >─ doc_categories
 
 ## Obiekty wyszukiwania tekstowego
 
-Tworzone przez init SQL obrazu `db` oraz przez Alembic (gałąź `core`):
-- rozszerzenia `pg_trgm`, `unaccent`
-- słownik `pl_hunspell`, konfiguracja `pl` (Hunspell, potem `simple` dla słów nieznanych)
+Tworzone wyłącznie przez migracje Alembic, w schemacie `public`, jako zwykły użytkownik aplikacji (obraz `db` zawiera tylko pliki słownika):
+- rozszerzenia `pg_trgm`, `unaccent` (`core_0001`)
+- słownik `pl_hunspell` (`search_0001`), konfiguracja `pl` (Hunspell, potem `simple` dla słów nieznanych)
 - konfiguracja `simple_unaccent`
 - wbudowana `english`
 

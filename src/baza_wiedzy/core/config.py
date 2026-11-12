@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # app: 5 + 5 overflow per process; worker: 1 + 0 per process (set in docker-compose.yml).
     db_pool_size: int = 5
     db_max_overflow: int = 5
+    # Alembic configuration file; relative paths are resolved from the working directory
+    # (/opt/app in the images, the repository root in development).
+    alembic_ini: str = "alembic.ini"
     # redis://:password@redis:6379/0 (built in docker-compose.yml).
     redis_url: str = "redis://localhost:6379/0"
     # Comma-separated in the environment: ENABLED_MODULES=documents,ingestion,search

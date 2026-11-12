@@ -22,6 +22,8 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app \
     && mkdir -p /data/storage /data/tmp && chown -R app:app /data
 COPY --from=builder /opt/venv /opt/venv
+COPY alembic.ini /opt/app/alembic.ini
+COPY alembic /opt/app/alembic
 WORKDIR /opt/app
 USER app
 # The Dramatiq actors arrive in Phase 0 stage B6.

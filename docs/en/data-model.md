@@ -15,7 +15,7 @@ Every module owns its tables, and no module reads or writes the tables of anothe
 | `search` | `srch_` | `srch_parts` |
 | `ingestion` | `ing_` | none in the MVP: processing status and metadata live in `doc_versions` and are updated through `documents.services.api` |
 
-A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`.
+A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. `baza-wiedzy migrate` upgrades `core` and then the branches of the enabled modules in dependency order. Revisions of disabled modules stay known, so a database migrated with a module that is now disabled still works. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads, so after a full migration it contains `search_0001`; `core_0001` is implied by `depends_on`.
 
 ## Tables
 
@@ -75,9 +75,9 @@ doc_documents >─ doc_categories
 
 ## Text-search objects
 
-Created by the init SQL of the `db` image and by Alembic (`core` branch):
-- extensions `pg_trgm`, `unaccent`
-- dictionary `pl_hunspell`, configuration `pl` (Hunspell, then `simple` for unknown words)
+Created only by Alembic migrations, in schema `public`, as the non-superuser application role (the `db` image ships only the dictionary files):
+- extensions `pg_trgm`, `unaccent` (`core_0001`)
+- dictionary `pl_hunspell` (`search_0001`), configuration `pl` (Hunspell, then `simple` for unknown words)
 - configuration `simple_unaccent`
 - built-in `english`
 

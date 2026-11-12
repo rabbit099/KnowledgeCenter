@@ -170,7 +170,8 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
 | `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
-| `make migrate` / `make revision m="text"` | Apply or create database migrations (needs Docker) |
+| `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (core@head, search@head).` |
+| `make revision branch=<branch> m="text"` | Creates an empty migration file in the branch of the core or a module (`core`, `search`, ...), on the host, no database needed |
 | `make shell` | Shell inside the `app` container (needs Docker) |
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
 

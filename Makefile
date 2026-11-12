@@ -65,9 +65,9 @@ migrate: _need-docker ## Apply database migrations
 	$(COMPOSE_DEV) run --rm app baza-wiedzy migrate
 
 .PHONY: revision
-revision: _need-docker ## Create a migration: make revision m="message"
-	@test -n "$(m)" || { echo 'Usage: make revision m="message"'; exit 1; }
-	$(COMPOSE_DEV) run --rm app alembic revision --autogenerate -m "$(m)"
+revision: ## Create an empty migration: make revision branch=search m="message"
+	@test -n "$(m)" -a -n "$(branch)" || { echo 'Usage: make revision branch=<core|module> m="message"'; exit 1; }
+	uv run baza-wiedzy revision --branch "$(branch)" -m "$(m)"
 
 .PHONY: shell
 shell: _need-docker ## Shell in the app container

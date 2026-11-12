@@ -1,38 +1,18 @@
 """Fixtures for the golden search tests (CLAUDE.md section 7, docs/en/search.md).
 
-They need a real PostgreSQL built from docker/db and run through `make test-db`.
-Without TEST_DATABASE_URL they are skipped.
+They need a real PostgreSQL built from docker/db and run through `make test-db`; the search
+objects come from the real migrations (`migrated` fixture). Without TEST_DATABASE_URL they are
+skipped.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 
 import psycopg
 import pytest
 
-# The same objects the `search` migration creates (Phase 0, stage B5). Kept in sync by hand
-# until the tests run the migrations instead.
-EXTENSIONS_DDL = """
-CREATE EXTENSION IF NOT EXISTS unaccent;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-"""
-
-SEARCH_DDL = """
-CREATE TEXT SEARCH DICTIONARY pl_hunspell (
-    TEMPLATE = ispell, DictFile = pl_pl, AffFile = pl_pl, StopWords = polish);
-CREATE TEXT SEARCH CONFIGURATION pl (COPY = simple);
-ALTER TEXT SEARCH CONFIGURATION pl
-    ALTER MAPPING FOR asciiword, word, numword, asciihword, hword, numhword,
-                      hword_asciipart, hword_part, hword_numpart
-    WITH pl_hunspell, simple;
-CREATE TEXT SEARCH CONFIGURATION simple_unaccent (COPY = simple);
-ALTER TEXT SEARCH CONFIGURATION simple_unaccent
-    ALTER MAPPING FOR asciiword, word, numword, asciihword, hword, numhword,
-                      hword_asciipart, hword_part, hword_numpart
-    WITH unaccent, simple;
-"""
+from baza_wiedzy.core.config import Settings
 
 CORPUS_DDL = """
 CREATE TABLE golden_docs (
@@ -65,19 +45,15 @@ CORPUS: dict[str, str] = {
 
 
 @pytest.fixture(scope="session")
-def db() -> Iterator[psycopg.Connection[tuple[object, ...]]]:
-    url = os.environ.get("TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_DATABASE_URL is not set; run `make test-db`")
+def db(migrated: Settings) -> Iterator[psycopg.Connection[tuple[object, ...]]]:
+    url = migrated.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(url, autocommit=True) as conn:
         is_super = conn.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
         row = is_super.fetchone()
         assert row is not None and row[0] is False, "tests must run as a non-superuser"
-        conn.execute(EXTENSIONS_DDL)
         conn.execute("DROP SCHEMA IF EXISTS golden CASCADE")
         conn.execute("CREATE SCHEMA golden")
         conn.execute("SET search_path = golden, public")
-        conn.execute(SEARCH_DDL)
         conn.execute(CORPUS_DDL)
         with conn.cursor() as cur:
             cur.executemany(

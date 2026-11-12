@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from baza_wiedzy import __version__
 from baza_wiedzy.core import health
 from baza_wiedzy.core.config import Settings
+from baza_wiedzy.core.db.migrate import schema_check
 from baza_wiedzy.core.db.session import make_engine
 from baza_wiedzy.core.events import EventBus
 from baza_wiedzy.core.registry import load_ref, load_registry
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ready_checks = {
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),
+        "schema": schema_check(engine, settings, registry),
     }
     registry.register_events(app.state.events)
 

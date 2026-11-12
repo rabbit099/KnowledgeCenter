@@ -170,7 +170,8 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
-| `make migrate` / `make revision m="tekst"` | Stosuje lub tworzy migracje bazy (wymaga Dockera) |
+| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (core@head, search@head).` |
+| `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
