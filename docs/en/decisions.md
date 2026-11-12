@@ -78,3 +78,4 @@ Each version is pinned by `uv.lock`. Later phases add their own entries (for exa
 5. Should Readers also see archived documents? Default: no.
 6. Is a virus scan (ClamAV) required by company policy? Default: optional profile, off.
 7. Is the "about 200" figure documents or users?
+8. To decide in Phase 2: in-process events are not persisted. If a process dies between "text extracted" and "search indexed" (or a handler fails), the event is lost. Options: rely on `processing_status` plus a reprocessing command (`baza-wiedzy reprocess`), or an outbox table. Nothing is built until Phase 2.

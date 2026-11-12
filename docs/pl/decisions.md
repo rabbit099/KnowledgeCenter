@@ -78,3 +78,4 @@ Każda wersja jest przypięta w `uv.lock`. Kolejne fazy dodają własne wpisy (n
 5. Czy Reader ma też widzieć dokumenty zarchiwizowane? Domyślnie: nie.
 6. Czy skanowanie antywirusowe (ClamAV) jest wymagane polityką firmy? Domyślnie: opcjonalny profil, wyłączony.
 7. Czy „ok 200” to dokumenty czy użytkownicy?
+8. Do rozstrzygnięcia w Fazie 2: zdarzenia w obrębie procesu nie są trwałe. Jeśli proces padnie między „tekst wyodrębniony” a „zaindeksowano w wyszukiwarce” (albo handler zgłosi błąd), zdarzenie przepada. Opcje: oprzeć się na `processing_status` i poleceniu ponownego przetwarzania (`baza-wiedzy reprocess`) albo na tabeli outbox. Nic nie budujemy przed Fazą 2.
