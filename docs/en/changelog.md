@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- Dependabot configuration (GitHub Actions SHAs, Docker base images, Compose images monthly with a 14-day cooldown; Python security updates only). Deployment docs: GHCR packages are private, the server needs a token with `read:packages`.
 - CI (`ci.yml`): lint, types, module boundaries, unit tests, docs check, integration tests with PostgreSQL and Redis, image build for `linux/amd64` and a smoke test of the production Compose file (`make smoke`). Release workflow (`release.yml`, prepared, not run): checks tag against `pyproject.toml` and changelogs, publishes four images (`app`, `worker`, `db`, `proxy`) to GHCR with commit labels (ADR-017). Offline bundle script with all six images. Redis and ClamAV pinned by digest; proxy host ports configurable (`HTTP_PORT`, `HTTPS_PORT`). The application version comes from `pyproject.toml`.
 - Logs are JSON lines (`ts`, `level`, `logger`, `message`, `process`, `exc`) from `app` and the worker processes; new variable `LOG_LEVEL`.
 - `baza-wiedzy migrate` applies the migrations of all modules, independent of `ENABLED_MODULES`; `/ready` compares the schema with all migration heads. Dependency policy: security-fix exception and monthly review (ADR-015).

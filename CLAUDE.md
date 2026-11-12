@@ -86,7 +86,7 @@ baza-wiedzy/
 ├── docs/
 │   ├── en/
 │   └── pl/
-└── .github/workflows/ # ci.yml, release.yml
+└── .github/           # workflows/ci.yml, workflows/release.yml, dependabot.yml
 ```
 
 ## 5. Commands (keep the Makefile as the single entry point)
@@ -184,11 +184,11 @@ Code works and is typed; tests pass; `make lint` and `make docs-check` pass; doc
 
 ## 14. Open questions (mirror of `docs/en/decisions.md`)
 
-1. Can a Publisher publish documents uploaded by other people? Current default: only their own. A separate permission `documents.publish_any` covers the rest.
+1. Decided 2026-11-12: a Publisher publishes only their own documents; `documents.publish_any` is not part of the Publisher role.
 2. Retention policy for archived documents and audit log (GDPR/RODO).
-3. TLS: internal CA certificate or Let's Encrypt (`TLS_MODE` is configurable).
+3. TLS: working assumption internal CA (`TLS_MODE=files`), Let's Encrypt (`acme`) as a variant; to be confirmed with the domain administrator.
 4. Backup destination and monitoring integration (`/ready` exists; backup scripts come in Phase 6; destination decided later).
-5. Should Readers also see archived documents? Default: no.
+5. Decided 2026-11-12: Readers do not see archived documents.
 6. Is a virus scan (ClamAV) required by company policy? Default: optional `antivirus` profile, off.
 7. Expected size: "about 200" at start — documents or users? Design for 20,000 documents and 100 users until confirmed.
 8. Phase 2: in-process events are not persisted; choose between `processing_status` + reprocess command and an outbox table.

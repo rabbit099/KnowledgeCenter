@@ -67,7 +67,7 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 ## First installation
 
 1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
-2. Log in to the registry: `docker login ghcr.io` with a token that can read packages.
+2. Log in to the registry. GHCR packages are **private by default**, so the server needs a token: create a GitHub personal access token (classic) with only the `read:packages` scope, ideally for a dedicated account with read access to the repository, then on the server: `echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin` (expected: `Login Succeeded`; the credentials are stored in `~/.docker/config.json` of the user running Docker, protect that file). Without it `docker compose pull` fails with `denied` or `unauthorized`. Renew the token before it expires; the same applies to the machine that builds the offline bundle.
 3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull && docker compose up -d`. All four project images (`app`, `worker`, `db`, `proxy`) come from GHCR; nothing is built on the server.
 4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
 5. Create the first admin: `docker compose exec app baza-wiedzy create-admin <username>`.
@@ -115,7 +115,7 @@ Switches `APP_VERSION` back and restarts. If the schema changed incompatibly, re
 
 ### Offline server
 
-On a machine with internet access and `docker login ghcr.io`, from a checkout of the release tag:
+On a machine with internet access and `docker login ghcr.io` (token with `read:packages`, see First installation), from a checkout of the release tag:
 
 ```
 git checkout v1.2.0
@@ -229,7 +229,7 @@ Known warnings (harmless, tracked for the monthly dependency review):
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 announces a change of the HTTP client used by FastAPI's `TestClient`. Tests are not affected; revisit when FastAPI/Starlette document the replacement.
 - `make up`: Caddy logs `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (for the port-80 redirect server) and `stapling OCSP` (internal certificate). All expected.
 
-Dependencies: versions are pinned in `uv.lock` and only releases older than `exclude-newer` (in `pyproject.toml`) are resolved. Upgrades happen in the monthly dependency review or, for security fixes, as an exception; the procedure is in ADR-015 ([decisions.md](decisions.md)).
+Dependencies: versions are pinned in `uv.lock` and only releases older than `exclude-newer` (in `pyproject.toml`) are resolved. Upgrades happen in the monthly dependency review or, for security fixes, as an exception; the procedure is in ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) opens monthly pull requests for GitHub Actions SHAs, Dockerfile base images and the images in `docker-compose.yml` (only releases older than 14 days), and security pull requests for Python packages.
 
 Local stack: `cp .env.example .env` once (the defaults are fine for development), then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. On a machine with little memory (for example WSL2, which by default gets half of the host RAM) lower the limits in your development `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; check the memory available to Docker with `docker info --format '{{.MemTotal}}'`. The defaults are sized for the server. After the first `make up` run `make migrate`; then `curl -k https://localhost/ready` returns `"status":"ok"` with all four checks `ok`. In development `app` and `worker` give up after 3 failed starts (`restart: on-failure:3`) instead of restarting forever; `make logs` shows why. The web server reloads on code changes; the worker does not: after changing task code run `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
 

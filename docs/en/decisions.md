@@ -69,6 +69,7 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Phase 0, stage B5: `alembic` (migrations from the stack; one branch per module).
 - Phase 0, stage B6: `dramatiq[redis]` (job queue from the stack; the `redis` extra pulls the Redis client already listed).
 - Phase 0, stage B7 (CI, not Python packages): GitHub Actions `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.2, `docker/setup-buildx-action` v4.4.1, `docker/login-action` v4.7.0, `docker/build-push-action` v7.4.0, each pinned to its commit SHA (older than `exclude-newer`); workflows were checked with `actionlint` and the shell scripts with `shellcheck` (both run from their Docker images, not installed in the project).
+- Dependabot (`.github/dependabot.yml`), consistent with the rules above: `github-actions` (updates the pinned commit SHAs together with the version comment), `docker` (base images in `docker/*/Dockerfile`) and `docker-compose` (`redis`, `clamav` tag and digest), all monthly, grouped, with a 14-day `cooldown` that mirrors `exclude-newer`. For Python (`uv`) routine version pull requests are switched off (`open-pull-requests-limit: 0`): `exclude-newer` would block them and versions move in the monthly review; Dependabot security updates (enable "Dependabot alerts" and "Dependabot security updates" in the repository settings) still open pull requests, handled with the security-fix exception (`exclude-newer-package`). Every Dependabot pull request runs the full CI; none is merged without it. The monthly review starts by merging or closing the open Dependabot pull requests. Dependabot does not track the Debian package `hunspell-pl`; the review checks it by hand.
 
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
 
@@ -90,11 +91,11 @@ Status: accepted. The proxy needs its own image: the official Caddy image cannot
 
 ## Open questions
 
-1. Can a Publisher publish documents uploaded by others? Default: no, only their own (`documents.publish_any` exists for the rest).
+1. ~~Can a Publisher publish documents uploaded by others?~~ Decided 2026-11-12: no. The Publisher role publishes only its own documents; `documents.publish_any` is not part of Publisher (an admin can grant it through a custom role).
 2. Retention: how long are archived documents and audit entries kept (GDPR/RODO)?
-3. TLS certificate: internal CA or Let's Encrypt?
+3. TLS certificate: internal CA or Let's Encrypt? Working assumption (2026-11-12): internal company CA (`TLS_MODE=files`, or `internal` for tests); Let's Encrypt (`acme`) stays a supported variant. To be confirmed with the domain administrator.
 4. Backup destination (NAS, second server, object storage) and monitoring integration.
-5. Should Readers also see archived documents? Default: no.
+5. ~~Should Readers also see archived documents?~~ Decided 2026-11-12: no. Readers see only published documents.
 6. Is a virus scan (ClamAV) required by company policy? Default: optional profile, off.
 7. Is the "about 200" figure documents or users?
 8. To decide in Phase 2: in-process events are not persisted. If a process dies between "text extracted" and "search indexed" (or a handler fails), the event is lost. Options: rely on `processing_status` plus a reprocessing command (`baza-wiedzy reprocess`), or an outbox table. Nothing is built until Phase 2.

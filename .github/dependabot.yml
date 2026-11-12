@@ -1,0 +1,56 @@
+# Dependabot (ADR-015). Policy: nothing newer than 14 days (cooldown, mirrors uv's
+# exclude-newer), monthly batches, all updates go through CI like any pull request.
+version: 2
+updates:
+  # Workflow actions are pinned to commit SHAs; Dependabot updates the SHA and the
+  # version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Base images of the four project images (FROM lines, pinned tags).
+  - package-ecosystem: docker
+    directories:
+      - /docker/app
+      - /docker/worker
+      - /docker/db
+      - /docker/caddy
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      base-images:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Third-party images in docker-compose.yml (redis, clamav: tag + digest).
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Python dependencies: no routine version PRs. `exclude-newer` in pyproject.toml would block
+  # them anyway; versions move in the monthly review (ADR-015). With a limit of 0 Dependabot
+  # still opens SECURITY update PRs (repository setting "Dependabot security updates"), which
+  # are handled with the security-fix exception (exclude-newer-package).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "fix(deps)"

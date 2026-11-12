@@ -69,6 +69,7 @@ Status: przyjęta. Nic spoza stacku z `CLAUDE.md`, sekcja 3, bez wpisu tutaj.
 - Faza 0, etap B5: `alembic` (migracje ze stacku; jedna gałąź na moduł).
 - Faza 0, etap B6: `dramatiq[redis]` (kolejka zadań ze stacku; dodatek `redis` dociąga już wymieniony klient Redis).
 - Faza 0, etap B7 (CI, nie pakiety Pythona): akcje GitHub `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.2, `docker/setup-buildx-action` v4.4.1, `docker/login-action` v4.7.0, `docker/build-push-action` v7.4.0, każda przypięta do SHA commita (starsze niż `exclude-newer`); workflowy sprawdzone przez `actionlint`, skrypty powłoki przez `shellcheck` (oba uruchamiane z obrazów Dockera, nie instalowane w projekcie).
+- Dependabot (`.github/dependabot.yml`), zgodnie z powyższymi zasadami: `github-actions` (aktualizuje przypięte SHA commitów razem z komentarzem wersji), `docker` (obrazy bazowe w `docker/*/Dockerfile`) i `docker-compose` (`redis`, `clamav`, tag i digest), wszystkie co miesiąc, pogrupowane, z 14-dniowym `cooldown`, który odpowiada `exclude-newer`. Dla Pythona (`uv`) rutynowe pull requesty z wersjami są wyłączone (`open-pull-requests-limit: 0`): `exclude-newer` i tak by je zablokował, a wersje zmieniamy w przeglądzie miesięcznym; aktualizacje bezpieczeństwa Dependabota (włącz „Dependabot alerts” i „Dependabot security updates” w ustawieniach repozytorium) nadal otwierają pull requesty, obsługiwane według wyjątku dla poprawek bezpieczeństwa (`exclude-newer-package`). Każdy pull request Dependabota przechodzi pełne CI; żaden nie jest scalany bez tego. Przegląd miesięczny zaczyna się od scalenia albo zamknięcia otwartych pull requestów Dependabota. Dependabot nie śledzi debianowego pakietu `hunspell-pl`; przegląd sprawdza go ręcznie.
 
 Każda wersja jest przypięta w `uv.lock`. Kolejne fazy dodają własne wpisy (na przykład `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) w miarę wprowadzania.
 
@@ -90,11 +91,11 @@ Status: przyjęta. Proxy potrzebuje własnego obrazu: oficjalnego obrazu Caddy n
 
 ## Otwarte pytania
 
-1. Czy Publisher może publikować dokumenty wgrane przez innych? Domyślnie: nie, tylko własne (`documents.publish_any` obejmuje resztę).
+1. ~~Czy Publisher może publikować dokumenty wgrane przez innych?~~ Rozstrzygnięte 2026-11-12: nie. Rola Publisher publikuje tylko własne dokumenty; `documents.publish_any` nie należy do roli Publisher (admin może je nadać przez własną rolę).
 2. Retencja: jak długo przechowywać dokumenty zarchiwizowane i wpisy audytowe (RODO)?
-3. Certyfikat TLS: wewnętrzne CA czy Let's Encrypt?
+3. Certyfikat TLS: wewnętrzne CA czy Let's Encrypt? Założenie robocze (2026-11-12): wewnętrzne CA firmy (`TLS_MODE=files`, albo `internal` do testów); Let's Encrypt (`acme`) pozostaje obsługiwanym wariantem. Do potwierdzenia z administratorem domeny.
 4. Miejsce docelowe backupów (NAS, drugi serwer, magazyn obiektowy) i integracja z monitoringiem.
-5. Czy Reader ma też widzieć dokumenty zarchiwizowane? Domyślnie: nie.
+5. ~~Czy Reader ma też widzieć dokumenty zarchiwizowane?~~ Rozstrzygnięte 2026-11-12: nie. Reader widzi tylko dokumenty opublikowane.
 6. Czy skanowanie antywirusowe (ClamAV) jest wymagane polityką firmy? Domyślnie: opcjonalny profil, wyłączony.
 7. Czy „ok 200” to dokumenty czy użytkownicy?
 8. Do rozstrzygnięcia w Fazie 2: zdarzenia w obrębie procesu nie są trwałe. Jeśli proces padnie między „tekst wyodrębniony” a „zaindeksowano w wyszukiwarce” (albo handler zgłosi błąd), zdarzenie przepada. Opcje: oprzeć się na `processing_status` i poleceniu ponownego przetwarzania (`baza-wiedzy reprocess`) albo na tabeli outbox. Nic nie budujemy przed Fazą 2.

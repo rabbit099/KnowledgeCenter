@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Added
+- Konfiguracja Dependabota (SHA akcji GitHub, obrazy bazowe Dockera, obrazy Compose co miesiąc z 14-dniowym cooldownem; dla Pythona tylko aktualizacje bezpieczeństwa). Dokumentacja wdrożenia: pakiety GHCR są prywatne, serwer potrzebuje tokenu z `read:packages`.
 - CI (`ci.yml`): lint, typy, granice modułów, testy jednostkowe, kontrola dokumentacji, testy integracyjne z PostgreSQL i Redisem, budowanie obrazów dla `linux/amd64` i test dymny produkcyjnego pliku Compose (`make smoke`). Workflow wydania (`release.yml`, przygotowany, nieuruchamiany): sprawdza tag względem `pyproject.toml` i dzienników zmian, publikuje cztery obrazy (`app`, `worker`, `db`, `proxy`) w GHCR z etykietami commita (ADR-017). Skrypt pakietu offline ze wszystkimi sześcioma obrazami. Redis i ClamAV przypięte digestem; porty proxy na hoście konfigurowalne (`HTTP_PORT`, `HTTPS_PORT`). Wersja aplikacji pochodzi z `pyproject.toml`.
 - Logi to linie JSON (`ts`, `level`, `logger`, `message`, `process`, `exc`) z `app` i procesów workera; nowa zmienna `LOG_LEVEL`.
 - `baza-wiedzy migrate` stosuje migracje wszystkich modułów, niezależnie od `ENABLED_MODULES`; `/ready` porównuje schemat ze wszystkimi głowami migracji. Zasady zależności: wyjątek dla poprawek bezpieczeństwa i miesięczny przegląd (ADR-015).

@@ -67,7 +67,7 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 ## Pierwsza instalacja
 
 1. Skopiuj `docker-compose.yml`, `.env.example` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
-2. Zaloguj się do rejestru: `docker login ghcr.io` tokenem z prawem odczytu pakietów.
+2. Zaloguj się do rejestru. Pakiety GHCR są **domyślnie prywatne**, więc serwer potrzebuje tokenu: utwórz osobisty token dostępu GitHub (classic) wyłącznie z zakresem `read:packages`, najlepiej dla osobnego konta z prawem odczytu repozytorium, a potem na serwerze: `echo "<token>" | docker login ghcr.io -u <użytkownik-github> --password-stdin` (oczekiwane: `Login Succeeded`; dane logowania trafiają do `~/.docker/config.json` użytkownika uruchamiającego Dockera, chroń ten plik). Bez tego `docker compose pull` kończy się błędem `denied` albo `unauthorized`. Odnów token przed wygaśnięciem; to samo dotyczy maszyny budującej pakiet offline.
 3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull && docker compose up -d`. Wszystkie cztery obrazy projektu (`app`, `worker`, `db`, `proxy`) pochodzą z GHCR; nic nie jest budowane na serwerze.
 4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`.
 5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin <username>`.
@@ -115,7 +115,7 @@ Przełącza `APP_VERSION` z powrotem i restartuje. Jeśli schemat zmienił się 
 
 ### Serwer offline
 
-Na maszynie z dostępem do internetu i po `docker login ghcr.io`, z kopii repozytorium na tagu wydania:
+Na maszynie z dostępem do internetu i po `docker login ghcr.io` (token z `read:packages`, zob. Pierwsza instalacja), z kopii repozytorium na tagu wydania:
 
 ```
 git checkout v1.2.0
@@ -229,7 +229,7 @@ Znane ostrzeżenia (nieszkodliwe, sprawdzane przy miesięcznym przeglądzie zale
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 zapowiada zmianę klienta HTTP używanego przez `TestClient` FastAPI. Testy nie są dotknięte; wrócimy do tego, gdy FastAPI/Starlette opiszą zamiennik.
 - `make up`: Caddy loguje `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (dla serwera przekierowania na porcie 80) i `stapling OCSP` (certyfikat wewnętrzny). Wszystko oczekiwane.
 
-Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydania starsze niż `exclude-newer` (w `pyproject.toml`). Aktualizacje odbywają się w miesięcznym przeglądzie zależności albo, dla poprawek bezpieczeństwa, jako wyjątek; procedura jest w ADR-015 ([decisions.md](decisions.md)).
+Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydania starsze niż `exclude-newer` (w `pyproject.toml`). Aktualizacje odbywają się w miesięcznym przeglądzie zależności albo, dla poprawek bezpieczeństwa, jako wyjątek; procedura jest w ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) co miesiąc otwiera pull requesty dla SHA akcji GitHub, obrazów bazowych w Dockerfile'ach i obrazów w `docker-compose.yml` (tylko wydania starsze niż 14 dni) oraz pull requesty bezpieczeństwa dla paczek Pythona.
 
 Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
 
