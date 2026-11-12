@@ -8,7 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ### Added
 - Repository skeleton: Python 3.12 project managed with `uv`, `Makefile` as the single command entry point, pre-commit (ruff, mypy), `.env.example`, LF line endings.
-- `scripts/check_docs.py` and `make docs-check`: verify that the English and Polish documentation (including `modules/`) have the same files, headings and header lines, and that both changelogs have `[Unreleased]`.
+- `scripts/check_docs.py` and `make docs-check`: verify that the English and Polish documentation (including `modules/`) have the same files, headings and header lines, that both changelogs have `[Unreleased]`, and that every module in `src/baza_wiedzy/modules/` has a page in `docs/en/modules/` and `docs/pl/modules/`.
 - Modular structure: always-on core plus modules `documents`, `ingestion`, `search` (empty manifests for now) selected with `ENABLED_MODULES`; dependency check at startup with readable errors; permission catalog assembled from module manifests; in-process event bus; module boundaries checked by import-linter in `make lint`.
 - Documentation of the modular design: ADR-013 to ADR-015, module pages in `docs/*/modules/`, new sections in architecture, data model, deployment and operations.
 - Planned table names now carry a module prefix (`doc_*`, `srch_*`, `ing_*`); the indexed text table is `srch_parts` (was `document_parts`). Documentation only; no tables exist yet.

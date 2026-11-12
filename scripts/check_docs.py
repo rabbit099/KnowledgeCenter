@@ -4,7 +4,9 @@ Rules:
 - docs/en and docs/pl contain the same set of files (also in subdirectories such as modules/);
 - every file pair has the same number of H2 and H3 headings (code fences are ignored);
 - every file has the header line (`> Applies to: ...` / `> Dotyczy: ...`) as its first block;
-- both changelogs contain an `[Unreleased]` section.
+- both changelogs contain an `[Unreleased]` section;
+- every module package in src/baza_wiedzy/modules/<name>/ has
+  docs/en/modules/<name>.md and docs/pl/modules/<name>.md (CLAUDE.md section 6a).
 
 Exit code 0 = OK, 1 = problems found (each one is printed).
 """
@@ -49,7 +51,16 @@ def header_line_ok(text: str, pattern: re.Pattern[str]) -> bool:
     return len(lines) >= 2 and lines[0].startswith("# ") and bool(pattern.match(lines[1]))
 
 
-def check(docs_dir: Path) -> list[str]:
+def module_names(modules_dir: Path) -> list[str]:
+    """Names of module packages (directories with an __init__.py) in modules_dir."""
+    if not modules_dir.is_dir():
+        return []
+    return sorted(
+        p.name for p in modules_dir.iterdir() if p.is_dir() and (p / "__init__.py").is_file()
+    )
+
+
+def check(docs_dir: Path, modules_dir: Path | None = None) -> list[str]:
     problems: list[str] = []
     roots = {lang: docs_dir / lang for lang in LANGS}
     for lang, root in roots.items():
@@ -83,12 +94,19 @@ def check(docs_dir: Path) -> list[str]:
             problems.append(f"{lang}/changelog.md is missing")
         elif UNRELEASED not in changelog.read_text(encoding="utf-8").splitlines():
             problems.append(f"{lang}/changelog.md: no '{UNRELEASED}' section")
+
+    if modules_dir is not None:
+        for name in module_names(modules_dir):
+            for lang in LANGS:
+                doc = f"{lang}/modules/{name}.md"
+                if not (docs_dir / doc).is_file():
+                    problems.append(f"module '{name}' has no documentation: {doc}")
     return problems
 
 
 def main() -> int:
-    docs_dir = Path(__file__).resolve().parent.parent / "docs"
-    problems = check(docs_dir)
+    repo = Path(__file__).resolve().parent.parent
+    problems = check(repo / "docs", repo / "src" / "baza_wiedzy" / "modules")
     if problems:
         print("Documentation check FAILED:")
         for problem in problems:

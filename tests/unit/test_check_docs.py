@@ -58,3 +58,38 @@ def test_missing_unreleased(tmp_path: Path) -> None:
     docs = make_docs(tmp_path)
     write(docs / "pl" / "changelog.md", PL_HEADER, "## [1.0.0]\n")
     assert any("Unreleased" in p for p in check_docs.check(docs))
+
+
+def make_modules(tmp_path: Path, *names: str) -> Path:
+    modules = tmp_path / "modules_src"
+    for name in names:
+        (modules / name).mkdir(parents=True)
+        (modules / name / "__init__.py").write_text("", encoding="utf-8")
+    (modules / "__pycache__").mkdir(parents=True, exist_ok=True)
+    return modules
+
+
+def test_documented_module_passes(tmp_path: Path) -> None:
+    docs = make_docs(tmp_path)
+    assert check_docs.check(docs, make_modules(tmp_path, "m")) == []
+
+
+def test_undocumented_module_fails_in_both_languages(tmp_path: Path) -> None:
+    docs = make_docs(tmp_path)
+    problems = check_docs.check(docs, make_modules(tmp_path, "m", "billing"))
+    assert problems == [
+        "module 'billing' has no documentation: en/modules/billing.md",
+        "module 'billing' has no documentation: pl/modules/billing.md",
+    ]
+
+
+def test_directory_without_init_is_not_a_module(tmp_path: Path) -> None:
+    docs = make_docs(tmp_path)
+    modules = make_modules(tmp_path, "m")
+    (modules / "notes").mkdir()
+    assert check_docs.check(docs, modules) == []
+
+
+def test_repository_modules_are_documented() -> None:
+    repo = Path(check_docs.__file__).resolve().parent.parent
+    assert check_docs.check(repo / "docs", repo / "src" / "baza_wiedzy" / "modules") == []

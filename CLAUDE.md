@@ -153,7 +153,7 @@ The documentation is part of the product and you maintain it.
 - Add an entry under `[Unreleased]` in `docs/en/changelog.md` and `docs/pl/changelog.md` for every user-visible or operator-visible change.
 - Architectural or technology decisions go to `docs/en/decisions.md` / `docs/pl/decisions.md` as a new ADR entry. Do not rewrite old ADRs; supersede them.
 - Tick the checklist in `docs/*/README.md` when a roadmap item is finished.
-- `scripts/check_docs.py` (run by `make docs-check` and in CI) verifies: same file set in `en/` and `pl/`, same number of H2/H3 headings per file pair, the header line is present, `[Unreleased]` exists in both changelogs. Keep it passing.
+- `scripts/check_docs.py` (run by `make docs-check` and in CI) verifies: same file set in `en/` and `pl/`, same number of H2/H3 headings per file pair, the header line is present, `[Unreleased]` exists in both changelogs, every module in `src/baza_wiedzy/modules/` has `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`. Keep it passing.
 - Write for a future operator who has not seen the code: exact commands, expected output, what to do when it fails.
 
 ## 10. Testing rules
