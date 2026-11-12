@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 
 import check_release
@@ -38,9 +39,11 @@ def test_malformed_tag_is_refused(tmp_path: Path) -> None:
     assert check_release.check("v1.2", tmp_path) == ["tag 'v1.2' is not of the form vX.Y.Z"]
 
 
-def test_current_repository_is_not_releasable_as_unreleased_version() -> None:
+def test_repository_version_has_changelog_sections() -> None:
+    # The version in pyproject.toml always matches a released section in both changelogs:
+    # it is only changed in a release commit, together with the changelogs.
     root = Path(check_release.__file__).resolve().parent.parent
-    assert check_release.check("v0.0.0", root) == [
-        "docs/en/changelog.md has no section '## [0.0.0]'",
-        "docs/pl/changelog.md has no section '## [0.0.0]'",
+    version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
     ]
+    assert check_release.check(f"v{version}", root) == []

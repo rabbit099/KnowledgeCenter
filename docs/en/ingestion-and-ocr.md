@@ -1,6 +1,6 @@
 # Ingestion and OCR
 
-> Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-12
 
 How an uploaded file becomes searchable text. Upload validation and storage belong to the `documents` module; the processing described here belongs to the `ingestion` module (see [modules/ingestion.md](modules/ingestion.md)).
 

@@ -1,10 +1,12 @@
 # Dziennik zmian
 
-> Dotyczy: v0.0.0 (przed pierwszym wydaniem) · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-12
 
 ### Added
 - Konfiguracja Dependabota (SHA akcji GitHub, obrazy bazowe Dockera, obrazy Compose co miesiąc z 14-dniowym cooldownem; dla Pythona tylko aktualizacje bezpieczeństwa). Dokumentacja wdrożenia: pakiety GHCR są prywatne, serwer potrzebuje tokenu z `read:packages`.

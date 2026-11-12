@@ -1,10 +1,12 @@
 # Changelog
 
-> Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-12
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-12
 
 ### Added
 - Dependabot configuration (GitHub Actions SHAs, Docker base images, Compose images monthly with a 14-day cooldown; Python security updates only). Deployment docs: GHCR packages are private, the server needs a token with `read:packages`.

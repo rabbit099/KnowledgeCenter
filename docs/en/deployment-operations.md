@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.0.0 (pre-release) · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-12
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
