@@ -65,6 +65,7 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Phase 0, stage B4: `fastapi` and `uvicorn` (web framework and ASGI server), `jinja2` (server-rendered templates), `babel` (gettext extraction and the Polish catalog, compiled in memory at startup), `sqlalchemy` (engine and pool, used by `/ready` now and by models later), `redis` (client for the `/ready` check; Dramatiq uses it too). Development only: `httpx` (required by FastAPI's `TestClient`). Front-end asset, not a Python package: HTMX 2.0.11 (0BSD), downloaded from the npm registry with its published integrity hash checked, vendored in `src/baza_wiedzy/core/web/static/vendor/`. `python-multipart` is postponed until uploads exist (Phase 2).
 - Resolution policy: `[tool.uv] exclude-newer` in `pyproject.toml` makes `uv lock` pick only releases published before a fixed date, set at least two weeks back, so a freshly published (possibly compromised or broken) release is never picked up automatically. Moving the date forward is a deliberate upgrade step.
 - Phase 0, stage B5: `alembic` (migrations from the stack; one branch per module).
+- Phase 0, stage B6: `dramatiq[redis]` (job queue from the stack; the `redis` extra pulls the Redis client already listed).
 
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
 

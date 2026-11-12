@@ -67,7 +67,13 @@ services:
     image: ${IMAGE_PREFIX:-ghcr.io/change-me/baza-wiedzy}-worker:${APP_VERSION:?set APP_VERSION in .env}
     restart: unless-stopped
     <<: *hardening
-    environment: *app-env
+    # One database connection per worker process (ADR-016); one thread per process.
+    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "${WORKER_PROCESSES:-2}", "--threads", "1"]
+    environment:
+      <<: *app-env
+      DB_POOL_SIZE: "1"
+      DB_MAX_OVERFLOW: "0"
+    stop_grace_period: 60s
     volumes:
       - storage:/data/storage
     depends_on:

@@ -18,6 +18,7 @@ from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.db.migrate import schema_check
 from baza_wiedzy.core.db.session import make_engine
 from baza_wiedzy.core.events import EventBus
+from baza_wiedzy.core.queue import heartbeat_check
 from baza_wiedzy.core.registry import load_ref, load_registry
 from baza_wiedzy.core.web import routes as core_routes
 from baza_wiedzy.core.web.templating import TEMPLATE_DIR, make_templates
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),
         "schema": schema_check(engine, settings, registry),
+        "worker": heartbeat_check(redis_client),
     }
     registry.register_events(app.state.events)
 

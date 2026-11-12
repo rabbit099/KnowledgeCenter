@@ -26,5 +26,4 @@ COPY alembic.ini /opt/app/alembic.ini
 COPY alembic /opt/app/alembic
 WORKDIR /opt/app
 USER app
-# The Dramatiq actors arrive in Phase 0 stage B6.
 CMD ["dramatiq", "baza_wiedzy.worker", "--processes", "1", "--threads", "1"]

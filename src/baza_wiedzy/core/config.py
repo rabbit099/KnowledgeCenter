@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     alembic_ini: str = "alembic.ini"
     # redis://:password@redis:6379/0 (built in docker-compose.yml).
     redis_url: str = "redis://localhost:6379/0"
+    # Each worker process writes a heartbeat key this often; the key expires after 4 intervals,
+    # so /ready reports "no heartbeat" about a minute after the last worker stopped.
+    worker_heartbeat_seconds: int = 15
     # Comma-separated in the environment: ENABLED_MODULES=documents,ingestion,search
     enabled_modules: Annotated[tuple[str, ...], NoDecode] = DEFAULT_MODULES
 

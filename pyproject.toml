@@ -7,6 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
     "babel>=2.14",
+    "dramatiq[redis]>=1.17",
     "fastapi>=0.115",
     "jinja2>=3.1",
     "psycopg[binary]>=3.2",

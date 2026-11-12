@@ -93,5 +93,6 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 - Config through environment variables only.
 - UI text: message ids are English and wrapped in `_()` in templates and code; the Polish catalog is `src/baza_wiedzy/core/web/locale/pl/LC_MESSAGES/messages.po`. It is compiled in memory at startup (no `.mo` files in the repository or the image). After changing UI text run `make messages` and translate the new `msgstr` entries; a unit test fails while any string is untranslated. `APP_NAME` comes from configuration and is never hard-coded.
 - Static files (CSS, HTMX) are served by `app` from `src/baza_wiedzy/core/web/static/`; nothing is loaded from a CDN. HTMX 2.0.11 is vendored in `static/vendor/` with its licence (0BSD). Templates link to paths only, never to absolute URLs.
+- Background jobs: Dramatiq on Redis. Actors are declared in a module and listed in its manifest (`tasks`); at start `baza_wiedzy.worker` binds the actors of the enabled modules to the broker. Each worker process writes a heartbeat key in Redis every 15 s (expires after 60 s); `/ready` checks it. Test job: `core.ping` (`baza-wiedzy worker-ping`).
 - Logs: JSON to stdout, collected by Docker with rotation.
 - Health: `/health` (process is alive), `/ready` (database, Redis, worker heartbeat, schema version).

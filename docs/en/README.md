@@ -27,9 +27,9 @@ Tick items when they are finished and documented.
 ### Phase 0 — Foundation
 - [x] Repository, `pyproject.toml`, Makefile, pre-commit
 - [x] Module registry: manifests, `ENABLED_MODULES`, event bus, boundary checks (import-linter)
-- [ ] Docker Compose: proxy, app, worker, db, redis (+ optional ClamAV profile)
+- [x] Docker Compose: proxy, app, worker, db, redis (+ optional ClamAV profile)
 - [x] Custom Postgres image with Polish Hunspell dictionary; spike result documented in `search.md`
-- [ ] Alembic baseline, `/health` and `/ready`
+- [x] Alembic baseline, `/health` and `/ready`
 - [ ] CI (lint, types, tests, docs-check, image build)
 - [x] `scripts/check_docs.py`
 

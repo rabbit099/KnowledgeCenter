@@ -45,6 +45,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Zwykły użytkownik (nie superużytkownik), właściciel bazy aplikacji; używają go aplikacja i migracje. `DATABASE_URL` jest z nich składany w `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
+| `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU) |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
@@ -150,7 +151,22 @@ Zatrzymuje `app` i `worker`, odtwarza bazę (`pg_restore --clean --if-exists`), 
 | Endpoint | Znaczenie |
 |---|---|
 | `/health` | Proces żyje (bez sprawdzania zależności) |
-| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera, wersja schematu równa wersji aplikacji |
+| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera, schemat zmigrowany dla włączonych modułów. JSON; HTTP 200, gdy każde sprawdzenie ma wartość `ok`, w przeciwnym razie 503 |
+
+Przykład poprawnej odpowiedzi (`curl -k https://<PUBLIC_HOSTNAME>/ready`):
+
+```
+{"status":"ok","version":"1.0.0","checks":{"database":"ok","redis":"ok","schema":"ok","worker":"ok"}}
+```
+
+| Sprawdzenie | Wartość inna niż `ok` | Znaczenie i co zrobić |
+|---|---|---|
+| `database` | `unreachable` | `docker compose ps db`, `docker compose logs db`; sprawdź `APP_DB_PASSWORD` |
+| `redis` | `unreachable` / `authentication failed` | `docker compose ps redis`; `REDIS_PASSWORD` w `.env` różni się od tego, z którym wystartował Redis: `docker compose up -d redis app worker` |
+| `schema` | `not migrated` / `outdated` / `unknown` | Uruchom `docker compose run --rm app baza-wiedzy migrate`. `ok (schema newer than application)` jest normalne przez chwilę podczas rollbacku |
+| `worker` | `no heartbeat` | Żaden proces workera nie zapisał heartbeatu w ostatnich 60 s: `docker compose ps worker`, `docker compose logs worker` |
+
+Sprawdzenie kolejki od początku do końca: `docker compose exec worker baza-wiedzy worker-ping` wysyła zadanie testowe i wypisuje `Worker answered in 0.6 s.` (kod wyjścia 0) albo `No answer from a worker within 10.0 s.` (kod wyjścia 1).
 
 Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpowiedzi. Endpoint z metrykami i długość kolejki to opcjonalne dodatki na później.
 
@@ -177,7 +193,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
 
-Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Stan Fazy 0: dopóki nie są gotowe etapy B4 (aplikacja WWW) i B6 (actory workera), `app` i `worker` kończą się przy starcie (w dev poddają się po 3 próbach, `restart: on-failure:3`, zamiast restartować się w nieskończoność), a proxy odpowiada `502`; `db` i `redis` osiągają stan `healthy`.
+Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
 
 ## Rozwiązywanie problemów
 

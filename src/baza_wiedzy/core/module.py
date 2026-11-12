@@ -7,6 +7,7 @@ manifest = ModuleManifest(
     version="0.0.0",
     migrations_branch="core",
     migrations_path="baza_wiedzy.core.db.migrations",
+    tasks=("baza_wiedzy.core.tasks:ping",),
     permissions=(
         Permission("users.manage", "Manage users, assign roles, revoke sessions"),
         Permission("roles.manage", "Create and edit roles, map AD groups to roles"),

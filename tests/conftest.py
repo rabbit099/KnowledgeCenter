@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import os
 
+import dramatiq
 import pytest
+from dramatiq.brokers.stub import StubBroker
 
 from baza_wiedzy.core.config import Settings
+
+# Actors are declared at import time against the global broker; tests never talk to a real
+# broker unless they bind the actors to one explicitly (baza_wiedzy.core.queue.setup_broker).
+dramatiq.set_broker(StubBroker())
 
 
 def _env(name: str) -> str:
