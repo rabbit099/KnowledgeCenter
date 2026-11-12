@@ -77,9 +77,9 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 
 ## Releases
 
-- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`.
+- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`. First release: `v0.1.0` (2026-11-12).
 - Before tagging: set `version = "X.Y.Z"` in `pyproject.toml` (the application reads its version from there), move `[Unreleased]` in both changelogs under `## [X.Y.Z] - YYYY-MM-DD`, add a new empty `[Unreleased]`, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Check locally first: `uv run python scripts/check_release.py vX.Y.Z` must print `Release vX.Y.Z matches pyproject.toml and both changelogs.`
-- The workflow (1) refuses the release if the tag differs from `pyproject.toml` or a changelog has no `## [X.Y.Z]` section, (2) runs the complete CI (including the smoke test), (3) builds and pushes four images for `linux/amd64`: `ghcr.io/<owner>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, all tagged `X.Y.Z` (no `latest`). Each image carries the labels `org.opencontainers.image.version`, `.revision` (the commit SHA), `.source` and `.created`. The run summary lists every image with its digest; record them in the release notes.
+- The workflow (1) refuses the release if the tagged commit is not on `main` (`git merge-base --is-ancestor`; tag the commit of `main` after the release PR is merged, not a commit of a feature branch), if the tag differs from `pyproject.toml` or if a changelog has no `## [X.Y.Z]` section, (2) runs the complete CI (including the smoke test), (3) builds and pushes four images for `linux/amd64`: `ghcr.io/<owner>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, all tagged `X.Y.Z` (no `latest`). Each image carries the labels `org.opencontainers.image.version`, `.revision` (the commit SHA), `.source` and `.created`. The run summary lists every image with its digest; record them in the release notes.
 - Check what a server runs: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>`.
 - Workflow security: actions are pinned to commit SHAs; the default token is read-only (`contents: read`), only the publish job of `release.yml` gets `packages: write`; CI uses no secrets, so pull requests from forks have nothing to leak.
 

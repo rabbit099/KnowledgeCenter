@@ -77,9 +77,9 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 
 ## Wydania
 
-- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia `.github/workflows/release.yml`.
+- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia `.github/workflows/release.yml`. Pierwsze wydanie: `v0.1.0` (2026-11-12).
 - Przed otagowaniem: ustaw `version = "X.Y.Z"` w `pyproject.toml` (aplikacja czyta stamtąd swoją wersję), przenieś `[Unreleased]` w obu dziennikach zmian pod `## [X.Y.Z] - RRRR-MM-DD`, dodaj nową pustą sekcję `[Unreleased]`, zatwierdź, potem `git tag vX.Y.Z && git push origin vX.Y.Z`. Najpierw sprawdź lokalnie: `uv run python scripts/check_release.py vX.Y.Z` musi wypisać `Release vX.Y.Z matches pyproject.toml and both changelogs.`
-- Workflow (1) odmawia wydania, jeśli tag różni się od `pyproject.toml` albo dziennik zmian nie ma sekcji `## [X.Y.Z]`, (2) uruchamia pełne CI (łącznie z testem dymnym), (3) buduje i wypycha cztery obrazy dla `linux/amd64`: `ghcr.io/<właściciel>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, wszystkie z tagiem `X.Y.Z` (bez `latest`). Każdy obraz ma etykiety `org.opencontainers.image.version`, `.revision` (SHA commita), `.source` i `.created`. Podsumowanie przebiegu wypisuje każdy obraz z digestem; zapisz je w informacji o wydaniu.
+- Workflow (1) odmawia wydania, jeśli otagowany commit nie należy do `main` (`git merge-base --is-ancestor`; taguj commit `main` po scaleniu PR wydania, a nie commit gałęzi roboczej), jeśli tag różni się od `pyproject.toml` albo jeśli dziennik zmian nie ma sekcji `## [X.Y.Z]`, (2) uruchamia pełne CI (łącznie z testem dymnym), (3) buduje i wypycha cztery obrazy dla `linux/amd64`: `ghcr.io/<właściciel>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, wszystkie z tagiem `X.Y.Z` (bez `latest`). Każdy obraz ma etykiety `org.opencontainers.image.version`, `.revision` (SHA commita), `.source` i `.created`. Podsumowanie przebiegu wypisuje każdy obraz z digestem; zapisz je w informacji o wydaniu.
 - Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
 - Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
 
