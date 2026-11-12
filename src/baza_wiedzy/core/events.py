@@ -16,10 +16,17 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping
 from typing import Any, TypedDict
 
-# document.published: a version of a document became visible to readers.
-DOCUMENT_PUBLISHED = "document.published"
+# document.version.uploaded: documents stored a new version; ingestion enqueues processing.
+DOCUMENT_VERSION_UPLOADED = "document.version.uploaded"
 # document.version.extracted: ingestion extracted text from a version; search indexes it.
 DOCUMENT_VERSION_EXTRACTED = "document.version.extracted"
+# document.published: a version of a document became visible to readers.
+DOCUMENT_PUBLISHED = "document.published"
+
+
+class VersionUploadedPayload(TypedDict):
+    document_id: str
+    version_id: str
 
 
 class DocumentPublishedPayload(TypedDict):
