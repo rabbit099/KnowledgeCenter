@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-13
 
 ## Uwierzytelnianie
 
@@ -35,7 +35,7 @@ Przebieg logowania przez AD:
 
 Każdy błąd (złe hasło, nieznana nazwa, konto wyłączone w AD, puste hasło) daje tę samą odpowiedź co błąd lokalny (`401`, ten sam komunikat) i liczy się do tych samych limitów.
 
-**Normalizacja nazwy.** Przy `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (domyślnie): usuwany jest prefiks domeny `FIRMA\` i każdy `@sufiks`, reszta zamieniana na małe litery: `FIRMA\Jan`, `jan@firma.local` i `JAN` oznaczają `jan`, czyli nazwę użytkownika w aplikacji. Przy `userPrincipalName`: usuwany jest prefiks domeny, sama nazwa dostaje `@LDAP_UPN_SUFFIX`, wszystko małymi literami: `FIRMA\jan`, `jan` i `Jan@Firma.Local` oznaczają `jan@firma.local`. Część domenowa `FIRMA\` nie jest z niczym porównywana (użytkownicy innych zaufanych domen nie są obsługiwani).
+**Normalizacja nazwy.** Przy `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (domyślnie): usuwany jest prefiks domeny `FIRMA\` i każdy `@sufiks`, reszta zamieniana na małe litery: `FIRMA\Jan`, `jan@firma.local` i `JAN` oznaczają `jan`, czyli nazwę użytkownika w aplikacji. Przy `userPrincipalName`: usuwany jest prefiks domeny, sama nazwa dostaje `@LDAP_UPN_SUFFIX`, wszystko małymi literami: `FIRMA\jan`, `jan` i `Jan@Firma.Local` oznaczają `jan@firma.local`. Założenie: **jedna domena AD** (potwierdzone, ADR-019), więc część domenowa `FIRMA\` nie jest z niczym porównywana, a użytkownicy innych zaufanych domen nie są obsługiwani.
 
 **Bezpieczeństwo połączenia.** Akceptowane są tylko adresy `ldaps://`. Certyfikat serwera jest zawsze weryfikowany względem `LDAP_CA_FILE` (certyfikat CA w PEM), a nazwa hosta w `LDAP_URI` musi zgadzać się z certyfikatem; nie ma opcji wyłączenia weryfikacji. TLS 1.2 lub nowszy. Odwołania (referrals) nie są śledzone. Jawne limity czasu: `LDAP_CONNECT_TIMEOUT_SECONDS` (5) i `LDAP_RECEIVE_TIMEOUT_SECONDS` (10).
 

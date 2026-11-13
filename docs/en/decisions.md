@@ -1,6 +1,6 @@
 # Decisions, assumptions and open questions
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-13
 
 Decision log (ADR). New decisions are appended; an old decision is never rewritten, only superseded by a new entry.
 
@@ -89,7 +89,7 @@ Status: accepted. The proxy needs its own image: the official Caddy image cannot
 Status: accepted. Implements ADR-007 for Phase 1. (1) Session token: 256 random bits in the cookie `__Host-bw_session`, only its SHA-256 in `sessions`; a new session at every login (fixation). (2) CSRF: stateless synchronizer token `HMAC-SHA256(SECRET_KEY, session or pre-session cookie)`, checked by an ASGI middleware for every unsafe method, from the header `X-CSRF-Token` (HTMX) or the form field; plus an `Origin`/`Sec-Fetch-Site` check. No extra table and no extra dependency; uploads must use the header because the middleware reads form bodies only up to 64 KB. (3) Failed-login limits in Redis (fixed window, self-expiring locks) for name, name + address and address, with a high per-name threshold so nobody can lock out a colleague from another address; fail-open when Redis is down, so the break-glass admin is never locked out by an outage. (4) Client address from `X-Forwarded-For` only from the proxy's fixed address in a fixed Docker subnet (`DOCKER_SUBNET`, `PROXY_IP`). (5) CSP and other security headers are set by the application (testable, also correct without the proxy); Caddy adds HSTS. Alternatives: double-submit cookie CSRF (weaker binding), per-session token column (extra writes), limits in PostgreSQL (extra writes on every failure), trusting all addresses on the internal network (spoofable by any container).
 
 ### ADR-019 — Active Directory login details
-Status: accepted. Implements ADR-008. LDAPS only (`ldap://` and StartTLS are refused) with certificate verification always on against `LDAP_CA_FILE` and host-name check, TLS 1.2+, no referrals, explicit connect/receive timeouts, several domain controllers tried in order. Blank passwords are refused before any bind (anonymous-bind risk). Identity is `objectGUID`; names are normalized per `LDAP_LOGIN_ATTRIBUTE` so that `FIRMA\jan`, `jan@firma.local` and `jan` are one account and share login limits. Groups come from a paged search on group objects (`member=` or `LDAP_MATCHING_RULE_IN_CHAIN` when `LDAP_NESTED_GROUPS=true`), not from `memberOf`, so large and nested memberships work. A local account name is never taken over by AD. When AD cannot be asked, AD users get "temporarily unavailable" (no lockout counting) and the local break-glass admin keeps working. Tests use ldap3 `MOCK_SYNC`; nested groups and real certificates are covered by a documented manual test (`auth-and-permissions.md`) supported by `baza-wiedzy ad-check`. Alternatives: `memberOf` attribute (no nesting, range retrieval for big groups), Kerberos/SSO (out of scope), a containerised test directory such as Samba AD (heavy, still not the company's AD).
+Status: accepted. Implements ADR-008. LDAPS only (`ldap://` and StartTLS are refused) with certificate verification always on against `LDAP_CA_FILE` and host-name check, TLS 1.2+, no referrals, explicit connect/receive timeouts, several domain controllers tried in order. Blank passwords are refused before any bind (anonymous-bind risk). Identity is `objectGUID`; names are normalized per `LDAP_LOGIN_ATTRIBUTE` so that `FIRMA\jan`, `jan@firma.local` and `jan` are one account and share login limits. Groups come from a paged search on group objects (`member=` or `LDAP_MATCHING_RULE_IN_CHAIN` when `LDAP_NESTED_GROUPS=true`), not from `memberOf`, so large and nested memberships work. A local account name is never taken over by AD. When AD cannot be asked, AD users get "temporarily unavailable" (no lockout counting) and the local break-glass admin keeps working. Tests use ldap3 `MOCK_SYNC`; nested groups and real certificates are covered by a documented manual test (`auth-and-permissions.md`) supported by `baza-wiedzy ad-check`. Assumption (confirmed 2026-11-13): **the company has one AD domain**. The domain part of `FIRMA\jan` is therefore removed and not checked, and users of other (trusted) domains are not supported; a second domain would need a new decision (per-domain base DN and service account). Alternatives: `memberOf` attribute (no nesting, range retrieval for big groups), Kerberos/SSO (out of scope), a containerised test directory such as Samba AD (heavy, still not the company's AD).
 
 ## Assumptions
 
@@ -97,6 +97,7 @@ Status: accepted. Implements ADR-008. LDAPS only (`ldap://` and StartTLS are ref
 - Server sizing is not known; resource limits are configurable.
 - UI is Polish only; strings go through gettext catalogs.
 - Only Polish and English documents are expected.
+- One Active Directory domain (confirmed 2026-11-13; ADR-019).
 
 ## Open questions
 

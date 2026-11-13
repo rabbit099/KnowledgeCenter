@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-13
 
 ## Authentication
 
@@ -35,7 +35,7 @@ Flow of an AD login:
 
 Every failure (wrong password, unknown name, disabled in AD, blank password) gives the same answer as a local failure (`401`, same message) and counts towards the same limits.
 
-**Name normalization.** With `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (default): the domain prefix `FIRMA\` and any `@suffix` are removed and the rest is lower-cased: `FIRMA\Jan`, `jan@firma.local` and `JAN` all mean `jan`, the application user name. With `userPrincipalName`: the domain prefix is removed, a bare name gets `@LDAP_UPN_SUFFIX`, everything is lower-cased: `FIRMA\jan`, `jan` and `Jan@Firma.Local` all mean `jan@firma.local`. The domain part of `FIRMA\` is not checked against anything (users of other trusted domains are not supported).
+**Name normalization.** With `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (default): the domain prefix `FIRMA\` and any `@suffix` are removed and the rest is lower-cased: `FIRMA\Jan`, `jan@firma.local` and `JAN` all mean `jan`, the application user name. With `userPrincipalName`: the domain prefix is removed, a bare name gets `@LDAP_UPN_SUFFIX`, everything is lower-cased: `FIRMA\jan`, `jan` and `Jan@Firma.Local` all mean `jan@firma.local`. Assumption: **one AD domain** (confirmed, ADR-019), so the domain part of `FIRMA\` is not checked against anything and users of other trusted domains are not supported.
 
 **Security of the connection.** Only `ldaps://` URIs are accepted. The server certificate is always verified against `LDAP_CA_FILE` (CA certificate in PEM) and the host name in `LDAP_URI` must match the certificate; there is no option to turn verification off. TLS 1.2 or newer. Referrals are not followed. Explicit timeouts: `LDAP_CONNECT_TIMEOUT_SECONDS` (5) and `LDAP_RECEIVE_TIMEOUT_SECONDS` (10).
 
