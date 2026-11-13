@@ -141,6 +141,67 @@ def _unlock_login(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ad_check(args: argparse.Namespace) -> int:
+    """Diagnostics for a real AD: configuration, service bind, user lookup, groups, mapping.
+
+    Changes nothing. With --password it also tries the user bind (password asked, never shown).
+    """
+    from sqlalchemy import select
+
+    from baza_wiedzy.core.auth.ldap import AdDirectory, AdUnavailable, LdapConfig
+    from baza_wiedzy.core.auth.provisioning import mapped_role_ids
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.models import Role
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    settings = Settings()
+    config = LdapConfig.from_settings(settings)
+    directory = AdDirectory(config)
+    print(f"LDAP_ENABLED={settings.ldap_enabled}  URIs: {', '.join(config.uris)}")
+    print(
+        f"Base DN: {config.base_dn}  login attribute: {config.login_attribute}  "
+        f"nested groups: {config.nested_groups}"
+    )
+    try:
+        if not args.user:
+            directory.find("\x00-no-such-user")  # service bind and one search
+            print("Service account bind: OK")
+            return 0
+        login = directory.normalize(args.user)
+        print(f"Normalized login: {login}")
+        found = directory.find(login)
+        print("Service account bind: OK")
+        if found is None:
+            print("User: NOT FOUND (check LDAP_BASE_DN, LDAP_USER_FILTER, LDAP_LOGIN_ATTRIBUTE)")
+            return 1
+        entry, groups = found
+        attrs = entry["attributes"]
+        disabled = directory._disabled(attrs)
+        print(f"User DN: {entry['dn']}")
+        print(f"Display name: {attrs.get('displayName')}  disabled in AD: {disabled}")
+        print(f"Groups ({len(groups)}):")
+        for group in groups:
+            print(f"  {group}")
+        engine = make_engine(settings)
+        try:
+            with make_session_factory(engine)() as db:
+                role_ids = mapped_role_ids(db, groups)
+                names = sorted(db.scalars(select(Role.name).where(Role.id.in_(role_ids))))
+        finally:
+            engine.dispose()
+        print(f"Roles from the group mapping: {', '.join(names) or '(none)'}")
+        if args.password:
+            import getpass
+
+            ok = directory.authenticate(login, getpass.getpass("AD password: ")) is not None
+            print(f"User bind with the password: {'OK' if ok else 'REFUSED'}")
+            return 0 if ok else 1
+        return 0
+    except AdUnavailable as exc:
+        print(f"Active Directory unavailable: {exc.reason} (details in the error log above)")
+        return 2
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -177,6 +238,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     unlock.add_argument("--ip", help="client address (all user names)")
     unlock.set_defaults(handler=_unlock_login)
 
+    ad_check = commands.add_parser(
+        "ad-check", help="test the Active Directory configuration (read-only diagnostics)"
+    )
+    ad_check.add_argument("--user", help="AD login to look up, e.g. jan or FIRMA\\jan")
+    ad_check.add_argument(
+        "--password", action="store_true", help="also test the user's password (asked)"
+    )
+    ad_check.set_defaults(handler=_ad_check)
+
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"
     )
@@ -191,10 +261,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(args.handler(args))
     except Exception as exc:  # readable message for operators; details with --traceback later
         from baza_wiedzy.core.auth.accounts import AccountError
+        from baza_wiedzy.core.auth.ldap import LdapConfigError
         from baza_wiedzy.core.db.migrate import MigrationError
         from baza_wiedzy.core.registry import ModuleError
 
-        if isinstance(exc, MigrationError | ModuleError | AccountError | _CliError):
+        if isinstance(
+            exc, MigrationError | ModuleError | AccountError | _CliError | LdapConfigError
+        ):
             print(f"error: {exc}", file=sys.stderr)
             return 1
         raise

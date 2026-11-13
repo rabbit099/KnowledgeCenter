@@ -20,6 +20,7 @@ Everything an operator needs: installing, configuring, updating, rolling back, b
 ├── .env                 # configuration and secrets (chmod 600)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem and key.pem, only with TLS_MODE=files
+├── secrets/ldap/        # ca.pem and bind_password for Active Directory (owner 10001, mode 400)
 ├── logs/                # update.log, backup.log
 └── backups/             # created by backup.sh
 ```
@@ -52,7 +53,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `WORKER_PROCESSES` | Worker processes (default 2; one thread and one database connection each; not more than CPU cores) |
 | `REDIS_PASSWORD` | Password required by Redis (`requirepass`); URL-safe characters only. `REDIS_URL` is built from it in `docker-compose.yml` |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
-| `LDAP_*` | See [auth-and-permissions.md](auth-and-permissions.md) |
+| `LDAP_*` | Active Directory login, off by default (`LDAP_ENABLED=false`). `./secrets/ldap/` is mounted read-only at `/run/secrets/ldap/` in `app` for the CA certificate and the service-account password file. Details, normalization of names and the test procedure for a real AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-over-tls) |
 
 `ENABLED_MODULES` must have the same value for `app` and `worker` (both read the same `.env`). At startup the application checks module dependencies and refuses to start with a message such as `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` applies the migrations of the core and of **every** module, independent of `ENABLED_MODULES`: the schema is always complete, so enabling a module later needs no migration step and `/ready` compares the database with all migration heads. Disabling a module does not delete its tables or data.
 
@@ -232,6 +233,7 @@ If `make` is not available, run the same tools through `uv run`, for example `uv
 
 Known warnings (harmless, tracked for the monthly dependency review):
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 announces a change of the HTTP client used by FastAPI's `TestClient`. Tests are not affected; revisit when FastAPI/Starlette document the replacement.
+- `pytest`: `DeprecationWarning: tagMap is deprecated` / `typeMap is deprecated` from `ldap3/utils/asn1.py`: ldap3 2.9.1 uses old names of `pyasn1`. Harmless; revisit when ldap3 publishes a fix.
 - `make up`: Caddy logs `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (for the port-80 redirect server) and `stapling OCSP` (internal certificate). All expected.
 
 Dependencies: versions are pinned in `uv.lock` and only releases older than `exclude-newer` (in `pyproject.toml`) are resolved. Upgrades happen in the monthly dependency review or, for security fixes, as an exception; the procedure is in ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) opens monthly pull requests for GitHub Actions SHAs, Dockerfile base images and the images in `docker-compose.yml` (only releases older than 14 days), and security pull requests for Python packages.
@@ -244,7 +246,9 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 |---|---|---|
 | Uploaded files stay `pending` | Worker or Redis down | `docker compose ps`, `docker compose logs worker redis` |
 | `failed` with timeout on a scan | Very large or poor-quality scan | Increase `OCR_TIMEOUT_SECONDS`, rescan, reprocess |
-| AD login fails for everyone | LDAPS certificate, bind account, DNS | `docker compose logs app`, check `LDAP_CA_FILE`, test with `ldapsearch` |
+| AD users see "Logowanie kontem firmowym jest chwilowo niedostępne" | Domain controllers unreachable, certificate problem or service account refused (audit `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; for `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` and the host name in `LDAP_URI`. The break-glass admin still works |
+| `app` exits with `Active Directory configuration: ...` | `LDAP_ENABLED=true` with an incomplete configuration (missing CA file, `ldap://` URI, empty bind DN) | Fix the variable named in the message, or set `LDAP_ENABLED=false` |
+| One AD user cannot log in, others can | Wrong password, account disabled or expired in AD, name taken by a local account, name outside `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <name> --password`; audit `auth.login_failed` `reason`; `docker compose logs app` for `AD login refused` |
 | Inflected words are not found | Dictionary not loaded or index not rebuilt | `SELECT ts_lexize('pl_hunspell','faktury');`, run `reindex-search` |
 | `/ready` fails after update | Migration not applied | `docker compose run --rm app baza-wiedzy migrate`, then see `update.log` |
 | Disk full | Backups or derived files | Check `backups/`, retention settings |

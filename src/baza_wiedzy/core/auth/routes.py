@@ -72,6 +72,8 @@ def login(
     )
     if result.outcome is Outcome.LOCKED:
         return _render(request, 429, error="locked", next_url=safe_next(next))
+    if result.outcome is Outcome.AD_UNAVAILABLE:
+        return _render(request, 503, error="ad_unavailable", next_url=safe_next(next))
     if result.outcome is not Outcome.OK or result.token is None:
         return _render(request, 401, error="failed", next_url=safe_next(next))
     response = RedirectResponse(safe_next(next), status_code=303)

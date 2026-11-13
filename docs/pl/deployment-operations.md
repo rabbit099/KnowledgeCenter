@@ -20,6 +20,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 ├── .env                 # konfiguracja i sekrety (chmod 600)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem i key.pem, tylko przy TLS_MODE=files
+├── secrets/ldap/        # ca.pem i bind_password dla Active Directory (właściciel 10001, tryb 400)
 ├── logs/                # update.log, backup.log
 └── backups/             # tworzone przez backup.sh
 ```
@@ -52,7 +53,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU) |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
-| `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
+| `LDAP_*` | Logowanie przez Active Directory, domyślnie wyłączone (`LDAP_ENABLED=false`). `./secrets/ldap/` jest montowany tylko do odczytu w `/run/secrets/ldap/` w `app` dla certyfikatu CA i pliku z hasłem konta serwisowego. Szczegóły, normalizacja nazw i procedura testu na prawdziwym AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-przez-tls) |
 
 `ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
@@ -232,6 +233,7 @@ Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na p
 
 Znane ostrzeżenia (nieszkodliwe, sprawdzane przy miesięcznym przeglądzie zależności):
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 zapowiada zmianę klienta HTTP używanego przez `TestClient` FastAPI. Testy nie są dotknięte; wrócimy do tego, gdy FastAPI/Starlette opiszą zamiennik.
+- `pytest`: `DeprecationWarning: tagMap is deprecated` / `typeMap is deprecated` z `ldap3/utils/asn1.py`: ldap3 2.9.1 używa starych nazw z `pyasn1`. Nieszkodliwe; wrócimy do tego, gdy ldap3 wyda poprawkę.
 - `make up`: Caddy loguje `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (dla serwera przekierowania na porcie 80) i `stapling OCSP` (certyfikat wewnętrzny). Wszystko oczekiwane.
 
 Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydania starsze niż `exclude-newer` (w `pyproject.toml`). Aktualizacje odbywają się w miesięcznym przeglądzie zależności albo, dla poprawek bezpieczeństwa, jako wyjątek; procedura jest w ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) co miesiąc otwiera pull requesty dla SHA akcji GitHub, obrazów bazowych w Dockerfile'ach i obrazów w `docker-compose.yml` (tylko wydania starsze niż 14 dni) oraz pull requesty bezpieczeństwa dla paczek Pythona.
@@ -244,7 +246,9 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 |---|---|---|
 | Wgrane pliki zostają w `pending` | Worker lub Redis nie działa | `docker compose ps`, `docker compose logs worker redis` |
 | `failed` z timeoutem na skanie | Bardzo duży lub słabej jakości skan | Zwiększ `OCR_TIMEOUT_SECONDS`, zeskanuj ponownie, przetwórz ponownie |
-| Logowanie AD nie działa u nikogo | Certyfikat LDAPS, konto bind, DNS | `docker compose logs app`, sprawdź `LDAP_CA_FILE`, przetestuj `ldapsearch` |
+| Użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne” | Kontrolery domeny nieosiągalne, problem z certyfikatem albo odrzucone konto serwisowe (audyt `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; przy `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` i nazwa hosta w `LDAP_URI`. Admin awaryjny dalej działa |
+| `app` kończy się komunikatem `Active Directory configuration: ...` | `LDAP_ENABLED=true` przy niepełnej konfiguracji (brak pliku CA, adres `ldap://`, pusty bind DN) | Popraw zmienną wskazaną w komunikacie albo ustaw `LDAP_ENABLED=false` |
+| Jeden użytkownik AD nie może się zalogować, inni mogą | Złe hasło, konto wyłączone lub wygasłe w AD, nazwa zajęta przez konto lokalne, nazwa poza `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <nazwa> --password`; audyt `auth.login_failed` `reason`; `docker compose logs app` pod kątem `AD login refused` |
 | Odmienione słowa nie są znajdowane | Słownik niezaładowany lub indeks nieprzebudowany | `SELECT ts_lexize('pl_hunspell','faktury');`, uruchom `reindex-search` |
 | `/ready` nie działa po aktualizacji | Migracja nie została zastosowana | `docker compose run --rm app baza-wiedzy migrate`, potem sprawdź `update.log` |
 | Pełny dysk | Backupy lub pliki pochodne | Sprawdź `backups/`, ustawienia retencji |

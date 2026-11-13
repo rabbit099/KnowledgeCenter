@@ -20,19 +20,65 @@
 
 ### Active Directory (LDAP over TLS)
 
-Flow:
-1. The user enters the AD user name (sAMAccountName or UPN) and password.
-2. The app connects over LDAPS with a read-only service account and finds the user entry (the user name is escaped in the filter).
-3. The app binds with the user's DN and the entered password. Success = password verified; the app never stores AD passwords.
-4. The app reads the user's groups (optionally including nested groups) and maps them to roles through `ad_group_role_map`.
-5. The user row is created or updated (just-in-time). Roles with `source = ad` are recalculated on every login; roles with `source = manual` are kept.
-6. Users disabled in AD cannot log in.
+Enabled with `LDAP_ENABLED=true`. When it is `false` (default), only local accounts can log in, the application logs `Active Directory login disabled (LDAP_ENABLED=false): local accounts only` at start, and an AD name gets the usual "Nieprawidłowa nazwa użytkownika lub hasło.".
 
-Settings (environment): `LDAP_URI` (`ldaps://…`), `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` (env or Docker secret), `LDAP_BASE_DN`, `LDAP_USER_FILTER`, `LDAP_CA_FILE` (company CA certificate), `LDAP_NESTED_GROUPS` (true/false), `LDAP_TIMEOUT_SECONDS`.
+Flow of an AD login:
+1. The user types a name and password on `/login`. If a **local** account has that name, only the local password is checked (the break-glass admin always works). Otherwise:
+2. The name is **normalized** (next paragraph). The failed-login limits use the normalized name, so all spellings share the counters.
+3. A blank password (empty or only spaces) is refused **before** any LDAP request: an LDAP simple bind with an empty password can succeed as an anonymous bind.
+4. The application connects over LDAPS (`LDAP_URI`; several URIs are tried in order when one is unreachable), binds with the read-only service account and searches `(&LDAP_USER_FILTER(LDAP_LOGIN_ATTRIBUTE=<name>))` under `LDAP_BASE_DN`; the name is escaped (`*`, `(`, `)`, `\`, NUL). Exactly one entry must match.
+5. Accounts disabled in AD (`userAccountControl` bit `ACCOUNTDISABLE`) are refused.
+6. The application binds as the user (DN + typed password). Success = password verified; AD passwords are never stored or logged.
+7. Groups are read with a paged search (`LDAP_PAGE_SIZE`): direct membership, or with `LDAP_NESTED_GROUPS=true` all groups reached through nested groups (`member:1.2.840.113556.1.4.1941:`).
+8. The user row is created or updated just in time, identified by `objectGUID` (a renamed AD account stays the same user). An account created in advance by an admin (same name, no GUID yet) is linked at the first login. A local account is never taken over: an AD login whose name equals a local account's name is refused and logged as an error for the administrator.
+9. Roles with `source = ad` are recalculated from `ad_group_role_map` (group DNs compared ignoring case); roles with `source = manual` are kept. A user without any mapped group and without a manual role logs in but has no permissions (the start page says so); an admin sees them in the user list.
 
-Recommended AD groups (names are examples, set in the admin UI): `BazaWiedzy-Admins`, `BazaWiedzy-Publishers`, `BazaWiedzy-Readers`. A user without any mapped group and without a manual role gets no access.
+Every failure (wrong password, unknown name, disabled in AD, blank password) gives the same answer as a local failure (`401`, same message) and counts towards the same limits.
 
-If AD is unreachable, AD users cannot log in; the local break-glass admin still can.
+**Name normalization.** With `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (default): the domain prefix `FIRMA\` and any `@suffix` are removed and the rest is lower-cased: `FIRMA\Jan`, `jan@firma.local` and `JAN` all mean `jan`, the application user name. With `userPrincipalName`: the domain prefix is removed, a bare name gets `@LDAP_UPN_SUFFIX`, everything is lower-cased: `FIRMA\jan`, `jan` and `Jan@Firma.Local` all mean `jan@firma.local`. The domain part of `FIRMA\` is not checked against anything (users of other trusted domains are not supported).
+
+**Security of the connection.** Only `ldaps://` URIs are accepted. The server certificate is always verified against `LDAP_CA_FILE` (CA certificate in PEM) and the host name in `LDAP_URI` must match the certificate; there is no option to turn verification off. TLS 1.2 or newer. Referrals are not followed. Explicit timeouts: `LDAP_CONNECT_TIMEOUT_SECONDS` (5) and `LDAP_RECEIVE_TIMEOUT_SECONDS` (10).
+
+**When AD cannot be asked** (no domain controller reachable, certificate problem, service account refused): AD users see "Logowanie kontem firmowym jest chwilowo niedostępne…" (HTTP 503), the audit log gets `auth.ad_unavailable` with `reason` (`unreachable`, `tls`, `service_bind`, `error`) and no other details, the application log gets an error with the technical cause (for a certificate problem: `TLS/certificate verification failed … Check LDAP_CA_FILE …`). These attempts do not count towards the limits. The local break-glass admin keeps working.
+
+**AD and open sessions.** AD is asked only at login. A user disabled in AD, or removed from a mapped group, keeps an open session and its permissions until the session ends (at most `SESSION_ABSOLUTE_HOURS`, default 12 h) or an admin deactivates the user or revokes their sessions.
+
+Settings (environment, all listed in `.env.example`): `LDAP_ENABLED`, `LDAP_URI`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` or `LDAP_BIND_PASSWORD_FILE`, `LDAP_BASE_DN`, `LDAP_LOGIN_ATTRIBUTE`, `LDAP_UPN_SUFFIX`, `LDAP_USER_FILTER`, `LDAP_CA_FILE`, `LDAP_NESTED_GROUPS`, `LDAP_CONNECT_TIMEOUT_SECONDS`, `LDAP_RECEIVE_TIMEOUT_SECONDS`, `LDAP_PAGE_SIZE`. With `LDAP_ENABLED=true` the application refuses to start when the configuration is incomplete (for example `LDAP_URI 'ldap://…' must start with ldaps://`, `LDAP_CA_FILE … does not exist`).
+
+Recommended AD groups (names are examples; the mapping is edited in the admin panel): `BazaWiedzy-Admins`, `BazaWiedzy-Publishers`, `BazaWiedzy-Readers`.
+
+Audit actions of AD logins: `auth.login`, `auth.login_failed`, `auth.ad_unavailable`, `user.create` (first login, `source: ad_jit`), `user.ad_link` (account created in advance linked), `user.rename`, `user.roles_sync` (roles added/removed by group changes).
+
+### Testing with a real Active Directory
+
+Automated tests use a mock directory (ldap3 `MOCK_SYNC`), which cannot evaluate nested-group searches or check real certificates. Before the first production use, test against the real AD once, and again after changes of domain controllers, certificates or the group structure.
+
+**Data needed from the AD administrator:**
+
+| Item | Example | Goes to |
+|---|---|---|
+| Host names of 1-2 domain controllers with LDAPS (port 636) | `dc1.firma.local`, `dc2.firma.local` | `LDAP_URI=ldaps://dc1.firma.local:636,ldaps://dc2.firma.local:636` |
+| CA certificate (PEM) that signed the DC certificates (root, plus intermediate if any, in one file) | `firma-root-ca.pem` | `./secrets/ldap/ca.pem` |
+| Read-only service account: DN and password; password that does not expire (or a reminder) | `CN=svc-bazawiedzy,OU=Service Accounts,DC=firma,DC=local` | `LDAP_BIND_DN`, `./secrets/ldap/bind_password` |
+| Base DN covering all users who should log in | `DC=firma,DC=local` or `OU=Staff,DC=firma,DC=local` | `LDAP_BASE_DN` |
+| Login form users know: `sAMAccountName` or UPN, and the UPN suffix | `sAMAccountName`, `firma.local` | `LDAP_LOGIN_ATTRIBUTE`, `LDAP_UPN_SUFFIX` |
+| DNs of the three application groups | `CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local` | admin panel, AD group mapping |
+| Test accounts (with passwords, for the test only): **A** direct member of BazaWiedzy-Admins; **B** member of group X, where X is a member of BazaWiedzy-Readers (nested); **C** disabled account; **D** enabled account in no application group; **E** account with an expired or must-change password | `test-bw-a` … `test-bw-e` | the steps below |
+
+**Steps** (on the server, in /srv/baza-wiedzy):
+1. Files: `mkdir -p secrets/ldap && cp firma-root-ca.pem secrets/ldap/ca.pem && printf '%s' '<password>' > secrets/ldap/bind_password && sudo chown -R 10001:10001 secrets/ldap && chmod 400 secrets/ldap/*`. Check the certificate: `openssl s_client -connect dc1.firma.local:636 -CAfile secrets/ldap/ca.pem </dev/null | grep 'Verify return code'` → `Verify return code: 0 (ok)`.
+2. `.env`: `LDAP_ENABLED=true`, the values from the table, `LDAP_BIND_PASSWORD_FILE=/run/secrets/ldap/bind_password`, `LDAP_NESTED_GROUPS=false` for now; `docker compose up -d app`. `docker compose logs app | grep 'Active Directory'` → `Active Directory login enabled (...)`.
+3. Service account: `docker compose exec app baza-wiedzy ad-check` → `Service account bind: OK`.
+4. User lookup: `docker compose exec app baza-wiedzy ad-check --user test-bw-a` → DN, `disabled in AD: False`, the groups including BazaWiedzy-Admins. Repeat with `FIRMA\test-bw-a` and `test-bw-a@firma.local`: the same `Normalized login`. Add `--password` to test the password (`User bind with the password: OK`).
+5. Admin panel (stage B5): map the three group DNs to Admin, Publisher, Reader. `docker compose exec app baza-wiedzy ad-check --user test-bw-a` now prints `Roles from the group mapping: Admin`.
+6. Browser logins: **A** logs in and sees the admin panel; log out. **D** logs in and sees "Twoje konto nie ma jeszcze żadnych uprawnień"; **C** and **E** get "Nieprawidłowa nazwa użytkownika lub hasło."; a wrong password for **A** gives the same message.
+7. Nested groups: `ad-check --user test-bw-b` with `LDAP_NESTED_GROUPS=false` lists only group X (B has no role); set `LDAP_NESTED_GROUPS=true`, `docker compose up -d app`, `ad-check --user test-bw-b` now also lists BazaWiedzy-Readers and `Roles from the group mapping: Reader`; B logs in with the Reader role. Keep `true` if the company uses nested groups; note the login time (nested searches are slower on large directories).
+8. Group change: remove **A** from BazaWiedzy-Admins in AD, wait for AD replication, log in again as A: the admin panel is gone; the audit log shows `user.roles_sync` with `removed: ["Admin"]`.
+9. Failure cases: stop routing to the DCs or set a wrong host name in `LDAP_URI` → login of A shows "chwilowo niedostępne", audit `auth.ad_unavailable` (`unreachable`); put a wrong CA in `ca.pem` → the same with `reason: tls` and in `docker compose logs app` the message `TLS/certificate verification failed`; in both cases the break-glass admin can still log in. Restore the configuration.
+10. Audit check: `docker compose exec db psql -U postgres -d <APP_DB_NAME> -c "SELECT at, action, actor_label, details FROM audit_log ORDER BY id DESC LIMIT 20"`. No passwords may appear anywhere (also `docker compose logs app | grep -i '<test password>'` must find nothing).
+11. Delete or disable the test accounts **C**, **D**, **E** in AD and deactivate them in the admin panel.
+
+Record the date, the result of each step and the values used (without passwords) in the operations log.
 
 ### Local break-glass admin
 

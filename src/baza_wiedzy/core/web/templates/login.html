@@ -5,6 +5,8 @@
   <h1>{{ _("Log in") }}</h1>
   {% if error == "locked" %}
   <p class="fail" role="alert">{{ _("Too many failed attempts. Try again in a few minutes.") }}</p>
+  {% elif error == "ad_unavailable" %}
+  <p class="fail" role="alert">{{ _("Logging in with a company account is temporarily unavailable. Try again later or contact the administrator.") }}</p>
   {% elif error %}
   <p class="fail" role="alert">{{ _("Invalid user name or password.") }}</p>
   {% endif %}

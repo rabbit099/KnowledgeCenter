@@ -5,6 +5,7 @@ Run with `uvicorn --factory baza_wiedzy.main:create_app` (see docker/app/Dockerf
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -17,6 +18,7 @@ from baza_wiedzy import __version__
 from baza_wiedzy.core import health
 from baza_wiedzy.core.auth import routes as auth_routes
 from baza_wiedzy.core.auth.csrf import CSRFMiddleware, cookie_names
+from baza_wiedzy.core.auth.ldap import AdDirectory, LdapConfig
 from baza_wiedzy.core.auth.passwords import Passwords
 from baza_wiedzy.core.auth.ratelimit import Limits, LoginLimiter
 from baza_wiedzy.core.auth.service import Authenticator
@@ -32,6 +34,7 @@ from baza_wiedzy.core.web import routes as core_routes
 from baza_wiedzy.core.web.security import EXCEPTION_HANDLERS, SecurityHeadersMiddleware
 from baza_wiedzy.core.web.templating import TEMPLATE_DIR, make_templates
 
+log = logging.getLogger(__name__)
 STATIC_DIR = TEMPLATE_DIR.parent / "static"
 WEAK_SECRETS = frozenset({"change-me", "changeme", "secret"})
 
@@ -113,7 +116,14 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
             ),
         ),
         limits=session_limits,
+        directory=(
+            AdDirectory(LdapConfig.from_settings(settings)) if settings.ldap_enabled else None
+        ),
     )
+    if settings.ldap_enabled:
+        log.info("Active Directory login enabled (%s)", settings.ldap_uri)
+    else:
+        log.info("Active Directory login disabled (LDAP_ENABLED=false): local accounts only")
     for exc_class, handler in EXCEPTION_HANDLERS.items():
         app.add_exception_handler(exc_class, handler)
     # Added last = outermost: security headers wrap everything, CSRF runs before the routes.

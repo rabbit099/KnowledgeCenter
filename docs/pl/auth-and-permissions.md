@@ -20,19 +20,65 @@
 
 ### Active Directory (LDAP przez TLS)
 
-Przebieg:
-1. Użytkownik wpisuje nazwę z AD (sAMAccountName lub UPN) i hasło.
-2. Aplikacja łączy się przez LDAPS kontem serwisowym tylko do odczytu i znajduje wpis użytkownika (nazwa jest escapowana w filtrze).
-3. Aplikacja wykonuje bind z DN użytkownika i wpisanym hasłem. Sukces = hasło zweryfikowane; aplikacja nigdy nie przechowuje haseł z AD.
-4. Aplikacja czyta grupy użytkownika (opcjonalnie z grupami zagnieżdżonymi) i mapuje je na role przez `ad_group_role_map`.
-5. Wiersz użytkownika jest tworzony lub aktualizowany (just-in-time). Role z `source = ad` są przeliczane przy każdym logowaniu; role z `source = manual` zostają.
-6. Użytkownicy wyłączeni w AD nie mogą się zalogować.
+Włączane przez `LDAP_ENABLED=true`. Przy `false` (domyślnie) logować mogą się tylko konta lokalne, aplikacja przy starcie zapisuje w logu `Active Directory login disabled (LDAP_ENABLED=false): local accounts only`, a nazwa z AD dostaje zwykły komunikat „Nieprawidłowa nazwa użytkownika lub hasło.”.
 
-Ustawienia (środowisko): `LDAP_URI` (`ldaps://…`), `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` (zmienna lub sekret Dockera), `LDAP_BASE_DN`, `LDAP_USER_FILTER`, `LDAP_CA_FILE` (certyfikat firmowego CA), `LDAP_NESTED_GROUPS` (true/false), `LDAP_TIMEOUT_SECONDS`.
+Przebieg logowania przez AD:
+1. Użytkownik wpisuje nazwę i hasło na `/login`. Jeśli taką nazwę ma konto **lokalne**, sprawdzane jest tylko hasło lokalne (admin awaryjny działa zawsze). W przeciwnym razie:
+2. Nazwa jest **normalizowana** (następny akapit). Limity nieudanych logowań używają nazwy znormalizowanej, więc wszystkie zapisy dzielą liczniki.
+3. Puste hasło (puste albo z samych spacji) jest odrzucane **przed** jakimkolwiek zapytaniem LDAP: prosty bind LDAP z pustym hasłem może się udać jako bind anonimowy.
+4. Aplikacja łączy się przez LDAPS (`LDAP_URI`; kilka adresów jest próbowanych po kolei, gdy któryś jest nieosiągalny), wykonuje bind kontem serwisowym tylko do odczytu i szuka `(&LDAP_USER_FILTER(LDAP_LOGIN_ATTRIBUTE=<nazwa>))` pod `LDAP_BASE_DN`; nazwa jest escapowana (`*`, `(`, `)`, `\`, NUL). Pasować musi dokładnie jeden wpis.
+5. Konta wyłączone w AD (bit `ACCOUNTDISABLE` w `userAccountControl`) są odrzucane.
+6. Aplikacja wykonuje bind jako użytkownik (DN + wpisane hasło). Sukces = hasło zweryfikowane; hasła z AD nigdy nie są zapisywane ani logowane.
+7. Grupy są czytane wyszukiwaniem stronicowanym (`LDAP_PAGE_SIZE`): członkostwo bezpośrednie albo, przy `LDAP_NESTED_GROUPS=true`, wszystkie grupy osiągalne przez grupy zagnieżdżone (`member:1.2.840.113556.1.4.1941:`).
+8. Wiersz użytkownika jest tworzony lub aktualizowany na bieżąco (just-in-time), z identyfikacją po `objectGUID` (konto AD po zmianie nazwy pozostaje tym samym użytkownikiem). Konto utworzone wcześniej przez admina (ta sama nazwa, jeszcze bez GUID) jest łączone przy pierwszym logowaniu. Konto lokalne nigdy nie zostaje przejęte: logowanie AD z nazwą równą nazwie konta lokalnego jest odrzucane i zapisywane jako błąd dla administratora.
+9. Role z `source = ad` są przeliczane z `ad_group_role_map` (DN grup porównywane bez względu na wielkość liter); role z `source = manual` zostają. Użytkownik bez zmapowanej grupy i bez ręcznej roli loguje się, ale nie ma uprawnień (mówi o tym strona startowa); admin widzi go na liście użytkowników.
 
-Zalecane grupy AD (nazwy to przykłady, ustawiane w panelu admina): `BazaWiedzy-Admins`, `BazaWiedzy-Publishers`, `BazaWiedzy-Readers`. Użytkownik bez żadnej zmapowanej grupy i bez ręcznie nadanej roli nie ma dostępu.
+Każdy błąd (złe hasło, nieznana nazwa, konto wyłączone w AD, puste hasło) daje tę samą odpowiedź co błąd lokalny (`401`, ten sam komunikat) i liczy się do tych samych limitów.
 
-Gdy AD jest nieosiągalne, użytkownicy AD nie mogą się zalogować; lokalny administrator awaryjny nadal może.
+**Normalizacja nazwy.** Przy `LDAP_LOGIN_ATTRIBUTE=sAMAccountName` (domyślnie): usuwany jest prefiks domeny `FIRMA\` i każdy `@sufiks`, reszta zamieniana na małe litery: `FIRMA\Jan`, `jan@firma.local` i `JAN` oznaczają `jan`, czyli nazwę użytkownika w aplikacji. Przy `userPrincipalName`: usuwany jest prefiks domeny, sama nazwa dostaje `@LDAP_UPN_SUFFIX`, wszystko małymi literami: `FIRMA\jan`, `jan` i `Jan@Firma.Local` oznaczają `jan@firma.local`. Część domenowa `FIRMA\` nie jest z niczym porównywana (użytkownicy innych zaufanych domen nie są obsługiwani).
+
+**Bezpieczeństwo połączenia.** Akceptowane są tylko adresy `ldaps://`. Certyfikat serwera jest zawsze weryfikowany względem `LDAP_CA_FILE` (certyfikat CA w PEM), a nazwa hosta w `LDAP_URI` musi zgadzać się z certyfikatem; nie ma opcji wyłączenia weryfikacji. TLS 1.2 lub nowszy. Odwołania (referrals) nie są śledzone. Jawne limity czasu: `LDAP_CONNECT_TIMEOUT_SECONDS` (5) i `LDAP_RECEIVE_TIMEOUT_SECONDS` (10).
+
+**Gdy nie da się zapytać AD** (żaden kontroler domeny nieosiągalny, problem z certyfikatem, konto serwisowe odrzucone): użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne…” (HTTP 503), dziennik audytu dostaje `auth.ad_unavailable` z `reason` (`unreachable`, `tls`, `service_bind`, `error`) i bez innych szczegółów, log aplikacji dostaje błąd z przyczyną techniczną (przy problemie z certyfikatem: `TLS/certificate verification failed … Check LDAP_CA_FILE …`). Takie próby nie liczą się do limitów. Lokalny admin awaryjny działa dalej.
+
+**AD a otwarte sesje.** AD jest pytane tylko przy logowaniu. Użytkownik wyłączony w AD albo usunięty z zmapowanej grupy zachowuje otwartą sesję i jej uprawnienia, dopóki sesja się nie skończy (najwyżej `SESSION_ABSOLUTE_HOURS`, domyślnie 12 h) albo admin nie dezaktywuje użytkownika lub nie unieważni jego sesji.
+
+Ustawienia (środowisko, wszystkie w `.env.example`): `LDAP_ENABLED`, `LDAP_URI`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` albo `LDAP_BIND_PASSWORD_FILE`, `LDAP_BASE_DN`, `LDAP_LOGIN_ATTRIBUTE`, `LDAP_UPN_SUFFIX`, `LDAP_USER_FILTER`, `LDAP_CA_FILE`, `LDAP_NESTED_GROUPS`, `LDAP_CONNECT_TIMEOUT_SECONDS`, `LDAP_RECEIVE_TIMEOUT_SECONDS`, `LDAP_PAGE_SIZE`. Przy `LDAP_ENABLED=true` aplikacja odmawia startu, gdy konfiguracja jest niepełna (na przykład `LDAP_URI 'ldap://…' must start with ldaps://`, `LDAP_CA_FILE … does not exist`).
+
+Zalecane grupy AD (nazwy to przykłady; mapowanie edytuje się w panelu admina): `BazaWiedzy-Admins`, `BazaWiedzy-Publishers`, `BazaWiedzy-Readers`.
+
+Akcje audytu logowań AD: `auth.login`, `auth.login_failed`, `auth.ad_unavailable`, `user.create` (pierwsze logowanie, `source: ad_jit`), `user.ad_link` (połączenie konta utworzonego wcześniej), `user.rename`, `user.roles_sync` (role dodane/usunięte przez zmiany grup).
+
+### Test na prawdziwym Active Directory
+
+Testy automatyczne używają katalogu-atrapy (ldap3 `MOCK_SYNC`), który nie obsługuje wyszukiwania grup zagnieżdżonych ani nie sprawdza prawdziwych certyfikatów. Przed pierwszym użyciem produkcyjnym przetestuj raz na prawdziwym AD, a potem ponownie po zmianie kontrolerów domeny, certyfikatów albo struktury grup.
+
+**Dane potrzebne od administratora AD:**
+
+| Element | Przykład | Gdzie trafia |
+|---|---|---|
+| Nazwy hostów 1–2 kontrolerów domeny z LDAPS (port 636) | `dc1.firma.local`, `dc2.firma.local` | `LDAP_URI=ldaps://dc1.firma.local:636,ldaps://dc2.firma.local:636` |
+| Certyfikat CA (PEM), który podpisał certyfikaty DC (główny plus pośredni, jeśli jest, w jednym pliku) | `firma-root-ca.pem` | `./secrets/ldap/ca.pem` |
+| Konto serwisowe tylko do odczytu: DN i hasło; hasło bez wygasania (albo przypomnienie) | `CN=svc-bazawiedzy,OU=Service Accounts,DC=firma,DC=local` | `LDAP_BIND_DN`, `./secrets/ldap/bind_password` |
+| Base DN obejmujący wszystkich, którzy mają się logować | `DC=firma,DC=local` albo `OU=Staff,DC=firma,DC=local` | `LDAP_BASE_DN` |
+| Forma loginu znana użytkownikom: `sAMAccountName` albo UPN, oraz sufiks UPN | `sAMAccountName`, `firma.local` | `LDAP_LOGIN_ATTRIBUTE`, `LDAP_UPN_SUFFIX` |
+| DN trzech grup aplikacji | `CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local` | panel admina, mapowanie grup AD |
+| Konta testowe (z hasłami, tylko na czas testu): **A** bezpośredni członek BazaWiedzy-Admins; **B** członek grupy X, która jest członkiem BazaWiedzy-Readers (zagnieżdżenie); **C** konto wyłączone; **D** konto aktywne bez grup aplikacji; **E** konto z wygasłym hasłem albo wymuszoną zmianą | `test-bw-a` … `test-bw-e` | kroki poniżej |
+
+**Kroki** (na serwerze, w /srv/baza-wiedzy):
+1. Pliki: `mkdir -p secrets/ldap && cp firma-root-ca.pem secrets/ldap/ca.pem && printf '%s' '<hasło>' > secrets/ldap/bind_password && sudo chown -R 10001:10001 secrets/ldap && chmod 400 secrets/ldap/*`. Sprawdzenie certyfikatu: `openssl s_client -connect dc1.firma.local:636 -CAfile secrets/ldap/ca.pem </dev/null | grep 'Verify return code'` → `Verify return code: 0 (ok)`.
+2. `.env`: `LDAP_ENABLED=true`, wartości z tabeli, `LDAP_BIND_PASSWORD_FILE=/run/secrets/ldap/bind_password`, na razie `LDAP_NESTED_GROUPS=false`; `docker compose up -d app`. `docker compose logs app | grep 'Active Directory'` → `Active Directory login enabled (...)`.
+3. Konto serwisowe: `docker compose exec app baza-wiedzy ad-check` → `Service account bind: OK`.
+4. Wyszukanie użytkownika: `docker compose exec app baza-wiedzy ad-check --user test-bw-a` → DN, `disabled in AD: False`, grupy łącznie z BazaWiedzy-Admins. Powtórz z `FIRMA\test-bw-a` i `test-bw-a@firma.local`: ten sam `Normalized login`. Dodaj `--password`, żeby sprawdzić hasło (`User bind with the password: OK`).
+5. Panel admina (etap B5): zmapuj DN trzech grup na Admin, Publisher, Reader. `docker compose exec app baza-wiedzy ad-check --user test-bw-a` wypisze teraz `Roles from the group mapping: Admin`.
+6. Logowanie w przeglądarce: **A** loguje się i widzi panel admina; wyloguj. **D** loguje się i widzi „Twoje konto nie ma jeszcze żadnych uprawnień”; **C** i **E** dostają „Nieprawidłowa nazwa użytkownika lub hasło.”; złe hasło dla **A** daje ten sam komunikat.
+7. Grupy zagnieżdżone: `ad-check --user test-bw-b` przy `LDAP_NESTED_GROUPS=false` wypisuje tylko grupę X (B nie ma roli); ustaw `LDAP_NESTED_GROUPS=true`, `docker compose up -d app`, `ad-check --user test-bw-b` wypisuje teraz także BazaWiedzy-Readers i `Roles from the group mapping: Reader`; B loguje się z rolą Reader. Zostaw `true`, jeśli firma używa grup zagnieżdżonych; zanotuj czas logowania (wyszukiwanie zagnieżdżone jest wolniejsze w dużych katalogach).
+8. Zmiana grup: usuń **A** z BazaWiedzy-Admins w AD, poczekaj na replikację AD, zaloguj się ponownie jako A: panelu admina już nie ma; dziennik audytu pokazuje `user.roles_sync` z `removed: ["Admin"]`.
+9. Przypadki awarii: odetnij ruch do DC albo wpisz złą nazwę hosta w `LDAP_URI` → logowanie A pokazuje „chwilowo niedostępne”, audyt `auth.ad_unavailable` (`unreachable`); wstaw zły CA do `ca.pem` → to samo z `reason: tls`, a w `docker compose logs app` komunikat `TLS/certificate verification failed`; w obu przypadkach admin awaryjny dalej może się zalogować. Przywróć konfigurację.
+10. Kontrola audytu: `docker compose exec db psql -U postgres -d <APP_DB_NAME> -c "SELECT at, action, actor_label, details FROM audit_log ORDER BY id DESC LIMIT 20"`. Nigdzie nie może pojawić się hasło (także `docker compose logs app | grep -i '<hasło testowe>'` nie może niczego znaleźć).
+11. Usuń albo wyłącz konta testowe **C**, **D**, **E** w AD i dezaktywuj je w panelu admina.
+
+Zapisz w dzienniku eksploatacji datę, wynik każdego kroku i użyte wartości (bez haseł).
 
 ### Lokalny administrator awaryjny
 

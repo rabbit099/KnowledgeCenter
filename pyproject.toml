@@ -11,6 +11,7 @@ dependencies = [
     "dramatiq[redis]>=1.17",
     "fastapi>=0.115",
     "jinja2>=3.1",
+    "ldap3>=2.9",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -62,14 +63,19 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src:scripts"
+mypy_path = "src:scripts:tests"
 files = ["src", "tests", "scripts"]
 explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# ldap3 ships no type information; its use is confined to core/auth/ldap.py.
+module = ["ldap3", "ldap3.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
-pythonpath = ["src", "scripts"]
+pythonpath = ["src", "scripts", "tests"]
 markers = [
     "integration: needs real Postgres and Redis (Docker)",
 ]

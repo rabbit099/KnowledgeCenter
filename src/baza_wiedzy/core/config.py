@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     login_max_failures_account: int = 30
     login_max_failures_account_ip: int = 5
     login_max_failures_ip: int = 20
+    # Active Directory (LDAPS only; certificate verification cannot be turned off).
+    ldap_enabled: bool = False
+    # One or more ldaps:// URIs, comma-separated; tried in order when one is unreachable.
+    ldap_uri: str = ""
+    ldap_bind_dn: str = ""
+    ldap_bind_password: str = ""
+    # Alternative to LDAP_BIND_PASSWORD: path of a file holding it (Docker secrets).
+    ldap_bind_password_file: str = ""
+    ldap_base_dn: str = ""
+    # sAMAccountName (log in as "jan") or userPrincipalName (log in as "jan@firma.local").
+    ldap_login_attribute: str = "sAMAccountName"
+    # UPN suffix added to bare names when LDAP_LOGIN_ATTRIBUTE=userPrincipalName.
+    ldap_upn_suffix: str = ""
+    # Extra filter AND-ed to the user search.
+    ldap_user_filter: str = "(objectClass=user)"
+    ldap_ca_file: str = ""
+    ldap_nested_groups: bool = False
+    ldap_connect_timeout_seconds: int = 5
+    ldap_receive_timeout_seconds: int = 10
+    ldap_page_size: int = 500
     # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id
     # hashes computed at the same time per process (each one uses 64 MiB of memory).
     local_password_min_length: int = 14
