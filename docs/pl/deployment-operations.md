@@ -47,6 +47,9 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 51, trzymaj `MAX_UPLOAD_MB` + 1) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Największy wgrywany plik (domyślnie 50 MB); ścieżka wolumenu plików w kontenerach (domyślnie `/data/storage`) |
+| `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Przetwarzanie w workerze: liczba prób przy błędach przejściowych (3), opóźnienie między nimi (30 s, podwajane do 600 s), limit czasu jednej próby (900 s), wiek, po którym wersja wciąż „przetwarzana” uchodzi za przerwaną (30 min, trzymaj powyżej limitu czasu) |
+| `INGEST_MAX_DEPTH`, `INGEST_MAX_PARTS`, `INGEST_MAX_TEXT_MB`, `LANGUAGE_MIN_LETTERS` | Limity ekstrakcji na plik: głębokość załączników maila (3), liczba części (2000), tekst (50 MB); liczba liter potrzebna do wykrycia języka (40) |
+| `OUTBOX_RETENTION_DAYS`, `SCAN_HOOK` | Liczba dni, przez które dostarczone zdarzenie zostaje w `ing_outbox` (7); krok skanowania antywirusowego przed ekstrakcją (`none`, na razie jedyna wartość) |
 | `POSTGRES_PASSWORD` | Hasło superużytkownika PostgreSQL; używane tylko wewnątrz kontenera `db` |
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Zwykły użytkownik (nie superużytkownik), właściciel bazy aplikacji; używają go aplikacja i migracje. `DATABASE_URL` jest z nich składany w `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
@@ -212,7 +215,7 @@ Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:
 
 ## Polecenia dla programisty
 
-Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync`.
+Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync --all-extras` (dodatek `worker` zawiera parsery dokumentów potrzebne testom i sprawdzaniu typów; `make lint` i `make test` dodają go same).
 
 | Polecenie | Co robi |
 |---|---|
@@ -220,12 +223,12 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (około minuty przy zbuforowanych warstwach) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego pliku TXT (204) i oczekiwanie, aż worker go przetworzy („gotowe”, najwyżej 2 minuty), strona części 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (około minuty przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
-| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0001, search_0001).` |
+| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
@@ -247,7 +250,11 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 
 | Objaw | Prawdopodobna przyczyna | Co sprawdzić |
 |---|---|---|
-| Wgrane pliki zostają w `pending` | Worker lub Redis nie działa | `docker compose ps`, `docker compose logs worker redis` |
+| Wgrane pliki zostają w stanie „oczekuje” (`pending`) | Worker lub Redis nie działa albo zadanie przepadło, gdy Redis był niedostępny | `docker compose ps`, `docker compose logs worker redis`; gdy oba działają, restart workera (`docker compose restart worker`) albo `docker compose exec app baza-wiedzy reprocess --stuck` kolejkuje oczekujące wersje ponownie |
+| Dokument wisi w stanie „przetwarzanie” | Worker został zabity w trakcie próby (limit pamięci, restart) | Odczekaj `INGEST_STALE_MINUTES` i zrestartuj workera albo `docker compose exec app baza-wiedzy reprocess --stuck`; w logu workera jest identyfikator wersji (`docker compose logs worker \| grep <id wersji>`) |
+| „błąd”: „Nie rozpoznano kodowania tekstu…” | TXT w stronie kodowej innej niż UTF-8, Windows-1250, ISO-8859-2 (na przykład DOS CP852) | Zapisz plik w UTF-8 i wgraj go ponownie (ADR-022) |
+| „błąd”: powtarzany „Chwilowy problem…”, potem „Przetwarzanie kilka razy nie powiodło się…” | Baza lub Redis niedostępne dłużej niż trwają ponowienia albo próby dłuższe niż `INGEST_TIME_LIMIT_SECONDS` | Usuń przyczynę (`docker compose logs worker`: klasa wyjątku dla wersji), potem „Przetwórz ponownie” albo `baza-wiedzy reprocess --failed` |
+| `baza-wiedzy events redeliver` zgłasza nieudane dostarczenia | Handler zdarzenia zgłasza wyjątek (klasa wyjątku w logu) | Popraw handler (błąd w kodzie: zgłoś go), uruchom polecenie ponownie; wpisy czekają do skutecznego dostarczenia |
 | `failed` z timeoutem na skanie | Bardzo duży lub słabej jakości skan | Zwiększ `OCR_TIMEOUT_SECONDS`, zeskanuj ponownie, przetwórz ponownie |
 | Użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne” | Kontrolery domeny nieosiągalne, problem z certyfikatem albo odrzucone konto serwisowe (audyt `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; przy `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` i nazwa hosta w `LDAP_URI`. Admin awaryjny dalej działa |
 | `app` kończy się komunikatem `Active Directory configuration: ...` | `LDAP_ENABLED=true` przy niepełnej konfiguracji (brak pliku CA, adres `ldap://`, pusty bind DN) | Popraw zmienną wskazaną w komunikacie albo ustaw `LDAP_ENABLED=false` |

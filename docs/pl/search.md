@@ -27,7 +27,7 @@ Wykryty język (`srch_parts.language`) ma charakter informacyjny i może służy
 
 Dzielenie na części (chunking) utrzymuje każdy tsvector poniżej limitu 1 MB w PostgreSQL: PDF-y są dzielone na strony, inny tekst na fragmenty do 100 000 znaków.
 
-Moduł `search` jest właścicielem zaindeksowanego tekstu i jego indeksów (tabela `srch_parts`). Tekst dostaje od modułu `ingestion` przez zdarzenie `document.version.extracted` i zastępuje wszystkie części danej wersji w jednej transakcji, więc powtórzenie zdarzenia jest nieszkodliwe. Ponieważ tekst jest przechowywany tutaj, reindeksacja nie wymaga ponownego czytania plików oryginalnych, a wymiana silnika wyszukiwania dotyka wyłącznie tego modułu.
+Moduł `search` jest właścicielem swojego indeksu (tabela `srch_parts`, kopia tekstu z kolumnami `tsv_*`). Sam wyciągnięty tekst należy do `ingestion` (`ing_parts`, ADR-020): po zdarzeniu `document.version.extracted` (tylko identyfikatory, dostarczane co najmniej raz przez outbox modułu ingestion) `search` czyta części przez `ingestion.services.api.parts_of` i zastępuje wszystkie wiersze danej wersji w jednej transakcji, więc powtórzenie zdarzenia jest nieszkodliwe. Pełna reindeksacja czyta ponownie `ingestion.services.api`, nigdy plików oryginalnych; wymiana silnika wyszukiwania dotyka wyłącznie tego modułu.
 
 ## Przetwarzanie zapytania
 

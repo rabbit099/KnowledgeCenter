@@ -42,8 +42,8 @@ Tick items when they are finished and documented.
 ### Phase 2 — Upload and ingestion
 - [x] Upload with validation, storage, SHA-256, duplicate warning
 - [ ] Extractors: PDF (text), DOCX, DOC, TXT, EML, MSG (+ attachments)
-- [ ] Worker pipeline, statuses, retries, reprocess action
-- [ ] Language detection per part
+- [x] Worker pipeline, statuses, retries, reprocess action
+- [x] Language detection per part
 
 ### Phase 3 — Search
 - [ ] Indexing in `pl`, `english`, `simple_unaccent`

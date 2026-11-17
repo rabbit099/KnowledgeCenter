@@ -20,7 +20,7 @@ Brak własnych. Wyszukiwanie wymaga `documents.read`; widzenie szkiców wymaga `
 
 ## Zdarzenia
 
-- Subskrybuje `document.version.extracted`: zastępuje wszystkie części tej wersji w jednej transakcji (idempotentnie).
+- Subskrybuje `document.version.extracted` (Faza 3): czyta części przez `ingestion.services.api.parts_of` i zastępuje wszystkie wiersze tej wersji w jednej transakcji (idempotentnie; zdarzenie jest dostarczane co najmniej raz i niesie tylko identyfikatory, ADR-020).
 - Niczego nie publikuje.
 
 ## Interfejs publiczny

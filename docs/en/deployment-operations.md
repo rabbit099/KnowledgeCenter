@@ -47,6 +47,9 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy (default 51, keep it `MAX_UPLOAD_MB` + 1) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Largest uploaded file (default 50 MB); storage volume path in the containers (default `/data/storage`) |
+| `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Processing in the worker: attempts for transient errors (3), delay between them (30 s doubling up to 600 s), time limit of one attempt (900 s), age after which a version still "processing" counts as interrupted (30 min, keep it above the time limit) |
+| `INGEST_MAX_DEPTH`, `INGEST_MAX_PARTS`, `INGEST_MAX_TEXT_MB`, `LANGUAGE_MIN_LETTERS` | Extraction limits per file: e-mail attachment depth (3), parts (2000), text (50 MB); letters needed before a language is detected (40) |
+| `OUTBOX_RETENTION_DAYS`, `SCAN_HOOK` | Days a delivered event stays in `ing_outbox` (7); virus scan step before extraction (`none`, the only value for now) |
 | `POSTGRES_PASSWORD` | Password of the PostgreSQL superuser; used only inside the `db` container |
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Non-superuser that owns the application database; the application and migrations use it. `DATABASE_URL` is built from these in `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
@@ -212,7 +215,7 @@ Logs are JSON lines, one object per line: `{"ts": "2026-11-12T11:10:39.174+00:00
 
 ## Developer commands
 
-Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync` once.
+Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync --all-extras` once (the `worker` extra holds the document parsers the tests and type checks need; `make lint` and `make test` add it themselves).
 
 | Command | What it does |
 |---|---|
@@ -220,12 +223,12 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
-| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (about 1 minute with cached layers) |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small TXT file (204) and waiting until the worker has processed it ("gotowe", at most 2 minutes), the parts page 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (about 1 minute with cached layers) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
 | `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
-| `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0001, search_0001).` |
+| `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<branch> m="text"` | Creates an empty migration file in the branch of the core or a module (`core`, `search`, ...), on the host, no database needed |
 | `make shell` | Shell inside the `app` container (needs Docker) |
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
@@ -247,7 +250,11 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 
 | Symptom | Likely cause | What to check |
 |---|---|---|
-| Uploaded files stay `pending` | Worker or Redis down | `docker compose ps`, `docker compose logs worker redis` |
+| Uploaded files stay "oczekuje" (`pending`) | Worker or Redis down, or the job was lost while Redis was down | `docker compose ps`, `docker compose logs worker redis`; once both run, a worker restart (`docker compose restart worker`) or `docker compose exec app baza-wiedzy reprocess --stuck` enqueues waiting versions again |
+| A document hangs in "przetwarzanie" | The worker was killed during an attempt (memory limit, restart) | Wait `INGEST_STALE_MINUTES` and restart the worker, or `docker compose exec app baza-wiedzy reprocess --stuck`; the worker log has the version ID (`docker compose logs worker \| grep <version id>`) |
+| "błąd": "Nie rozpoznano kodowania tekstu…" | TXT in a code page other than UTF-8, Windows-1250, ISO-8859-2 (for example DOS CP852) | Save the file as UTF-8 and upload it again (ADR-022) |
+| "błąd": "Chwilowy problem…" repeated, then "Przetwarzanie kilka razy nie powiodło się…" | Database or Redis unavailable for longer than the retries, or attempts above `INGEST_TIME_LIMIT_SECONDS` | Fix the cause (`docker compose logs worker`: exception class per version), then "Przetwórz ponownie" or `baza-wiedzy reprocess --failed` |
+| `baza-wiedzy events redeliver` reports failed deliveries | An event handler raises (exception class in the log) | Fix the handler (a bug: report it), run the command again; entries stay until delivered |
 | `failed` with timeout on a scan | Very large or poor-quality scan | Increase `OCR_TIMEOUT_SECONDS`, rescan, reprocess |
 | AD users see "Logowanie kontem firmowym jest chwilowo niedostępne" | Domain controllers unreachable, certificate problem or service account refused (audit `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; for `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` and the host name in `LDAP_URI`. The break-glass admin still works |
 | `app` exits with `Active Directory configuration: ...` | `LDAP_ENABLED=true` with an incomplete configuration (missing CA file, `ldap://` URI, empty bind DN) | Fix the variable named in the message, or set `LDAP_ENABLED=false` |

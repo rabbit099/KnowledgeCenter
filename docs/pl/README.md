@@ -42,8 +42,8 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 ### Faza 2 — Upload i przetwarzanie
 - [x] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
 - [ ] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
-- [ ] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
-- [ ] Wykrywanie języka dla każdej części
+- [x] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
+- [x] Wykrywanie języka dla każdej części
 
 ### Faza 3 — Wyszukiwanie
 - [ ] Indeksacja w `pl`, `english`, `simple_unaccent`

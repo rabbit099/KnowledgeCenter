@@ -165,6 +165,8 @@ Jeśli żadne konto admina nie nadaje się do użycia, `create-admin` przywraca 
 
 Jest to wymuszane w SQL dla list, wyszukiwania i pobierania. Testy obejmują macierz rola × akcja.
 
+„Przetwórz ponownie”: właściciel z `documents.upload` dla własnych dokumentów, posiadacze `documents.edit_any` dla każdego dokumentu, który widzą; pozostali dostają 404 (dokument niewidoczny) albo 403. Wyodrębniony tekst i nagłówki maila widzi każdy, kto widzi dokument.
+
 ## Log audytowy
 
 Tabela `audit_log` tylko do dopisywania (wyzwalacz odrzuca `UPDATE`, `DELETE` i `TRUNCATE`; zob. [data-model.md](data-model.md)). Każdy wpis: czas (UTC), wykonawca (`actor_user_id` i `actor_label`: nazwa użytkownika w tamtej chwili, `cli` albo `anonymous`), akcja, obiekt (`entity_type`, `entity_id`), adres IP klienta i mały obiekt `details`. Wpisy powstają w tej samej transakcji co opisywana zmiana. `details` nigdy nie zawiera haseł, tokenów, wartości CSRF ani treści dokumentów: zapis takich kluczy jest odrzucany.
@@ -178,7 +180,7 @@ Akcje zapisywane od Fazy 1:
 | Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
-| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści) |
+| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
 Kolejne akcje dokumentów (`reprocess`, `publish`, `download`, ...) dojdą razem z dalszymi fazami.

@@ -165,6 +165,8 @@ If every admin account is unusable, `create-admin` restores access (it reactivat
 
 This is enforced in SQL for lists, search and downloads. Tests cover the role × action matrix.
 
+"Przetwórz ponownie" (process a document again): the owner with `documents.upload` for own documents, holders of `documents.edit_any` for any document they can see; others get 404 (document not visible) or 403. The extracted text and e-mail headers are shown to everyone who can see the document.
+
 ## Audit log
 
 Append-only table `audit_log` (a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`; see [data-model.md](data-model.md)). Each entry: time (UTC), actor (`actor_user_id` and `actor_label`: user name at that moment, `cli` or `anonymous`), action, object (`entity_type`, `entity_id`), client IP address and a small `details` object. Entries are written in the same transaction as the change they describe. `details` never contains passwords, tokens, CSRF values or document content: the writer refuses such keys.
@@ -178,7 +180,7 @@ Actions recorded since Phase 1:
 | Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audit | `audit.export` (`filters`, `rows`, `truncated`) |
-| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content) |
+| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
 Further document actions (`reprocess`, `publish`, `download`, ...) are added with the later phases.

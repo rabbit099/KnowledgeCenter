@@ -42,12 +42,12 @@ Aplikacja to modularny monolit: jedna baza kodu i jeden obraz na rolę (`app`, `
 |---|---|---|---|---|
 | rdzeń | nic | `users`, `roles`, `sessions`, `audit_log`, `app_settings` | nic | nic |
 | `documents` | nic | `doc_*` | `document.version.uploaded`, `document.published` | nic |
-| `ingestion` | `documents` | brak w MVP (prefiks `ing_*` zarezerwowany) | `document.version.extracted` | `document.version.uploaded` |
-| `search` | `documents` | `srch_*` | nic | `document.version.extracted` |
+| `ingestion` | `documents` | `ing_*` (wyciągnięty tekst, adnotacje, outbox) | `document.version.extracted` (outbox, tylko identyfikatory) | `document.version.uploaded` |
+| `search` | `documents` (Faza 3: także `ingestion`, ADR-020) | `srch_*` | nic | `document.version.extracted` |
 
 Zasady (egzekwowane w CI przez import-linter, zobacz ADR-014):
 - Moduł nigdy nie importuje wnętrza innego modułu. Może importować `baza_wiedzy.core` oraz `services/api.py` modułu, którego wymaga. Wszystko inne idzie przez zdarzenia.
-- Zdarzenia są synchroniczne i działają w obrębie procesu: handler wykonuje się w procesie, który publikuje zdarzenie. Dlatego `worker` ładuje także `search` i indeksuje wyciągnięty tekst wewnątrz workera; w `app` handler `ingestion` tylko kolejkuje zadanie.
+- Zdarzenia są synchroniczne i działają w obrębie procesu: handler wykonuje się w procesie, który publikuje zdarzenie. Dlatego `worker` ładuje także `search` i indeksuje wyciągnięty tekst wewnątrz workera; w `app` handler `ingestion` tylko kolejkuje zadanie. Magistrala niczego nie utrwala: `document.version.extracted` idzie przez outbox modułu ingestion (`ing_outbox`, zapisywany w tej samej transakcji co części, dostarczany co najmniej raz), a ładunki niosą tylko identyfikatory (ADR-020).
 - Przy starcie rejestr sprawdza `requires` i zatrzymuje się z czytelnym komunikatem, gdy wymagany moduł nie jest włączony.
 - Uprawnienia, pozycje menu, routery, zadania w tle, polecenia CLI i gałęzie migracji są zbierane z manifestów modułów (`module.py`). `MenuItem` ma `section` (`main` albo `admin`, nawigacja panelu admina), uprawnienie, które go pokazuje, oraz `available` (false, dopóki jego strony nie istnieją); etykiety i opisy uprawnień są oznaczone `N_()`, żeby `make messages` wyciągnęło je do tłumaczenia.
 - Nie ma wtyczek spoza repozytorium.
@@ -64,7 +64,7 @@ Obowiązująca tabela jest w `CLAUDE.md`, sekcja 3. W skrócie: Python 3.12, Fas
 1. Użytkownik z uprawnieniem `documents.upload` wysyła plik.
 2. `app` waliduje go (rozmiar, typ według zawartości), zapisuje pod kluczem UUID, tworzy wiersze `doc_documents` i `doc_versions` ze statusem `processing_status = pending`, publikuje zdarzenie `document.version.uploaded` (moduł `ingestion` kolejkuje `process_version(version_id)`) i zapisuje wpis audytowy.
 3. Przeglądarka odpytuje o status wersji (HTMX) i pokazuje postęp.
-4. `worker` wyciąga tekst, w razie potrzeby uruchamia OCR, wykrywa język, publikuje `document.version.extracted` z częściami tekstu (moduł `search` zapisuje je i indeksuje w `srch_parts`) i ustawia status `done` lub `failed` przez `documents.services.api`. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` wyciąga tekst, w razie potrzeby uruchamia OCR (Faza 4), wykrywa język, zapisuje części w `ing_parts`, ustawia status `done` lub `failed` przez `documents.services.api` i zapisuje `document.version.extracted` w outboxie, wszystko w jednej transakcji; potem dostarcza zdarzenie (od Fazy 3 moduł `search` kopiuje części do `srch_parts` przez `ingestion.services.api`). Błędy przejściowe są ponawiane z opóźnieniem; start workera odzyskuje zawieszone i oczekujące wersje. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publikacja
 Użytkownik z `documents.publish` (własne dokumenty) lub `documents.publish_any` publikuje wersję: ustawiane jest `doc_documents.published_version_id`, a status zmienia się na `published`. Dopiero wtedy czytelnicy widzą dokument i mogą go znaleźć.
