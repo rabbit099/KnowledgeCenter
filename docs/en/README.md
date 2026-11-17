@@ -70,4 +70,5 @@ Tick items when they are finished and documented.
 - [ ] Security review against `CLAUDE.md` section 8
 - [ ] Acceptance test with real documents (including scans and e-mails)
 - [ ] User guide for readers and publishers
+- [ ] On the server: the audit log and login limits see the real client addresses, not the Docker gateway (check in [auth-and-permissions.md](auth-and-permissions.md#authentication), client address)
 - [ ] Separate database roles (schema owner for migrations vs application role without ownership rights) and `REVOKE UPDATE, DELETE, TRUNCATE` on `audit_log`

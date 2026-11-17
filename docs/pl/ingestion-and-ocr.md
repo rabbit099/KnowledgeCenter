@@ -37,7 +37,12 @@ Strona „Moje dokumenty” → „Wgraj dokument” (`/documents/upload`, upraw
 
    Każdy inny plik OLE2 (np. stary `.xls` ze zmienioną nazwą na `.doc`) i każda niezgodność są odrzucane (HTTP 422, „Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony.”); plik przychodzący jest usuwany.
 4. Plik jest przenoszony atomową zmianą nazwy do `originals/<aa>/<bb>/<klucz>` (klucz = losowy UUID) i ustawiany tylko do odczytu. Nazwa pliku od użytkownika jest oczyszczana (części katalogów, znaki sterujące i dwukierunkowe usunięte, NFC, najwyżej 255 znaków) i zostaje tylko metadaną.
-5. Powstaje dokument-szkic z wersją 1 (`doc_documents`, `doc_versions`, `processing_status = pending`); tytuł = opcjonalne pole „Tytuł” albo nazwa pliku bez rozszerzenia.
+5. Powstaje dokument-szkic z wersją 1 (`doc_documents`, `doc_versions`, `processing_status = pending`); tytuł:
+   - pole „Tytuł”, gdy jest wypełnione: dokładnie tak, jak wpisano, tylko z ujednoliconymi spacjami i najwyżej 300 znaków;
+   - w przeciwnym razie nazwa pliku bez rozszerzenia (`Umowa_SERWIS-2026.pdf` → `Umowa_SERWIS-2026`);
+   - dla EML i MSG bez wpisanego tytułu przetwarzanie zastępuje go tematem wiadomości (z tym samym czyszczeniem); do tego czasu, albo gdy temat jest pusty, zostaje nazwa pliku.
+
+   Wielkość liter nigdy nie jest zmieniana: tytuł ma wielkość liter tego, co wpisano, nazwy pliku albo tematu. Pochodzenie tytułu jest zapisane w `doc_documents.title_source` (`user`, `filename`, `subject`), więc wpisany tytuł nigdy nie zostaje zastąpiony.
 6. Duplikaty: strona dokumentu pokazuje „Możliwy duplikat” z odnośnikami, gdy inny dokument **widoczny dla wgrywającego** ma wersję o tym samym SHA-256. Cudze szkice nigdy nie są porównywane, więc ostrzeżenie niczego nie zdradza. Wgranie nie jest blokowane; usuwanie duplikatu dojdzie z cyklem życia (Faza 5).
 7. Audyt `document.upload` z identyfikatorem dokumentu, `version_id`, `sha256`, `size_bytes` i `kind` (bez nazwy pliku i treści). Po zatwierdzeniu publikowane jest zdarzenie `document.version.uploaded`, a moduł `ingestion` kolejkuje przetwarzanie.
 8. Skanowanie antywirusowe: krok pipeline przetwarzania, domyślnie wyłączony ([Hook skanowania antywirusowego](#hook-skanowania-antywirusowego)); ClamAV nie jest podłączany w Fazie 2.

@@ -526,3 +526,58 @@ def test_parts_page_paths_are_checked(app: FastAPI) -> None:
     c = login(app, make_user(app, "admin"))
     assert c.get("/ingestion/versions/nie-uuid/parts").status_code == 404
     assert c.get(f"/ingestion/versions/{uuid.uuid4()}/parts").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("name", "data", "typed", "expected"),
+    [
+        (
+            "Mail-Z-Biura.eml",
+            eml_bytes(subject="Przegląd  ZIMOWY – faktura"),
+            "",
+            "Przegląd ZIMOWY – faktura",
+        ),
+        ("Mail-Z-Biura.eml", eml_bytes(subject="Temat"), "Mój Tytuł", "Mój Tytuł"),
+        ("Mail-Z-Biura.eml", eml_bytes(subject="   "), "", "Mail-Z-Biura"),
+        ("Notatka_ABC.txt", b"tekst", "", "Notatka_ABC"),
+    ],
+)
+def test_default_title_of_e_mails_is_the_subject(
+    app: FastAPI,
+    rt: runtime.Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    data: bytes,
+    typed: str,
+    expected: str,
+) -> None:
+    monkeypatch.setattr(tasks, "enqueue", lambda *a, **k: None)
+    c = login(app, make_user(app, "publisher"))
+    response = c.post(
+        "/documents/upload",
+        files={"file": (name, data, "application/octet-stream")},
+        data={"title": typed},
+        headers={"HX-Request": "true", "X-CSRF-Token": csrf(c, "/documents/upload")},
+        follow_redirects=False,
+    )
+    doc_id = uuid.UUID(response.headers["hx-redirect"].split("/")[2].split("?")[0])
+    with rt.session_factory() as db:
+        document = db.get(Document, doc_id)
+        assert document is not None and document.latest_version_id is not None
+        version_id = document.latest_version_id
+    assert pipeline.process(rt, version_id) == pipeline.Outcome.DONE
+    with rt.session_factory() as db:
+        document = db.get(Document, doc_id)
+        assert document is not None and document.title == expected
+
+
+def test_startup_hooks_run_once_the_schema_is_migrated(rt: runtime.Runtime) -> None:
+    import threading
+
+    orphan = pipeline.workdir_root(rt.settings) / "orphan-before-start"
+    orphan.mkdir(exist_ok=True)
+    old = time.time() - 3 * 3600
+    os.utime(orphan, (old, old))
+    thread = runtime.start_startup_hooks(rt, threading.Event())
+    thread.join(timeout=30)
+    assert not thread.is_alive() and not orphan.exists()

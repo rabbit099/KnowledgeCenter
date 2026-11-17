@@ -38,6 +38,7 @@ from baza_wiedzy.modules.documents.models import (
 from baza_wiedzy.modules.documents.processing import (
     Claim,
     ProcessingBusy,
+    apply_subject_title,
     claim,
     fail,
     finish,
@@ -61,6 +62,7 @@ __all__ = [
     "ProcessingBusy",
     "UnsupportedFile",
     "Version",
+    "apply_subject_title",
     "can_reprocess",
     "claim",
     "detect_kind",

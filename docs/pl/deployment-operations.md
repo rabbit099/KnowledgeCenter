@@ -79,7 +79,7 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 1. Skopiuj `docker-compose.yml`, `.env.example` i `scripts/` do `/srv/baza-wiedzy/`; zmień nazwę `.env.example` na `.env` i wypełnij; `chmod 600 .env`.
 2. Zaloguj się do rejestru. Pakiety GHCR są **domyślnie prywatne**, więc serwer potrzebuje tokenu: utwórz osobisty token dostępu GitHub (classic) wyłącznie z zakresem `read:packages`, najlepiej dla osobnego konta z prawem odczytu repozytorium, a potem na serwerze: `echo "<token>" | docker login ghcr.io -u <użytkownik-github> --password-stdin` (oczekiwane: `Login Succeeded`; dane logowania trafiają do `~/.docker/config.json` użytkownika uruchamiającego Dockera, chroń ten plik). Bez tego `docker compose pull` kończy się błędem `denied` albo `unauthorized`. Odnów token przed wygaśnięciem; to samo dotyczy maszyny budującej pakiet offline.
 3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull && docker compose up -d`. Wszystkie cztery obrazy projektu (`app`, `worker`, `db`, `proxy`) pochodzą z GHCR; nic nie jest budowane na serwerze.
-4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`.
+4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`. Worker uruchomiony w kroku 3 na to czeka: dopóki schemat nie jest na wszystkich głowach migracji, loguje `worker startup: waiting for database migrations (schema: not migrated); run baza-wiedzy migrate` (raz na minutę), a swoje zadania startowe (odzyskiwanie, outbox) wykonuje dopiero potem. To samo dotyczy środowiska deweloperskiego: `make up`, a potem `make migrate`.
 5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin bw-admin` (dwa razy pyta o hasło; 14–256 znaków), potem zaloguj się na `https://<PUBLIC_HOSTNAME>/login`.
 6. Sprawdź, czy `https://<PUBLIC_HOSTNAME>/ready` zwraca OK.
 7. Zaloguj się jako admin, skonfiguruj mapowanie grup AD, przetestuj logowanie z AD.
@@ -106,7 +106,7 @@ Co robi `update.sh`:
 1. Kontrole wstępne: Docker działa, jest wolne miejsce na dysku, nowe obrazy istnieją w rejestrze, `.env` zawiera wszystkie zmienne z nowego `.env.example` (w przeciwnym razie zatrzymuje się i wypisuje brakujące).
 2. Uruchamia `backup.sh` (baza + pliki).
 3. Pobiera nowe obrazy.
-4. Zatrzymuje `worker`, żeby podczas migracji nie szły żadne zadania.
+4. Zatrzymuje `worker`, żeby podczas migracji nie szły żadne zadania (worker uruchomiony przed końcem migracji czeka na nią przed zadaniami startowymi, zobacz Pierwsza instalacja).
 5. Uruchamia migracje w jednorazowym kontenerze (`baza-wiedzy migrate`).
 6. Ustawia `APP_VERSION` w `.env` i uruchamia wszystko (`docker compose up -d`).
 7. Czeka na `/ready` (do 120 s).

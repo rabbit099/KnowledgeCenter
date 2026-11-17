@@ -4,7 +4,7 @@
 body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); background: var(--bg); line-height: 1.5; }
 .topbar { padding: 0.75rem 1.5rem; background: var(--accent); }
 .brand { color: #fff; font-weight: 600; text-decoration: none; font-size: 1.1rem; }
-.content { max-width: 60rem; margin: 0 auto; padding: 1.5rem; }
+.content { max-width: 72rem; margin: 0 auto; padding: 1.5rem; }
 .footer { max-width: 60rem; margin: 0 auto; padding: 1rem 1.5rem; color: var(--muted); font-size: 0.85rem; }
 .muted { color: var(--muted); }
 .ok { color: var(--ok); }
@@ -30,7 +30,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
-.check { display: flex; flex-direction: row; gap: 0.5rem; align-items: center; }
+.check, .stack label.check { display: flex; flex-direction: row; gap: 0.5rem; align-items: center; justify-content: flex-start; }
+.stack label.check input { padding: 0; margin: 0; width: auto; }
+.stack fieldset { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.nowrap { white-space: nowrap; }
+.audit td:last-child { min-width: 22rem; }
 .actions { display: flex; gap: 1rem; }
 .pagination { display: flex; gap: 1rem; margin-top: 0.75rem; }
 .button { display: inline-block; padding: 0.35rem 0.75rem; border: 1px solid var(--accent); border-radius: 4px; text-decoration: none; }

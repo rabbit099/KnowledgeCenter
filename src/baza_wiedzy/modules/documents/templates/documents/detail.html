@@ -12,7 +12,7 @@
 {% endif %}
 <dl class="facts">
   <dt>{{ _("Status") }}</dt><dd>{{ _("draft") if document.status == "draft" else document.status }}</dd>
-  <dt>{{ _("File") }}</dt><dd>{{ version.original_filename }} ({{ version.kind|upper }}, {{ (version.size_bytes / 1024)|round(1) }} KB)</dd>
+  <dt>{{ _("File") }}</dt><dd>{{ version.original_filename }} ({{ version.kind|upper }}, {{ version.size_bytes|filesize }})</dd>
   <dt>SHA-256</dt><dd><code>{{ version.sha256 }}</code></dd>
   <dt>{{ _("Uploaded") }}</dt><dd>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</dd>
 </dl>

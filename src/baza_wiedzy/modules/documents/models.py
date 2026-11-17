@@ -53,12 +53,15 @@ class Document(Base):
     __tablename__ = "doc_documents"
     __table_args__ = (
         CheckConstraint("status IN ('draft', 'published', 'archived')", name="status"),
+        CheckConstraint("title_source IN ('user', 'filename', 'subject')", name="title_source"),
         Index("ix_doc_documents_owner_id", "owner_id"),
         Index("ix_doc_documents_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    # user (typed), filename (no title typed), subject (e-mail subject after processing)
+    title_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="user")
     description: Mapped[str | None] = mapped_column(Text)
     owner_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False

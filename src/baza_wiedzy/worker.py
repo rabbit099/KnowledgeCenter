@@ -4,8 +4,10 @@ Importing this module configures JSON logging, the broker, the heartbeat, the ac
 enabled modules (that is how Dramatiq discovers them) and the process runtime (database engine,
 event bus) used by the actors. It runs in every worker process, after Dramatiq has pointed
 stderr at its log pipe; the supervising main process keeps Dramatiq's own plain-text format for
-its few start and stop lines. When the worker has started, the modules' startup hooks run once
-per process (re-enqueue waiting versions, redeliver events, clean up temporary files).
+its few start and stop lines. When the worker has started, a background thread waits until the
+database schema is at all migration heads (the worker may start before `baza-wiedzy migrate`)
+and then runs the modules' startup hooks once per process (re-enqueue waiting versions,
+redeliver events, clean up temporary files).
 """
 
 from __future__ import annotations
@@ -29,4 +31,4 @@ broker.add_middleware(
 )
 process_runtime = runtime.build(settings, registry)
 runtime.install(process_runtime)
-broker.add_middleware(StartupHooks(lambda: runtime.run_startup_hooks(process_runtime)))
+broker.add_middleware(StartupHooks(lambda stop: runtime.start_startup_hooks(process_runtime, stop)))

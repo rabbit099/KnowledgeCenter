@@ -70,4 +70,5 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Przegląd bezpieczeństwa względem sekcji 8 pliku `CLAUDE.md`
 - [ ] Test odbiorczy na prawdziwych dokumentach (w tym skany i maile)
 - [ ] Instrukcja dla czytelników i publikujących
+- [ ] Na serwerze: dziennik audytu i limity logowania widzą prawdziwe adresy klientów, nie bramę Dockera (sprawdzenie w [auth-and-permissions.md](auth-and-permissions.md#uwierzytelnianie), adres klienta)
 - [ ] Rozdzielenie ról bazy (właściciel schematu do migracji vs rola aplikacji bez praw właściciela) i `REVOKE UPDATE, DELETE, TRUNCATE` na `audit_log`

@@ -211,6 +211,7 @@ def store(
             sent_at=email.sent_at,
             message_id=email.message_id,
         )
+        documents.apply_subject_title(db, claim.version_id, email.subject)
     outbox.add(
         db,
         DOCUMENT_VERSION_EXTRACTED,

@@ -87,8 +87,14 @@ def create(
         raise UnsupportedFile(N_("The file is empty."))
     assert actor.user_id is not None
     key = storage.store(received.path)
-    clean_title = " ".join(title.split())[:MAX_TITLE] or filename.rsplit(".", 1)[0] or filename
-    document = Document(title=clean_title, owner_id=actor.user_id)
+    typed = " ".join(title.split())[:MAX_TITLE]
+    # Case is never changed: the title is what was typed, else the file name without extension
+    # (for e-mails processing replaces it with the subject, see processing.apply_subject_title).
+    document = Document(
+        title=typed or filename.rsplit(".", 1)[0] or filename,
+        title_source="user" if typed else "filename",
+        owner_id=actor.user_id,
+    )
     db.add(document)
     db.flush()
     version = Version(

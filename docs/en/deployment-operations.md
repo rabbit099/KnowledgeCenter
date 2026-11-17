@@ -79,7 +79,7 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
 2. Log in to the registry. GHCR packages are **private by default**, so the server needs a token: create a GitHub personal access token (classic) with only the `read:packages` scope, ideally for a dedicated account with read access to the repository, then on the server: `echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin` (expected: `Login Succeeded`; the credentials are stored in `~/.docker/config.json` of the user running Docker, protect that file). Without it `docker compose pull` fails with `denied` or `unauthorized`. Renew the token before it expires; the same applies to the machine that builds the offline bundle.
 3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull && docker compose up -d`. All four project images (`app`, `worker`, `db`, `proxy`) come from GHCR; nothing is built on the server.
-4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
+4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`. The worker started in step 3 waits for this: until the schema is at all migration heads it logs `worker startup: waiting for database migrations (schema: not migrated); run baza-wiedzy migrate` (once a minute) and runs its startup work (recovery, outbox) only afterwards. The same applies in development to `make up` followed by `make migrate`.
 5. Create the first admin: `docker compose exec app baza-wiedzy create-admin bw-admin` (asks for the password twice; 14-256 characters), then log in at `https://<PUBLIC_HOSTNAME>/login`.
 6. Check `https://<PUBLIC_HOSTNAME>/ready` returns OK.
 7. Log in as the admin, configure AD group mapping, test an AD login.
@@ -106,7 +106,7 @@ What `update.sh` does:
 1. Pre-checks: Docker running, free disk space, the new images exist in the registry, `.env` contains all variables listed in the new `.env.example` (otherwise it stops and lists the missing ones).
 2. Runs `backup.sh` (database + files).
 3. Pulls the new images.
-4. Stops `worker` so no jobs run during the migration.
+4. Stops `worker` so no jobs run during the migration (a worker that starts before the migration has finished waits for it before its startup work, see First installation).
 5. Runs migrations in a one-off container (`baza-wiedzy migrate`).
 6. Sets `APP_VERSION` in `.env` and starts everything (`docker compose up -d`).
 7. Waits for `/ready` (up to 120 s).

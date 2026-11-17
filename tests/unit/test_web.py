@@ -145,3 +145,19 @@ def test_every_ui_string_has_a_polish_translation() -> None:
     }
     assert extracted, "no strings extracted; check the extraction setup"
     assert extracted <= translated, f"untranslated: {sorted(extracted - translated)}"
+
+
+@pytest.mark.parametrize(
+    ("size", "text"),
+    [(0, "0 B"), (17, "17 B"), (1023, "1023 B"), (1536, "1,5 KB"), (5 * 1024**2, "5,0 MB")],
+)
+def test_file_sizes_are_readable(size: int, text: str) -> None:
+    from baza_wiedzy.core.web.templating import filesize
+
+    assert filesize(size) == text
+
+
+def test_long_hashes_are_recognised_for_shortening() -> None:
+    from baza_wiedzy.core.web.templating import is_hash
+
+    assert is_hash("a" * 64) and not is_hash("abc") and not is_hash("Z" * 64) and not is_hash(5)

@@ -94,16 +94,25 @@ class Heartbeat(Middleware):
 
 
 class StartupHooks(Middleware):
-    """Runs `hook` once in each worker process, after the worker has started."""
+    """Starts `start(stop_event)` once in each worker process, after the worker has booted.
 
-    def __init__(self, hook: Callable[[], None]) -> None:
-        self.hook = hook
+    `start` returns a background thread (see core.runtime.start_startup_hooks); the stop event
+    ends a wait for migrations when the worker shuts down.
+    """
+
+    def __init__(self, start: Callable[[threading.Event], threading.Thread]) -> None:
+        self.start = start
+        self._stop = threading.Event()
 
     def after_worker_boot(self, broker: Broker, worker: dramatiq.Worker) -> None:
+        self._stop.clear()
         try:
-            self.hook()
+            self.start(self._stop)
         except Exception:
-            log.exception("worker startup hooks failed")
+            log.exception("worker startup hooks could not be started")
+
+    def before_worker_shutdown(self, broker: Broker, worker: dramatiq.Worker) -> None:
+        self._stop.set()
 
 
 def heartbeat_check(client: redis.Redis) -> ReadyCheck:

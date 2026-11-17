@@ -28,7 +28,7 @@ def test_expected_heads_are_all_script_heads() -> None:
     # Independent of ENABLED_MODULES: the schema is always complete.
     assert expected_heads(make_config(settings())) == {
         "core_0003",
-        "documents_0002",
+        "documents_0003",
         "ingestion_0001",
         "search_0001",
     }

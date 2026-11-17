@@ -9,7 +9,7 @@
       <td><a href="/documents/{{ document.id }}">{{ document.title }}</a></td>
       <td>{{ version.original_filename }}</td>
       <td>{{ version.kind|upper }}</td>
-      <td>{{ (version.size_bytes / 1024)|round(1) }} KB</td>
+      <td>{{ version.size_bytes|filesize }}</td>
       <td>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</td>
       <td>{{ status_badge(version.processing_status) }}</td>
     </tr>

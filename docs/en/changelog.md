@@ -6,16 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
-### Fixed
-- Admin panel forms (changing roles, activating users, revoking sessions, adding AD users in advance, roles, AD group mappings, audit CSV export) were refused with 403 (CSRF): their hidden token field was rendered empty since the admin panel was introduced (0.2.0). Fixed; every POST form is now tested with the token it renders. A refused request shows a page in the application layout with "Wróć na stronę główną" and "Zaloguj ponownie" and is logged with its reason (no token values).
-
 ### Added
 - Document upload (Phase 2, stage A): page "Moje dokumenty" with search and live status, "Wgraj dokument" (JavaScript required; CSRF token in a header), document page. Files up to `MAX_UPLOAD_MB` (default 50; proxy limit `MAX_REQUEST_MB` now 51), type detected by content (ADR-021: PDF, DOCX, DOC, TXT, EML, MSG; other OLE2 files such as renamed `.xls` refused), stored under a random key on the `storage` volume via `.incoming/` and an atomic rename, read-only originals, sanitised file names, SHA-256, "possible duplicate" warning only against documents the uploader can see. New uploads are drafts visible to the owner and `documents.read_drafts` holders (others get 404). Tables `doc_documents`, `doc_versions`, `doc_email_metadata` (migration `documents_0002`). Audit `document.upload` (ids and hash only). Command `baza-wiedzy storage-cleanup`. New variables `MAX_UPLOAD_MB`, `STORAGE_DIR`.
 - Document processing in the worker (Phase 2, stage B): TXT (UTF-8, Windows-1250, ISO-8859-2 by a fixed rule, ADR-022), EML (text or HTML body converted to text without running or fetching anything; attachments processed as separate parts with the origin "załącznik: nazwa › …", up to depth 3; unsupported attachments skipped with a note; damaged headers and dates tolerated; subject, sender, recipients, date and Message-ID stored and shown) and DOCX (paragraphs, tables, headers and footers; zip-bomb and XXE protection). Text split into chunks of at most 100,000 characters, language per chunk (Polish, English or unknown for short text, `LANGUAGE_MIN_LETTERS`). Statuses oczekuje → przetwarzanie → gotowe / błąd with readable messages; transient errors retried with an exponential delay, permanent ones fail at once; versions stuck in processing recovered; processing twice never duplicates parts. The document page shows the extracted parts, notes and e-mail headers. "Przetwórz ponownie" on the page (owner or `documents.edit_any`) and `baza-wiedzy reprocess <ID>… | --failed | --stuck`, audited as `document.reprocess`. Event outbox with `baza-wiedzy events redeliver`; the worker start re-enqueues waiting versions, recovers stuck ones, delivers events and removes orphaned temporary files. Tables `ing_parts`, `ing_results`, `ing_outbox` (migration `ingestion_0001`). New variables `INGEST_*`, `LANGUAGE_MIN_LETTERS`, `OUTBOX_RETENTION_DAYS`, `SCAN_HOOK` (virus scan step, off). `make smoke` uploads a file and waits until it is processed.
 
 ### Changed
+- E-mails (EML, later MSG) uploaded without a title get the subject of the message as their title after processing; a typed title is never replaced (`doc_documents.title_source`, migration `documents_0003`). Case is never changed. Client-address handling behind Caddy documented, with a server check in Phase 7.
 - The event `document.version.extracted` carries identifiers only and is delivered through the ingestion outbox; extracted text belongs to the `ingestion` module and search will read it through `ingestion.services.api` (ADR-020, open question 8 decided).
 - The worker image contains `python-docx` and `lingua-language-detector` (about 300 MB larger); the app image does not. Development and CI install the `worker` extra (`uv sync --all-extras`).
+
+### Fixed
+- The worker no longer fails its startup work when it starts before `baza-wiedzy migrate` (dev: `make up` then `make migrate`): it waits until the schema is at all migration heads, logging once a minute, then recovers and delivers events.
+- File sizes below 1 KB are shown in bytes ("17 B" instead of "0.0 KB"); sizes use a decimal comma.
+- Audit log: the details column is wider and long hashes are shortened (full value on hover and in the CSV export); the page area is wider.
+- "Dodaj z wyprzedzeniem użytkownika AD": role checkboxes are next to their labels, aligned left.
+- Admin panel forms (changing roles, activating users, revoking sessions, adding AD users in advance, roles, AD group mappings, audit CSV export) were refused with 403 (CSRF): their hidden token field was rendered empty since the admin panel was introduced (0.2.0). Fixed; every POST form is now tested with the token it renders. A refused request shows a page in the application layout with "Wróć na stronę główną" and "Zaloguj ponownie" and is logged with its reason (no token values).
 
 ## [0.2.1] - 2026-11-17
 

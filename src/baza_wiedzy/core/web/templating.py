@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -49,6 +50,26 @@ def require_csrf(token: object) -> str:
     return token
 
 
+def filesize(size: int | None) -> str:
+    """Human-readable size with a Polish decimal comma: 17 B, 1,5 KB, 12,3 MB."""
+    if size is None:
+        return ""
+    if size < 1024:
+        return f"{size} B"
+    for unit, factor in (("KB", 1024), ("MB", 1024**2), ("GB", 1024**3)):
+        if size < factor * 1024 or unit == "GB":
+            return f"{size / factor:.1f} {unit}".replace(".", ",")
+    return f"{size} B"  # pragma: no cover
+
+
+HASH_RE = re.compile(r"^[0-9a-f]{32,}$")
+
+
+def is_hash(value: object) -> bool:
+    """Long hexadecimal values (SHA-256 and similar) are shortened in tables."""
+    return isinstance(value, str) and bool(HASH_RE.match(value))
+
+
 def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) -> Jinja2Templates:
     """Core templates first, then each module's `templates/` folder (manifest `templates`)."""
     loaders: list[BaseLoader] = [FileSystemLoader(TEMPLATE_DIR)]
@@ -69,6 +90,8 @@ def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) ->
     env.globals["enabled_modules"] = frozenset(settings.enabled_modules)
     env.globals["lang"] = DEFAULT_LOCALE
     env.globals["require_csrf"] = require_csrf
+    env.globals["is_hash"] = is_hash
+    env.filters["filesize"] = filesize
     # The database stores UTC; the UI shows Europe/Warsaw (CLAUDE.md section 6).
     env.globals["tz"] = ZoneInfo("Europe/Warsaw")
     return Jinja2Templates(env=env, context_processors=[_request_context])

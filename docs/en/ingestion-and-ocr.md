@@ -37,7 +37,12 @@ Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `doc
 
    Any other OLE2 file (for example an old `.xls` renamed to `.doc`) and any mismatch are refused (HTTP 422, "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony."); the incoming file is deleted.
 4. The file is moved with an atomic rename to `originals/<aa>/<bb>/<key>` (key = random UUID) and made read-only. The user's file name is sanitised (directory parts, control and bidi characters removed, NFC, at most 255 characters) and kept only as metadata.
-5. A draft document with version 1 is created (`doc_documents`, `doc_versions`, `processing_status = pending`); title = the optional "Tytuł" field or the file name without extension.
+5. A draft document with version 1 is created (`doc_documents`, `doc_versions`, `processing_status = pending`); title:
+   - the "Tytuł" field when filled in: exactly as typed, only runs of spaces collapsed and at most 300 characters;
+   - otherwise the file name without extension (`Umowa_SERWIS-2026.pdf` → `Umowa_SERWIS-2026`);
+   - for EML and MSG without a typed title, processing replaces it with the subject of the message (same cleaning); until then, or when the subject is empty, the file name stays.
+
+   Upper and lower case are never changed anywhere: the title shows the case of what was typed, of the file name or of the subject. The origin is kept in `doc_documents.title_source` (`user`, `filename`, `subject`), so a typed title is never replaced.
 6. Duplicates: the document page shows "Możliwy duplikat" with links when another document **visible to the uploader** has a version with the same SHA-256. Other people's drafts are never compared, so the warning reveals nothing. The upload is not blocked; removing a duplicate comes with the lifecycle (Phase 5).
 7. Audit `document.upload` with the document id, `version_id`, `sha256`, `size_bytes` and `kind` (no file name, no content). After the commit the event `document.version.uploaded` is published and the `ingestion` module enqueues processing.
 8. Virus scan: a step of the processing pipeline, disabled by default ([Virus scan hook](#virus-scan-hook)); ClamAV is not wired in Phase 2.

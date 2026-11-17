@@ -29,6 +29,7 @@ from baza_wiedzy.modules.documents.models import (
     NEEDS_OCR,
     PENDING,
     PROCESSING,
+    Document,
     EmailMetadata,
     Version,
 )
@@ -185,6 +186,35 @@ def ids_with_status(db: Session, status: str, *, limit: int = 10_000) -> list[uu
             .limit(limit)
         )
     )
+
+
+def apply_subject_title(db: Session, version_id: uuid.UUID, subject: str | None) -> bool:
+    """E-mails: use the subject as the title when no title was typed at upload.
+
+    Only while the title still comes from the file name and only for the latest version; a
+    typed title (title_source "user") is never replaced. Case and characters are kept;
+    whitespace is collapsed and the length limited like a typed title.
+    """
+    from baza_wiedzy.modules.documents.upload import MAX_TITLE
+
+    clean = " ".join((subject or "").split())[:MAX_TITLE]
+    if not clean:
+        return False
+    version = db.get(Version, version_id)
+    if version is None:
+        return False
+    document = db.scalar(
+        select(Document).where(Document.id == version.document_id).with_for_update()
+    )
+    if (
+        document is None
+        or document.latest_version_id != version_id
+        or document.title_source == "user"
+    ):
+        return False
+    document.title = clean
+    document.title_source = "subject"
+    return True
 
 
 def save_email_metadata(
