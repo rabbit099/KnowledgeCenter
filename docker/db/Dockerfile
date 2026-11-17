@@ -1,7 +1,7 @@
 # PostgreSQL 16 with the Polish Hunspell dictionary prepared for full-text search.
 # The image only ships the files; Alembic migrations create the dictionary and
 # text-search configurations (see docs/en/search.md, ADR-016).
-FROM postgres:16.15-trixie
+FROM postgres:18.4-trixie
 
 # Pinned Debian package (source: SJP.PL via libreoffice-dictionaries, licence chosen: Apache-2.0).
 ARG HUNSPELL_PL_VERSION=1:25.2.3-1

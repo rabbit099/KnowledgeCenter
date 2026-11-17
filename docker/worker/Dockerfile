@@ -1,5 +1,5 @@
 # Background worker image (Dramatiq): parsing, OCR, DOC conversion. Build context: repository root.
-FROM ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.13.8-python3.12-trixie-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /build
@@ -8,7 +8,7 @@ RUN uv sync --frozen --no-dev --extra worker --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev --extra worker --no-editable
 
-FROM python:3.12.16-slim-trixie
+FROM python:3.15.1-slim-trixie
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 # OCR (tesseract pol+eng, ghostscript for OCRmyPDF), DOC conversion (LibreOffice Writer, no GUI),
 # file type detection (libmagic).
