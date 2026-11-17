@@ -171,7 +171,7 @@ pdfium (PDF) i LibreOffice (DOC) to kod natywny, który na złośliwym lub uszko
 - limit przestrzeni adresowej (`RLIMIT_AS`) i brak zrzutów pamięci; sprawdzone: LibreOffice 25.2 konwertuje normalnie przy 1 GB, proces potomny pdfium kończy się czysto (`MemoryError` → „Przetworzenie pliku wymaga więcej pamięci…”);
 - minimalne środowisko (bez zmiennych proxy i bazy), `HOME` i `TMPDIR` w katalogu próby, świeży profil LibreOffice (`-env:UserInstallation`) dla każdej konwersji, wynik tylko w plikach w tym katalogu (stdout i stderr idą do plików, nigdy do logu);
 - jedna konwersja LibreOffice naraz na kontener workera (blokada pliku w `/data/storage/.work`); drugi proces workera czeka do `LIBREOFFICE_TIMEOUT_SECONDS`, potem ponawia później;
-- brak sieci: worker należy tylko do wewnętrznej sieci Dockera (etap D);
+- brak sieci: worker należy tylko do wewnętrznej sieci Dockera `backend` (ADR-024, sprawdza to `make smoke`);
 - awaria (sygnał) to trwały błąd „uszkodzony plik”, przekroczenie czasu to błąd przejściowy: ponawiany, a po ostatniej próbie „Przetwarzanie trwało dłużej niż limit czasu”.
 
 Dodatkowo obowiązuje limit pamięci kontenera workera. Zmierzone 2026-11-17 na produkcyjnym pliku Compose z ustawieniami domyślnymi (2 procesy workera): w spoczynku 173 MiB; podczas przetwarzania 26 plików naraz (m.in. PDF 300 stron, DOC 1,5 MB z 3000 akapitów, TXT 10 MB i mail z dziesięcioma załącznikami PDF) najwyżej 457 MiB (szczyt cgroup z pamięcią podręczną stron 495 MiB), wszystko w 18 s; potem 339 MiB (Python zatrzymuje zwolnioną pamięć). `WORKER_MEMORY_LIMIT=2g` zostawia więc miejsce na jedną konwersję LibreOffice (≤ 1 GB) i bardzo duże teksty; przy każdym dodatkowym procesie workera zwiększ go o około 0,6 GB.

@@ -45,6 +45,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `DOCKER_SUBNET`, `PROXY_IP` | Stała sieć Dockera stosu (domyślnie `172.30.70.0/24`) i adres proxy w niej (`172.30.70.10`); aplikacja ufa `X-Forwarded-For` tylko od `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
+| `BACKEND_SUBNET` | Wewnętrzna sieć `app`, `worker`, `db`, `redis` bez dostępu do internetu (domyślnie `172.30.72.0/24`; zmień, jeśli koliduje z siecią firmy, ADR-024) |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 51, trzymaj `MAX_UPLOAD_MB` + 1) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Największy wgrywany plik (domyślnie 50 MB); ścieżka wolumenu plików w kontenerach (domyślnie `/data/storage`) |
 | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Przetwarzanie w workerze: liczba prób przy błędach przejściowych (3), opóźnienie między nimi (30 s, podwajane do 600 s), limit czasu jednej próby (900 s), wiek, po którym wersja wciąż „przetwarzana” uchodzi za przerwaną (30 min, trzymaj powyżej limitu czasu) |
@@ -278,6 +279,7 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 ## Uwagi bezpieczeństwa dla operatorów
 
 - Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci; Redis wymaga też hasła (`REDIS_PASSWORD`).
+- `worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
 - Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.

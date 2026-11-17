@@ -45,6 +45,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `DOCKER_SUBNET`, `PROXY_IP` | Fixed Docker network of the stack (default `172.30.70.0/24`) and the proxy's address inside it (`172.30.70.10`); the app trusts `X-Forwarded-For` only from `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Host ports of the proxy (default 80, 443) |
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
+| `BACKEND_SUBNET` | Internal network of `app`, `worker`, `db`, `redis` without internet access (default `172.30.72.0/24`; change it if it collides with a company network, ADR-024) |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy (default 51, keep it `MAX_UPLOAD_MB` + 1) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Largest uploaded file (default 50 MB); storage volume path in the containers (default `/data/storage`) |
 | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Processing in the worker: attempts for transient errors (3), delay between them (30 s doubling up to 600 s), time limit of one attempt (900 s), age after which a version still "processing" counts as interrupted (30 min, keep it above the time limit) |
@@ -278,6 +279,7 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 ## Security notes for operators
 
 - Only ports 80/443 are published. Database and Redis are not reachable from the network; Redis also requires a password (`REDIS_PASSWORD`).
+- `worker`, `db` and `redis` are only on the internal Docker network `backend` (no route to the internet, no name resolution of public names); `app` is on it and on `default` (reached by the proxy, outgoing LDAPS to Active Directory). Healthchecks run inside the containers and are not affected; `scripts/offline_bundle.sh` lists images only and needs no change; the coming `update.sh` (Phase 6) runs `docker compose`, which creates or updates both networks. Check: `make smoke` ("Network isolation"), or on a server `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` must fail with `OSError` (network unreachable).
 - Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
 - Docker logs rotate: at most 5 files × 10 MB per container.
 - `.env` and backups contain secrets and personal data; restrict permissions.

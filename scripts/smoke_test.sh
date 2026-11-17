@@ -3,7 +3,8 @@
 #   1. build app, worker, db, proxy for linux/amd64 and tag them as <prefix>-<name>:<version>
 #   2. start docker-compose.yml in a separate Compose project with generated secrets
 #   3. run `baza-wiedzy migrate`
-#   4. require /ready to answer HTTP 200 with database, redis, schema and worker all "ok"
+#   4. require /ready to answer HTTP 200 with database, redis, schema and worker all "ok";
+#      check the network isolation: the worker reaches db and redis, nothing outside
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
 #      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
 #      and a small text PDF and wait until the worker has processed both ("ready"), log out
@@ -41,6 +42,7 @@ TLS_MODE=internal
 HTTP_PORT=$HTTP_PORT
 HTTPS_PORT=$HTTPS_PORT
 DOCKER_SUBNET=${SMOKE_SUBNET:-172.30.71.0/24}
+BACKEND_SUBNET=${SMOKE_BACKEND_SUBNET:-172.30.73.0/24}
 PROXY_IP=${SMOKE_PROXY_IP:-172.30.71.10}
 SECRET_KEY=$(secret)
 POSTGRES_PASSWORD=$(secret)
@@ -102,6 +104,43 @@ if [ "${ready:-0}" != "1" ]; then
     echo "Last /ready answer: ${body:-<none>}"
     exit 1
 fi
+
+echo "==> Network isolation (ADR-024)"
+# Worker: database and Redis reachable, nothing outside (TCP to public addresses, DNS of
+# public names). App: database and Redis reachable; outbound only reported (AD needs it,
+# but CI or an offline server may have no internet at all).
+probe() {  # probe <service>: prints one line "name=yes|no" per target
+    compose exec -T "$1" python - <<'PY'
+import socket
+def tcp(host, port):
+    try:
+        socket.create_connection((host, port), timeout=3).close()
+        return "yes"
+    except OSError:
+        return "no"
+def dns(name):
+    try:
+        socket.getaddrinfo(name, 443)
+        return "yes"
+    except OSError:
+        return "no"
+print(f"db={tcp('db', 5432)} redis={tcp('redis', 6379)} "
+      f"internet_ip={tcp('1.1.1.1', 443)} internet_ip2={tcp('8.8.8.8', 53)} "
+      f"internet_dns={dns('example.com')}")
+PY
+}
+WORKER_NET="$(probe worker)"
+APP_NET="$(probe app)"
+echo "    worker: $WORKER_NET"
+echo "    app:    $APP_NET"
+case "$WORKER_NET" in
+    "db=yes redis=yes internet_ip=no internet_ip2=no internet_dns=no") ;;
+    *) echo "FAILED: the worker must reach db and redis and nothing outside"; exit 1 ;;
+esac
+case "$APP_NET" in
+    "db=yes redis=yes"*) ;;
+    *) echo "FAILED: the app must reach db and redis"; exit 1 ;;
+esac
 
 echo "==> Login through the proxy"
 BASE="https://localhost:$HTTPS_PORT"
@@ -180,5 +219,5 @@ rm -f "$SAMPLE_TXT" "$SAMPLE_PDF"
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, login, admin panel, TXT and PDF processed to \"ready\", logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", logout"
 exit 0

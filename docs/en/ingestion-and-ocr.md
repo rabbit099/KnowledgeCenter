@@ -171,7 +171,7 @@ pdfium (PDF) and LibreOffice (DOC) are native code that may crash, hang or alloc
 - address-space limit (`RLIMIT_AS`) and no core dumps; tested: LibreOffice 25.2 converts normally with 1 GB, pdfium's child fails cleanly (`MemoryError` → "Przetworzenie pliku wymaga więcej pamięci…");
 - a minimal environment (no proxy or database variables), `HOME` and `TMPDIR` inside the attempt's directory, a fresh LibreOffice profile (`-env:UserInstallation`) per conversion, output only to files in that directory (stdout and stderr go to files, never to the log);
 - one LibreOffice conversion at a time per worker container (a file lock in `/data/storage/.work`); a second worker process waits up to `LIBREOFFICE_TIMEOUT_SECONDS`, then retries later;
-- no network: the worker joins only the internal Docker network (stage D);
+- no network: the worker joins only the internal Docker network `backend` (ADR-024, checked by `make smoke`);
 - a crash (signal) is a permanent "damaged file" error, a timeout a transient one: retried, and after the last attempt "Przetwarzanie trwało dłużej niż limit czasu".
 
 The worker container's memory limit applies on top. Measured on 2026-11-17 with the production Compose file and the defaults (2 worker processes): idle 173 MiB; while processing 26 files at once (among them a 300-page PDF, a 1.5 MB DOC with 3000 paragraphs, a 10 MB TXT and an e-mail with ten PDF attachments) at most 457 MiB (cgroup peak including page cache 495 MiB), all done in 18 s; 339 MiB afterwards (Python keeps freed memory). `WORKER_MEMORY_LIMIT=2g` therefore leaves room for one LibreOffice conversion (≤ 1 GB) and very large texts; raise it by about 0.6 GB per extra worker process.

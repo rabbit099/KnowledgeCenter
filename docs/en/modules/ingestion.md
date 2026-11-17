@@ -44,4 +44,4 @@ Worker start hook (manifest `worker_startup`): `startup.on_worker_start` (tempor
 
 ## Status
 
-Phase 2, stages B and C: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, extractors for TXT, EML, DOCX, PDF (child process, scanned pages marked "wymaga OCR"), DOC (LibreOffice in a child process) and MSG, limits against archive and XML bombs, parts page and "Przetwórz ponownie" (UI and CLI), the e-mail subject as default title. Stage D: worker without internet access; Phase 4: OCR.
+Phase 2, stages B and C: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, extractors for TXT, EML, DOCX, PDF (child process, scanned pages marked "wymaga OCR"), DOC (LibreOffice in a child process) and MSG, limits against archive and XML bombs, parts page and "Przetwórz ponownie" (UI and CLI), the e-mail subject as default title. The worker has no internet access (ADR-024). Phase 3: search reads the parts; Phase 4: OCR.

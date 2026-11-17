@@ -44,4 +44,4 @@ Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (plik
 
 ## Status
 
-Faza 2, etapy B i C: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML, DOCX, PDF (proces potomny, zeskanowane strony oznaczane „wymaga OCR”), DOC (LibreOffice w procesie potomnym) i MSG, limity przeciw bombom ZIP i XML, strona części i „Przetwórz ponownie” (UI i CLI), temat maila jako domyślny tytuł. Etap D: worker bez dostępu do internetu; Faza 4: OCR.
+Faza 2, etapy B i C: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML, DOCX, PDF (proces potomny, zeskanowane strony oznaczane „wymaga OCR”), DOC (LibreOffice w procesie potomnym) i MSG, limity przeciw bombom ZIP i XML, strona części i „Przetwórz ponownie” (UI i CLI), temat maila jako domyślny tytuł. Worker nie ma dostępu do internetu (ADR-024). Faza 3: wyszukiwarka czyta części; Faza 4: OCR.

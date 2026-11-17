@@ -8,7 +8,7 @@ A crash, a hang or runaway memory in native code must not take the worker down:
   container memory limit instead, see ingestion-and-ocr.md);
 - it gets a minimal environment (no proxy variables, its own HOME and TMPDIR inside the
   attempt's temporary directory) and its output goes to files in that directory;
-- the worker has no network route to the internet (internal Docker network, Phase 2 stage D).
+- the worker has no network route to the internet (internal Docker network `backend`, ADR-024).
 
 Timeouts raise IsolationTimeout, a transient error: the attempt is retried and fails with
 "processing took longer than the time limit" after the last attempt.

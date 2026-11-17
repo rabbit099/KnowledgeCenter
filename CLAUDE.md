@@ -141,7 +141,7 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Never render the HTML body of an e-mail as HTML. Convert to text.
 - Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
-- Containers run as non-root. Postgres and Redis are not published on host ports.
+- Containers run as non-root. Postgres and Redis are not published on host ports. `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
 - Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
 - Test fixtures are synthetic. Never commit real company documents or real mail.
 

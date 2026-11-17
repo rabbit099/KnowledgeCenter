@@ -102,6 +102,11 @@ services:
       <<: *app-env
       # uvicorn takes the client address from X-Forwarded-For only for requests from the proxy.
       FORWARDED_ALLOW_IPS: ${PROXY_IP:-172.30.70.10}
+    # default: reached by the proxy, outbound to Active Directory (LDAPS);
+    # backend: database, Redis and the worker (no internet).
+    networks:
+      - default
+      - backend
     volumes:
       - storage:/data/storage
       # CA certificate and service-account password for Active Directory (read-only).
@@ -127,6 +132,10 @@ services:
       <<: *app-env
       DB_POOL_SIZE: "1"
       DB_MAX_OVERFLOW: "0"
+    # Internal network only: the worker parses untrusted files and runs LibreOffice and
+    # pdfium; it reaches the database and Redis but nothing outside (ADR-024).
+    networks:
+      - backend
     stop_grace_period: 60s
     volumes:
       - storage:/data/storage
@@ -161,6 +170,8 @@ services:
       APP_DB_NAME: ${APP_DB_NAME:-baza_wiedzy}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
     shm_size: 256m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${APP_DB_USER}\" -d \"$${APP_DB_NAME}\""]
@@ -186,6 +197,8 @@ services:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     volumes:
       - redis-data:/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -205,6 +218,10 @@ services:
       - no-new-privileges:true
     volumes:
       - clamav-db:/var/lib/clamav
+    # backend: scanned by the worker (later); default: signature updates from the internet.
+    networks:
+      - default
+      - backend
     deploy:
       resources:
         limits:
@@ -218,6 +235,13 @@ networks:
         # Fixed so that the proxy can have a fixed address. Change it if it collides with a
         # company network or VPN route (docs: deployment-operations.md, Configuration).
         - subnet: ${DOCKER_SUBNET:-172.30.70.0/24}
+  # No route to the outside world (Docker creates no gateway for it): worker, db, redis,
+  # and app as their client. Fixed subnet for the same reason as above (collisions).
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${BACKEND_SUBNET:-172.30.72.0/24}
 
 volumes:
   pgdata:

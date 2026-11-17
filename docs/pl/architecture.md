@@ -30,6 +30,15 @@ Przeglądarka ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `redis` | `redis` 8.2 | Tylko kolejka zadań (bez danych biznesowych); włączony plik append-only, więc zadania w kolejce przetrwają restart; wymagane hasło | brak |
 | `clamav` | `clamav` | Opcjonalne skanowanie antywirusowe, profil compose `antivirus`, domyślnie wyłączone | brak |
 
+Sieci (ADR-024):
+
+| Sieć | Członkowie | Internet |
+|---|---|---|
+| `default` (`DOCKER_SUBNET`, domyślnie `172.30.70.0/24`; proxy pod `PROXY_IP`) | `proxy`, `app` (`clamav` z profilem `antivirus`, do aktualizacji sygnatur) | tak: ruch przychodzący tylko przez porty wystawione przez proxy; wychodzący dla `app` (Active Directory przez LDAPS) |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, domyślnie `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | brak: Docker nie tworzy bramy; publiczne nazwy nawet się nie rozwiązują |
+
+Worker, który parsuje niezaufane pliki kodem natywnym, sięga tylko do bazy, Redisa i aplikacji; proxy jest jedynym punktem wejścia. Sprawdza to `make smoke`: z workera odpowiadają `db` i `redis`, a `1.1.1.1:443`, `8.8.8.8:53` i nazwa `example.com` nie.
+
 Licencja Redisa: Redis 8 jest dostępny m.in. na AGPLv3, co jest akceptowalne przy użyciu wewnętrznym bez modyfikacji. Gdyby to kiedyś budziło wątpliwości, zamiennikiem 1:1 jest [Valkey](https://valkey.io) (BSD-3-Clause): zmień obraz `redis` na `valkey/valkey` z przypiętym tagiem; nic więcej się nie zmienia.
 
 `app` i `worker` mają wspólny kod Pythona i modele bazy; różnią się zawartością obrazu (obraz workera ma OCR i LibreOffice) oraz poleceniem startowym.

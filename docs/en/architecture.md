@@ -30,6 +30,15 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
 
+Networks (ADR-024):
+
+| Network | Members | Internet |
+|---|---|---|
+| `default` (`DOCKER_SUBNET`, default `172.30.70.0/24`; proxy at `PROXY_IP`) | `proxy`, `app` (`clamav` with the `antivirus` profile, for signature updates) | yes: incoming only through the proxy's published ports; outgoing for `app` (Active Directory over LDAPS) |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
+
+The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
+
 Redis licence: Redis 8 is offered under AGPLv3 (among others), which is acceptable for internal, unmodified use. If that is ever in doubt, [Valkey](https://valkey.io) (BSD-3-Clause) is a 1:1 replacement: change the `redis` image to `valkey/valkey` with a pinned tag; nothing else changes.
 
 `app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.
