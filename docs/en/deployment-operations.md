@@ -256,7 +256,8 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | Command | What it does |
 |---|---|
 | `make help` | Lists all commands |
-| `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
+| `make lint` | `ruff`, `mypy`, the module boundary check (`lint-imports`) and `make lint-workflows`: actionlint (with shellcheck for `run:` scripts) on `.github/workflows/*.yml`, from its Docker image pinned by digest, so Docker is required. The structure of the workflows and of `dependabot.yml` is also checked without Docker by `tests/unit/test_github_config.py` (`make test`). A YAML error in a workflow makes GitHub reject the whole file and run no job at all ("Invalid workflow file"), so quote any step name that contains `: ` or ` #` |
+| `make lint-workflows` | Only the actionlint check of the workflows |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
 | `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small TXT file (204) and waiting until the worker has processed it ("gotowe", at most 2 minutes), the parts page 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (about 1 minute with cached layers) |

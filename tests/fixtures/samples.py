@@ -135,13 +135,22 @@ def damaged_headers_eml() -> bytes:
 DEJAVU = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"  # fonts-dejavu-core (worker image)
 
 
+def _font() -> str:
+    if not Path(DEJAVU).is_file():
+        raise RuntimeError(
+            f"{DEJAVU} is missing: install the Debian/Ubuntu package fonts-dejavu-core "
+            "(PDF test files need a font with Polish letters; CI installs it)"
+        )
+    return DEJAVU
+
+
 def text_pdf(pages: list[str] | None = None, *, image_pages: tuple[int, ...] = ()) -> bytes:
     """A PDF with a real text layer (fpdf2, DejaVu for Polish letters); pages listed in
     image_pages (1-based) contain only an image (a "scan")."""
     from fpdf import FPDF
 
     pdf = FPDF()
-    pdf.add_font("DejaVu", fname=DEJAVU)
+    pdf.add_font("DejaVu", fname=_font())
     pdf.set_font("DejaVu", size=12)
     for number, text in enumerate(pages if pages is not None else [POLISH_TEXT], start=1):
         pdf.add_page()

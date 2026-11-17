@@ -35,9 +35,14 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.12"
-      - name: Install dependencies from uv.lock (with the worker extra: extractors, lingua)
+      - name: "Install dependencies from uv.lock, with the worker extra (extractors, lingua)"
         run: uv sync --frozen --all-extras
-      - name: ruff, mypy, import-linter
+      # PDF test files are generated with DejaVu (Polish letters); usually preinstalled.
+      - name: Font for the PDF test files (fonts-dejavu-core)
+        run: |
+          dpkg -s fonts-dejavu-core >/dev/null 2>&1 \
+            || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends fonts-dejavu-core; }
+      - name: ruff, mypy, import-linter, actionlint (Docker)
         run: make lint
       - name: Unit tests
         run: make test

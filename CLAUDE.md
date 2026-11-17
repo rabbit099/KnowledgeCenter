@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -170,7 +170,7 @@ The documentation is part of the product and you maintain it.
 
 - Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 - `main` is protected; CI (lint, types, tests, docs-check, image build) must pass.
-- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages.
+- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages. Workflows are checked by `make lint` (actionlint, pinned image) and `tests/unit/test_github_config.py`: GitHub rejects a workflow with a YAML error as a whole and runs nothing, so quote step names containing `: ` or ` #`.
 
 ## 12. Definition of done
 

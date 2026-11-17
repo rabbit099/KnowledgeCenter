@@ -256,7 +256,8 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | Polecenie | Co robi |
 |---|---|
 | `make help` | Wypisuje wszystkie polecenia |
-| `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
+| `make lint` | `ruff`, `mypy`, kontrola granic modułów (`lint-imports`) i `make lint-workflows`: actionlint (ze shellcheck dla skryptów `run:`) na `.github/workflows/*.yml`, z obrazu Dockera przypiętego do digestu, więc Docker jest wymagany. Strukturę workflowów i `dependabot.yml` sprawdza też bez Dockera `tests/unit/test_github_config.py` (`make test`). Błąd YAML w workflow sprawia, że GitHub odrzuca cały plik i nie uruchamia żadnego zadania („Invalid workflow file”), więc nazwę kroku zawierającą `: ` albo ` #` ujmuj w cudzysłów |
+| `make lint-workflows` | Tylko sprawdzenie workflowów przez actionlint |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
 | `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego pliku TXT (204) i oczekiwanie, aż worker go przetworzy („gotowe”, najwyżej 2 minuty), strona części 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (około minuty przy zbuforowanych warstwach) |

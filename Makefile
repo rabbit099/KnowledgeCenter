@@ -34,11 +34,19 @@ build: _need-docker ## Build the images
 	$(COMPOSE_DEV) build
 
 .PHONY: lint
-lint: ## ruff, mypy, import boundaries
+# actionlint (with shellcheck for run: scripts) from its image, pinned by digest (ADR-015).
+ACTIONLINT := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+lint: lint-workflows ## ruff, mypy, import boundaries, GitHub workflows
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run --all-extras mypy
 	uv run lint-imports
+
+.PHONY: lint-workflows
+lint-workflows: ## Check .github/workflows/*.yml with actionlint (Docker); dependabot.yml: make test
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is needed for actionlint (workflow check). Install Docker, or run the YAML checks alone: uv run pytest tests/unit/test_github_config.py"; exit 1; }
+	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT) -no-color
 
 .PHONY: fmt
 fmt: ## Format and auto-fix
