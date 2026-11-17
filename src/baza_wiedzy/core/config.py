@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     ldap_connect_timeout_seconds: int = 5
     ldap_receive_timeout_seconds: int = 10
     ldap_page_size: int = 500
+    # Largest number of audit entries in one CSV export (the export says when it was cut).
+    audit_export_max_rows: int = 10000
     # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id
     # hashes computed at the same time per process (each one uses 64 MiB of memory).
     local_password_min_length: int = 14

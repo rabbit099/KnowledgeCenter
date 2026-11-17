@@ -167,9 +167,41 @@ This is enforced in SQL for lists, search and downloads. Tests cover the role ×
 
 ## Audit log
 
-Append-only table `audit_log`. Recorded actions: `login`, `login_failed`, `logout`, `upload`, `publish`, `unpublish`, `download`, `archive`, `restore`, `delete`, `user_create`, `role_change`, `permission_change`, `setting_change`, `reprocess`.
+Append-only table `audit_log` (a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`; see [data-model.md](data-model.md)). Each entry: time (UTC), actor (`actor_user_id` and `actor_label`: user name at that moment, `cli` or `anonymous`), action, object (`entity_type`, `entity_id`), client IP address and a small `details` object. Entries are written in the same transaction as the change they describe. `details` never contains passwords, tokens, CSRF values or document content: the writer refuses such keys.
 
-Each entry stores time, user, action, entity, IP and a small `details` object. It never stores document text or passwords. Admins with `audit.view` can filter and export it (CSV). Retention is an open question, see [decisions.md](decisions.md).
+Actions recorded since Phase 1:
+
+| Area | Actions |
+|---|---|
+| Login | `auth.login`, `auth.login_failed` (`reason`: `bad_credentials`, `inactive`, `locked`, `local_name_conflict`, ...; `known_user`), `auth.lockout` (`scope`), `auth.logout`, `auth.ad_unavailable` (`reason`) |
+| Users | `user.create` (`source`: `ad_jit` or `ad_planned`), `user.ad_link`, `user.rename`, `user.activate`, `user.deactivate` (`revoked_sessions`), `user.roles_change` (`before`/`after`), `user.roles_sync` (AD groups: `added`/`removed`), `session.revoke` |
+| Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
+| AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
+| Audit | `audit.export` (`filters`, `rows`, `truncated`) |
+| Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
+
+Document actions (`upload`, `publish`, `download`, ...) are added with the document phases.
+
+**Viewer** `/admin/audit` (permission `audit.view`, menu "Dziennik audytu"): newest first, 50 per page, filters by date range (local days, Europe/Warsaw), actor (contains), action (exact name, or a prefix ending with a dot such as `role.`), object (type or id, contains). `details` is shown as escaped key–value pairs (nested keys as `before.name`, lists comma-separated), never as raw JSON.
+
+**CSV export**: button "Eksportuj CSV (bieżące filtry)" posts the current filters (with CSRF). The file `audit-YYYYMMDD-HHMM.csv` is UTF-8 with BOM, separator `;` (opens directly in a spreadsheet set to Polish), newest first, columns `id;time_utc;time_local;actor;actor_user_id;action;entity_type;entity_id;ip;details`. Cells starting with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` so spreadsheets do not run them as formulas (CSV injection). At most `AUDIT_EXPORT_MAX_ROWS` (default 10,000) rows: the viewer warns before exporting when the filtered result is larger, and a cut file ends with a line `TRUNCATED: only the newest N entries; narrow the filters for the rest` (response header `X-Export-Truncated: true`). Every export is itself recorded as `audit.export` with the filters, the number of rows and whether it was cut. An exported file contains personal data (next section): store it accordingly and delete it when no longer needed.
+
+### GDPR/RODO
+
+Personal data processed by Phase 1 (no document content yet):
+
+| Where | Data | Purpose | Kept |
+|---|---|---|---|
+| `users` | user name, display name, e-mail, AD DN and objectGUID, active flag, time of last login | identifying users, permissions | while the account exists (accounts are deactivated, not deleted) |
+| `sessions` | session token hash, IP address, browser user agent, times | keeping users logged in, revoking sessions | until logout, revocation or expiry (at most `SESSION_ABSOLUTE_HOURS`); expired rows are deleted |
+| `audit_log` | actor user name and id, IP address, action, object, details (role names, permission codes, typed user name only for existing accounts) | security, accountability (who changed permissions, who logged in), GDPR/RODO evidence | **retention not decided yet** (open question 2 in [decisions.md](decisions.md)); nothing is deleted today |
+| Redis | hashed user name and IP address in failed-login counters | brute-force protection | at most `LOGIN_WINDOW_MINUTES` + `LOGIN_LOCKOUT_MINUTES` |
+| Container logs | `app`: IP address and requested path (access log). `proxy` (Caddy, JSON access log): IP address, path and request headers including the user agent; Caddy masks cookies and `Authorization` | troubleshooting | Docker log rotation (5 × 10 MB per container) |
+| CSV exports | as `audit_log` | investigations | outside the application: the person who exported is responsible |
+
+Who has access: holders of `audit.view` (viewer and export, both audited) and `users.manage` (user list); people with shell access to the server (database, logs, backups). Passwords are never stored for AD users; the break-glass password is stored only as an Argon2id hash.
+
+Retention proposal to confirm with the legal department / data protection officer (IOD): **audit log 24 months**, then deleted by a maintenance command (Phase 6, together with backups; the command will disable the append-only trigger only for that deletion and record it). Sessions and Redis counters already expire as described. The legal basis and the information clause for employees are for the IOD to decide.
 
 ## Security checklist for new features
 

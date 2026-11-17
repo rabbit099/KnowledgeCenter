@@ -12,47 +12,12 @@ from typing import Any
 from fastapi.routing import APIRoute
 from starlette.routing import Mount
 
-from baza_wiedzy.core.auth.deps import ACCESS_MARKER
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.main import create_app
+from route_helpers import PUBLIC, PUBLIC_MOUNTS, flatten
+from route_helpers import access_markers as _access
 
-PUBLIC = {
-    ("GET", "/health"),
-    ("GET", "/ready"),
-    ("GET", "/login"),
-    ("POST", "/login"),
-}
-PUBLIC_MOUNTS = {"/static"}
-
-
-def _access(dependant: Any) -> set[str]:
-    found: set[str] = set()
-    for dependency in dependant.dependencies:
-        marker = getattr(dependency.call, ACCESS_MARKER, None)
-        if marker:
-            found.add(marker)
-        found |= _access(dependency)
-    return found
-
-
-def _flatten(routes: list[Any]) -> list[Any]:
-    """APIRoutes and Mounts, also inside included routers.
-
-    FastAPI wraps included routers (`_IncludedRouter`, an internal class whose
-    `original_router` holds the routes). Any other route type fails the test instead of being
-    skipped, so a FastAPI change can never make this inventory pass on an empty list.
-    """
-    flat: list[Any] = []
-    for route in routes:
-        if isinstance(route, APIRoute | Mount):
-            flat.append(route)
-        elif hasattr(route, "original_router"):
-            context = route.include_context
-            assert not getattr(context, "dependencies", None), "router-level deps not supported"
-            flat.extend(_flatten(list(route.original_router.routes)))
-        else:
-            raise AssertionError(f"unknown route type {type(route)!r}: update this test")
-    return flat
+_flatten = flatten
 
 
 def _app_routes() -> list[Any]:

@@ -37,7 +37,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania
 - [x] Logowanie przez Active Directory, mapowanie grup na role
 - [x] Role i katalog uprawnień, panel admina dla użytkowników i ról
-- [ ] Log audytowy i jego przeglądarka
+- [x] Log audytowy i jego przeglądarka
 
 ### Faza 2 — Upload i przetwarzanie
 - [ ] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie

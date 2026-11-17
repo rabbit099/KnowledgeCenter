@@ -1,0 +1,27 @@
+{% from "admin/_macros.html" import pagination, csrf %}
+<form method="post" action="/admin/audit/export" class="inline export">
+  {{ csrf() }}
+  {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <button type="submit">{{ _("Export CSV (current filters)") }}</button>
+</form>
+{% if result.total > max_export %}
+<p class="fail">{{ _("The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to export the rest.", max=max_export, total=result.total) }}</p>
+{% endif %}
+<table class="grid audit">
+  <thead><tr><th>{{ _("Time") }}</th><th>{{ _("Actor") }}</th><th>{{ _("Action") }}</th><th>{{ _("Object") }}</th><th>{{ _("IP address") }}</th><th>{{ _("Details") }}</th></tr></thead>
+  <tbody>
+  {% for e in result.items %}
+    <tr>
+      <td>{{ e.at.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      <td>{{ e.actor_label }}</td>
+      <td><code>{{ e.action }}</code></td>
+      <td>{% if e.entity_type %}{{ e.entity_type }}{% if e.entity_id %} <span class="muted">{{ e.entity_id }}</span>{% endif %}{% endif %}</td>
+      <td>{{ e.ip or "" }}</td>
+      <td>{% if pairs[e.id] %}<dl class="pairs">{% for key, value in pairs[e.id] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">{{ _("No entries match the filter.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(result, filters, "#audit-table") }}

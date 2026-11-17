@@ -167,9 +167,41 @@ Jest to wymuszane w SQL dla list, wyszukiwania i pobierania. Testy obejmują mac
 
 ## Log audytowy
 
-Tabela `audit_log` tylko do dopisywania. Zapisywane akcje: `login`, `login_failed`, `logout`, `upload`, `publish`, `unpublish`, `download`, `archive`, `restore`, `delete`, `user_create`, `role_change`, `permission_change`, `setting_change`, `reprocess`.
+Tabela `audit_log` tylko do dopisywania (wyzwalacz odrzuca `UPDATE`, `DELETE` i `TRUNCATE`; zob. [data-model.md](data-model.md)). Każdy wpis: czas (UTC), wykonawca (`actor_user_id` i `actor_label`: nazwa użytkownika w tamtej chwili, `cli` albo `anonymous`), akcja, obiekt (`entity_type`, `entity_id`), adres IP klienta i mały obiekt `details`. Wpisy powstają w tej samej transakcji co opisywana zmiana. `details` nigdy nie zawiera haseł, tokenów, wartości CSRF ani treści dokumentów: zapis takich kluczy jest odrzucany.
 
-Każdy wpis zawiera czas, użytkownika, akcję, obiekt, IP i mały obiekt `details`. Nigdy nie zawiera treści dokumentów ani haseł. Admini z `audit.view` mogą filtrować i eksportować log (CSV). Retencja to otwarte pytanie, zobacz [decisions.md](decisions.md).
+Akcje zapisywane od Fazy 1:
+
+| Obszar | Akcje |
+|---|---|
+| Logowanie | `auth.login`, `auth.login_failed` (`reason`: `bad_credentials`, `inactive`, `locked`, `local_name_conflict`, ...; `known_user`), `auth.lockout` (`scope`), `auth.logout`, `auth.ad_unavailable` (`reason`) |
+| Użytkownicy | `user.create` (`source`: `ad_jit` albo `ad_planned`), `user.ad_link`, `user.rename`, `user.activate`, `user.deactivate` (`revoked_sessions`), `user.roles_change` (`before`/`after`), `user.roles_sync` (grupy AD: `added`/`removed`), `session.revoke` |
+| Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
+| Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
+| Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
+| Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
+
+Akcje dokumentów (`upload`, `publish`, `download`, ...) dojdą razem z fazami dokumentów.
+
+**Przeglądarka** `/admin/audit` (uprawnienie `audit.view`, menu „Dziennik audytu”): od najnowszych, 50 na stronę, filtry: zakres dat (dni lokalne, Europe/Warsaw), wykonawca (zawiera), akcja (dokładna nazwa albo prefiks zakończony kropką, np. `role.`), obiekt (typ lub identyfikator, zawiera). `details` jest pokazywane jako escapowane pary klucz–wartość (klucze zagnieżdżone jako `before.name`, listy po przecinku), nigdy jako surowy JSON.
+
+**Eksport CSV**: przycisk „Eksportuj CSV (bieżące filtry)” wysyła bieżące filtry (z CSRF). Plik `audit-RRRRMMDD-GGMM.csv` jest w UTF-8 z BOM, separator `;` (otwiera się bezpośrednio w arkuszu z polskimi ustawieniami), od najnowszych, kolumny `id;time_utc;time_local;actor;actor_user_id;action;entity_type;entity_id;ip;details`. Komórki zaczynające się od `=`, `+`, `-`, `@`, tabulatora albo powrotu karetki dostają przedrostek `'`, żeby arkusz nie wykonał ich jako formuły (CSV injection). Najwyżej `AUDIT_EXPORT_MAX_ROWS` (domyślnie 10 000) wierszy: przeglądarka ostrzega przed eksportem, gdy przefiltrowany wynik jest większy, a obcięty plik kończy się linią `TRUNCATED: only the newest N entries; narrow the filters for the rest` (nagłówek odpowiedzi `X-Export-Truncated: true`). Każdy eksport sam trafia do audytu jako `audit.export` z filtrami, liczbą wierszy i informacją o obcięciu. Wyeksportowany plik zawiera dane osobowe (następna sekcja): przechowuj go odpowiednio i usuń, gdy przestanie być potrzebny.
+
+### RODO
+
+Dane osobowe przetwarzane w Fazie 1 (jeszcze bez treści dokumentów):
+
+| Gdzie | Dane | Cel | Jak długo |
+|---|---|---|---|
+| `users` | nazwa użytkownika, nazwa wyświetlana, e-mail, DN i objectGUID z AD, flaga aktywności, czas ostatniego logowania | identyfikacja użytkowników, uprawnienia | dopóki konto istnieje (konta są dezaktywowane, nie usuwane) |
+| `sessions` | hash tokenu sesji, adres IP, user agent przeglądarki, czasy | utrzymanie zalogowania, unieważnianie sesji | do wylogowania, unieważnienia albo wygaśnięcia (najwyżej `SESSION_ABSOLUTE_HOURS`); wygasłe wiersze są usuwane |
+| `audit_log` | nazwa i identyfikator wykonawcy, adres IP, akcja, obiekt, szczegóły (nazwy ról, kody uprawnień, wpisana nazwa użytkownika tylko dla istniejących kont) | bezpieczeństwo, rozliczalność (kto zmienił uprawnienia, kto się logował), dowody na potrzeby RODO | **retencja jeszcze nieustalona** (otwarte pytanie 2 w [decisions.md](decisions.md)); dziś nic nie jest usuwane |
+| Redis | zahashowana nazwa użytkownika i adres IP w licznikach nieudanych logowań | ochrona przed zgadywaniem haseł | najwyżej `LOGIN_WINDOW_MINUTES` + `LOGIN_LOCKOUT_MINUTES` |
+| Logi kontenerów | `app`: adres IP i żądana ścieżka (log dostępu). `proxy` (Caddy, log dostępu w JSON): adres IP, ścieżka i nagłówki żądania, w tym user agent; Caddy maskuje ciasteczka i `Authorization` | rozwiązywanie problemów | rotacja logów Dockera (5 × 10 MB na kontener) |
+| Eksporty CSV | jak `audit_log` | wyjaśnianie incydentów | poza aplikacją: odpowiada osoba, która wyeksportowała |
+
+Kto ma dostęp: posiadacze `audit.view` (przeglądarka i eksport, oba audytowane) i `users.manage` (lista użytkowników); osoby z dostępem do powłoki serwera (baza, logi, backupy). Hasła użytkowników AD nigdy nie są zapisywane; hasło konta awaryjnego jest zapisane tylko jako hash Argon2id.
+
+Propozycja retencji do potwierdzenia z działem prawnym / Inspektorem Ochrony Danych (IOD): **dziennik audytu 24 miesiące**, potem usuwany poleceniem serwisowym (Faza 6, razem z backupami; polecenie wyłączy wyzwalacz tylko na czas tego usunięcia i zapisze to w audycie). Sesje i liczniki w Redisie już wygasają, jak opisano. Podstawę prawną i klauzulę informacyjną dla pracowników ustala IOD.
 
 ## Lista kontrolna bezpieczeństwa dla nowych funkcji
 

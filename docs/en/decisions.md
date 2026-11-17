@@ -102,7 +102,7 @@ Status: accepted. Implements ADR-008. LDAPS only (`ldap://` and StartTLS are ref
 ## Open questions
 
 1. ~~Can a Publisher publish documents uploaded by others?~~ Decided 2026-11-12: no. The Publisher role publishes only its own documents; `documents.publish_any` is not part of Publisher (an admin can grant it through a custom role).
-2. Retention: how long are archived documents and audit entries kept (GDPR/RODO)?
+2. Retention (GDPR/RODO): how long are archived documents and audit entries kept? Proposal to confirm with the legal department / data protection officer (IOD): audit log **24 months**, deleted afterwards by a maintenance command in Phase 6; sessions and login counters already expire (hours/minutes). Personal data processed so far and who can access it: [auth-and-permissions.md](auth-and-permissions.md#gdprrodo). Retention of archived documents: to be decided with the document phases.
 3. TLS certificate: internal CA or Let's Encrypt? Working assumption (2026-11-12): internal company CA (`TLS_MODE=files`, or `internal` for tests); Let's Encrypt (`acme`) stays a supported variant. To be confirmed with the domain administrator.
 4. Backup destination (NAS, second server, object storage) and monitoring integration.
 5. ~~Should Readers also see archived documents?~~ Decided 2026-11-12: no. Readers see only published documents.

@@ -37,7 +37,7 @@ Tick items when they are finished and documented.
 - [x] Local break-glass admin (CLI), sessions, CSRF, login rate limit
 - [x] Active Directory login, group → role mapping
 - [x] Roles and permission catalog, admin UI for users and roles
-- [ ] Audit log and its viewer
+- [x] Audit log and its viewer
 
 ### Phase 2 — Upload and ingestion
 - [ ] Upload with validation, storage, SHA-256, duplicate warning

@@ -186,7 +186,7 @@ Code works and is typed; tests pass; `make lint` and `make docs-check` pass; doc
 ## 14. Open questions (mirror of `docs/en/decisions.md`)
 
 1. Decided 2026-11-12: a Publisher publishes only their own documents; `documents.publish_any` is not part of the Publisher role.
-2. Retention policy for archived documents and audit log (GDPR/RODO).
+2. Retention policy for archived documents and audit log (GDPR/RODO). Proposal: audit log 24 months, to be confirmed with the legal department / IOD.
 3. TLS: working assumption internal CA (`TLS_MODE=files`), Let's Encrypt (`acme`) as a variant; to be confirmed with the domain administrator.
 4. Backup destination and monitoring integration (`/ready` exists; backup scripts come in Phase 6; destination decided later).
 5. Decided 2026-11-12: Readers do not see archived documents.

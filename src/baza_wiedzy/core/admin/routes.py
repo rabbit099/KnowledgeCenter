@@ -8,6 +8,7 @@ HTMX only refreshes list tables while filtering.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -20,7 +21,8 @@ from baza_wiedzy.core.admin import ad_groups, roles, users
 from baza_wiedzy.core.admin.ad_groups import NeedsAdminConfirmation
 from baza_wiedzy.core.admin.errors import AdminError
 from baza_wiedzy.core.admin.roles import RoleInUse
-from baza_wiedzy.core.audit.service import Actor
+from baza_wiedzy.core.audit import viewer
+from baza_wiedzy.core.audit.service import Actor, record
 from baza_wiedzy.core.auth.deps import Db, require_any_permission, require_permission
 from baza_wiedzy.core.auth.ldap import AdDirectory, normalize_login
 from baza_wiedzy.core.auth.routes import client_ip
@@ -36,6 +38,7 @@ ADMIN_CODES = ("users.manage", "roles.manage", "audit.view", "settings.manage", 
 UsersManage = Annotated[CurrentUser, Depends(require_permission("users.manage"))]
 RolesManage = Annotated[CurrentUser, Depends(require_permission("roles.manage"))]
 SystemView = Annotated[CurrentUser, Depends(require_permission("system.view"))]
+AuditView = Annotated[CurrentUser, Depends(require_permission("audit.view"))]
 
 
 # --- helpers --------------------------------------------------------------------------------
@@ -509,3 +512,82 @@ def system_view(request: Request, db: Db, user: SystemView) -> Response:
         },
     }
     return _render(request, "admin/system.html", context, active="/admin/system")
+
+
+# --- audit log ------------------------------------------------------------------------------
+
+
+@router.get("/audit", include_in_schema=False)
+def audit_list(
+    request: Request,
+    db: Db,
+    user: AuditView,
+    date_from: str = "",
+    date_to: str = "",
+    actor: str = "",
+    action: str = "",
+    entity: str = "",
+    page: str = "1",
+) -> Response:
+    filters = viewer.AuditFilters.parse(
+        {
+            "date_from": date_from,
+            "date_to": date_to,
+            "actor": actor,
+            "action": action,
+            "entity": entity,
+        }
+    )
+    result = viewer.list_entries(db, filters, _page(page))
+    context = {
+        "result": result,
+        "filters": filters.as_query(),
+        "actions": viewer.known_actions(db),
+        "pairs": {e.id: viewer.detail_pairs(e.details) for e in result.items},
+        "max_export": request.app.state.settings.audit_export_max_rows,
+    }
+    template = "admin/_audit_table.html" if _is_htmx(request) else "admin/audit.html"
+    return _render(request, template, context, active="/admin/audit")
+
+
+@router.post("/audit/export", include_in_schema=False)
+def audit_export(
+    request: Request,
+    db: Db,
+    user: AuditView,
+    date_from: Annotated[str, Form()] = "",
+    date_to: Annotated[str, Form()] = "",
+    actor: Annotated[str, Form()] = "",
+    action: Annotated[str, Form()] = "",
+    entity: Annotated[str, Form()] = "",
+) -> Response:
+    filters = viewer.AuditFilters.parse(
+        {
+            "date_from": date_from,
+            "date_to": date_to,
+            "actor": actor,
+            "action": action,
+            "entity": entity,
+        }
+    )
+    limit = request.app.state.settings.audit_export_max_rows
+    content, rows, truncated = viewer.export_csv(db, filters, limit)
+    # Exporting personal data is itself recorded (who, which filters, how many rows).
+    record(
+        db,
+        "audit.export",
+        _actor(user),
+        ip=client_ip(request),
+        details={"filters": filters.as_query(), "rows": rows, "truncated": truncated},
+    )
+    db.commit()
+    stamp = datetime.now(viewer.LOCAL_TZ).strftime("%Y%m%d-%H%M")
+    return Response(
+        content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="audit-{stamp}.csv"',
+            "X-Export-Rows": str(rows),
+            "X-Export-Truncated": "true" if truncated else "false",
+        },
+    )

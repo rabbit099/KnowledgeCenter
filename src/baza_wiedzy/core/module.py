@@ -22,6 +22,7 @@ manifest = ModuleManifest(
         MenuItem(N_("Users"), "/admin/users", "users.manage", order=10, section=ADMIN),
         MenuItem(N_("Roles"), "/admin/roles", "roles.manage", order=20, section=ADMIN),
         MenuItem(N_("AD groups"), "/admin/ad-groups", "roles.manage", order=30, section=ADMIN),
+        MenuItem(N_("Audit log"), "/admin/audit", "audit.view", order=40, section=ADMIN),
         MenuItem(N_("System"), "/admin/system", "system.view", order=90, section=ADMIN),
     ),
 )

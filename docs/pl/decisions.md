@@ -102,7 +102,7 @@ Status: przyjęta. Realizuje ADR-008. Wyłącznie LDAPS (`ldap://` i StartTLS s�
 ## Otwarte pytania
 
 1. ~~Czy Publisher może publikować dokumenty wgrane przez innych?~~ Rozstrzygnięte 2026-11-12: nie. Rola Publisher publikuje tylko własne dokumenty; `documents.publish_any` nie należy do roli Publisher (admin może je nadać przez własną rolę).
-2. Retencja: jak długo przechowywać dokumenty zarchiwizowane i wpisy audytowe (RODO)?
+2. Retencja (RODO): jak długo przechowywać dokumenty zarchiwizowane i wpisy audytowe? Propozycja do potwierdzenia z działem prawnym / Inspektorem Ochrony Danych (IOD): dziennik audytu **24 miesiące**, potem usuwany poleceniem serwisowym w Fazie 6; sesje i liczniki logowania już wygasają (godziny/minuty). Przetwarzane dotąd dane osobowe i kto ma do nich dostęp: [auth-and-permissions.md](auth-and-permissions.md#rodo). Retencja dokumentów zarchiwizowanych: do ustalenia razem z fazami dokumentów.
 3. Certyfikat TLS: wewnętrzne CA czy Let's Encrypt? Założenie robocze (2026-11-12): wewnętrzne CA firmy (`TLS_MODE=files`, albo `internal` do testów); Let's Encrypt (`acme`) pozostaje obsługiwanym wariantem. Do potwierdzenia z administratorem domeny.
 4. Miejsce docelowe backupów (NAS, drugi serwer, magazyn obiektowy) i integracja z monitoringiem.
 5. ~~Czy Reader ma też widzieć dokumenty zarchiwizowane?~~ Rozstrzygnięte 2026-11-12: nie. Reader widzi tylko dokumenty opublikowane.

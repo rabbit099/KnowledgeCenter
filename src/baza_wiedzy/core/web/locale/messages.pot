@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 10:46+0100\n"
+"POT-Creation-Date: 2026-11-17 08:48+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -35,10 +35,16 @@ msgstr ""
 msgid "Account"
 msgstr ""
 
+msgid "Action"
+msgstr ""
+
 msgid "Activate"
 msgstr ""
 
 msgid "Active Directory login is disabled (LDAP_ENABLED=false): only local accounts can log in."
+msgstr ""
+
+msgid "Actor"
 msgstr ""
 
 msgid "Add an AD user in advance"
@@ -60,6 +66,9 @@ msgid "All systems are working."
 msgstr ""
 
 msgid "Allowed"
+msgstr ""
+
+msgid "Audit log"
 msgstr ""
 
 msgid "Back to the list"
@@ -116,6 +125,9 @@ msgstr ""
 msgid "Description"
 msgstr ""
 
+msgid "Details"
+msgstr ""
+
 msgid "Display name (optional)"
 msgstr ""
 
@@ -128,7 +140,13 @@ msgstr ""
 msgid "Edit metadata, archive and restore documents of others"
 msgstr ""
 
+msgid "Export CSV (current filters)"
+msgstr ""
+
 msgid "Filter"
+msgstr ""
+
+msgid "From"
 msgstr ""
 
 msgid "From AD groups (change them in AD or in the group mapping):"
@@ -145,6 +163,9 @@ msgstr ""
 
 #, python-format
 msgid "I understand that %(count)s user(s) will lose this role."
+msgstr ""
+
+msgid "IP address"
 msgstr ""
 
 msgid "Invalid user name or password."
@@ -220,6 +241,9 @@ msgstr ""
 msgid "Next"
 msgstr ""
 
+msgid "No entries match the filter."
+msgstr ""
+
 msgid "No mappings."
 msgstr ""
 
@@ -236,6 +260,9 @@ msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,D
 msgstr ""
 
 msgid "OK"
+msgstr ""
+
+msgid "Object"
 msgstr ""
 
 msgid "One of the selected roles does not exist any more."
@@ -358,6 +385,12 @@ msgstr ""
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
 msgstr ""
 
+#, python-format
+msgid ""
+"The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to "
+"export the rest."
+msgstr ""
+
 msgid "The group was not found in Active Directory."
 msgstr ""
 
@@ -377,6 +410,17 @@ msgid "This is the last active administrator; the Admin role must stay."
 msgstr ""
 
 msgid "This role is assigned to users; confirm to delete it."
+msgstr ""
+
+msgid "Time"
+msgstr ""
+
+msgid ""
+"Times in Europe/Warsaw. An action ending with a dot (for example \"role.\") finds all actions "
+"starting with it."
+msgstr ""
+
+msgid "To"
 msgstr ""
 
 msgid "Too many failed attempts. Try again in a few minutes."
