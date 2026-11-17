@@ -1,10 +1,12 @@
 # Dziennik zmian
 
-> Dotyczy: v0.2.1 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-11-17
 
 ### Added
 - Wgrywanie dokumentów (Faza 2, etap A): strona „Moje dokumenty” z wyszukiwaniem i odświeżanym statusem, „Wgraj dokument” (wymaga JavaScriptu; token CSRF w nagłówku), strona dokumentu. Pliki do `MAX_UPLOAD_MB` (domyślnie 50; limit proxy `MAX_REQUEST_MB` teraz 51), typ rozpoznawany po zawartości (ADR-021: PDF, DOCX, DOC, TXT, EML, MSG; inne pliki OLE2, np. `.xls` ze zmienioną nazwą, odrzucane), zapis pod losowym kluczem na wolumenie `storage` przez `.incoming/` i atomową zmianę nazwy, oryginały tylko do odczytu, oczyszczone nazwy plików, SHA-256, ostrzeżenie „możliwy duplikat” tylko względem dokumentów widocznych dla wgrywającego. Nowe pliki to szkice widoczne dla właściciela i posiadaczy `documents.read_drafts` (inni dostają 404). Tabele `doc_documents`, `doc_versions`, `doc_email_metadata` (migracja `documents_0002`). Audyt `document.upload` (tylko identyfikatory i hash). Polecenie `baza-wiedzy storage-cleanup`. Nowe zmienne `MAX_UPLOAD_MB`, `STORAGE_DIR`.

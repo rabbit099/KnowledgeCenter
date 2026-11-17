@@ -1,6 +1,6 @@
 # Architektura
 
-> Dotyczy: v0.2.1 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
 
 ## Przegląd
 
