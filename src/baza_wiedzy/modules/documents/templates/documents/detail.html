@@ -3,6 +3,8 @@
 {% block content %}
 <h1>{{ document.title }}</h1>
 {% if done == "uploaded" %}<p class="ok" role="status">{{ _("The file was uploaded. Processing runs in the background.") }}</p>{% endif %}
+{% if done == "reprocess" %}<p class="ok" role="status">{{ _("The document was queued for processing again.") }}</p>{% endif %}
+{% if done == "busy" %}<p class="fail" role="alert">{{ _("The document is being processed right now; try again when it has finished.") }}</p>{% endif %}
 {% if duplicates %}
 <p class="fail" role="alert">{{ _("Possible duplicate: a file with identical content already exists in:") }}
   {% for d in duplicates %}<a href="/documents/{{ d.id }}">{{ d.title }}</a>{% if not loop.last %}, {% endif %}{% endfor %}

@@ -11,6 +11,7 @@ Visibility (CLAUDE.md 6, ADR-013): every query that returns documents or version
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import ColumnElement, and_, false, func, or_, select
@@ -18,19 +19,64 @@ from sqlalchemy.orm import Session
 
 from baza_wiedzy.core.permissions.service import CurrentUser
 from baza_wiedzy.core.web.pagination import Page
+from baza_wiedzy.modules.documents.filenames import sanitize as sanitize_filename
+from baza_wiedzy.modules.documents.filetypes import UnsupportedFile
+from baza_wiedzy.modules.documents.filetypes import detect as detect_kind
 from baza_wiedzy.modules.documents.models import (
+    DONE,
+    FAILED,
+    NEEDS_OCR,
+    PENDING,
+    PROCESSING,
     STATUS_ARCHIVED,
     STATUS_DRAFT,
     STATUS_PUBLISHED,
     Document,
+    EmailMetadata,
     Version,
 )
+from baza_wiedzy.modules.documents.processing import (
+    Claim,
+    ProcessingBusy,
+    claim,
+    fail,
+    finish,
+    ids_with_status,
+    recover_stuck,
+    reset_for_reprocess,
+    retry_later,
+    save_email_metadata,
+)
+from baza_wiedzy.modules.documents.storage import LocalStorage
 
 __all__ = [
+    "DONE",
+    "FAILED",
+    "NEEDS_OCR",
+    "PENDING",
+    "PROCESSING",
+    "Claim",
     "Document",
+    "EmailMetadata",
+    "ProcessingBusy",
+    "UnsupportedFile",
     "Version",
+    "can_reprocess",
+    "claim",
+    "detect_kind",
+    "email_metadata_of",
+    "fail",
+    "finish",
     "get_visible_document",
+    "get_visible_version",
+    "ids_with_status",
     "list_documents",
+    "original_path",
+    "recover_stuck",
+    "reset_for_reprocess",
+    "retry_later",
+    "sanitize_filename",
+    "save_email_metadata",
     "versions_of",
     "visibility_clause",
     "visible_duplicates",
@@ -111,3 +157,31 @@ def visible_duplicates(
     if exclude_version_id is not None:
         query = query.where(Version.id != exclude_version_id)
     return list(db.scalars(query))
+
+
+def get_visible_version(
+    db: Session, user: CurrentUser, version_id: uuid.UUID
+) -> tuple[Document, Version] | None:
+    """A version together with its document, only if the user may see the document."""
+    row = db.execute(
+        select(Document, Version)
+        .join(Version, Version.document_id == Document.id)
+        .where(Version.id == version_id, visibility_clause(user))
+    ).first()
+    return (row[0], row[1]) if row is not None else None
+
+
+def can_reprocess(user: CurrentUser, document: Document) -> bool:
+    """Owner with documents.upload for own documents; documents.edit_any for any document."""
+    if user.can("documents.edit_any"):
+        return True
+    return document.owner_id == user.id and user.can("documents.upload")
+
+
+def email_metadata_of(db: Session, version_id: uuid.UUID) -> EmailMetadata | None:
+    return db.get(EmailMetadata, version_id)
+
+
+def original_path(storage_dir: str | Path, storage_key: str) -> Path:
+    """Read-only path of the original file of a version (the key is validated as a UUID)."""
+    return LocalStorage(storage_dir).original_path(storage_key)
