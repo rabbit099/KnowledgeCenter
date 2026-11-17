@@ -39,6 +39,16 @@ def _request_context(request: Request) -> dict[str, Any]:
     }
 
 
+def require_csrf(token: object) -> str:
+    """The CSRF token for a hidden form field; an empty or undefined token is a template bug."""
+    if not isinstance(token, str) or not token:
+        raise RuntimeError(
+            "CSRF token missing in a form: import the csrf macro 'with context' "
+            "(admin/_macros.html)"
+        )
+    return token
+
+
 def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) -> Jinja2Templates:
     """Core templates first, then each module's `templates/` folder (manifest `templates`)."""
     loaders: list[BaseLoader] = [FileSystemLoader(TEMPLATE_DIR)]
@@ -58,6 +68,7 @@ def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) ->
     # Templates of one module may offer links to pages of another module only when it is on.
     env.globals["enabled_modules"] = frozenset(settings.enabled_modules)
     env.globals["lang"] = DEFAULT_LOCALE
+    env.globals["require_csrf"] = require_csrf
     # The database stores UTC; the UI shows Europe/Warsaw (CLAUDE.md section 6).
     env.globals["tz"] = ZoneInfo("Europe/Warsaw")
     return Jinja2Templates(env=env, context_processors=[_request_context])

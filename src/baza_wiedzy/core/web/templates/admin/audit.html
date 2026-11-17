@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf %}
+{% from "admin/_macros.html" import csrf with context %}
 {% block admin %}
 <h1>{{ _("Audit log") }}</h1>
 <form method="get" action="/admin/audit" class="filters" hx-get="/admin/audit" hx-target="#audit-table" hx-push-url="true" hx-trigger="change, input changed delay:400ms from:input[type=text], submit">

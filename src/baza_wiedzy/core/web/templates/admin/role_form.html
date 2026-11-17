@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import role_label, error_box, done_box, csrf %}
+{% from "admin/_macros.html" import role_label, error_box, done_box, csrf with context %}
 {% block admin %}
 <h1>{% if role %}{{ _("Role") }}: {{ role_label(role) }}{% else %}{{ _("New role") }}{% endif %}</h1>
 {{ error_box(error) }}{{ done_box(done) }}

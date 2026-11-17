@@ -1,4 +1,4 @@
-{% from "admin/_macros.html" import pagination, csrf %}
+{% from "admin/_macros.html" import pagination, csrf with context %}
 <form method="post" action="/admin/audit/export" class="inline export">
   {{ csrf() }}
   {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}

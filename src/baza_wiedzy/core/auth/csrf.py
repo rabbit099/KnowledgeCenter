@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 from collections.abc import Awaitable, Callable, MutableMapping
 from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import parse_qs
+
+log = logging.getLogger(__name__)
 
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
@@ -66,6 +69,35 @@ def _same_origin(scope: Scope) -> bool:
     return origin in {f"{scope.get('scheme', 'https')}://{host}", f"https://{host}"}
 
 
+def rejection_reason(
+    *,
+    has_binding_cookie: bool,
+    logged_in: bool,
+    supplied: str | None,
+    expected: str,
+    same_origin: bool,
+) -> str | None:
+    """Why a state-changing request is refused, or None when it passes.
+
+    no_session      neither a session nor a pre-session cookie came with the request (cookies
+                    blocked, expired browser session, request from outside the browser)
+    cross_site      Origin / Sec-Fetch-Site name another site
+    missing_token   no X-CSRF-Token header and no csrf_token form field (or an empty one)
+    mismatch        a token came but belongs to another session (page open across a login,
+                    logout or session expiry; SECRET_KEY changed) — "session_mismatch" when the
+                    request carries no session cookie (logged out meanwhile)
+    """
+    if not has_binding_cookie:
+        return "no_session"
+    if not same_origin:
+        return "cross_site"
+    if not supplied:
+        return "missing_token"
+    if not hmac.compare_digest(supplied, expected):
+        return "mismatch" if logged_in else "session_mismatch"
+    return None
+
+
 class CSRFMiddleware:
     """Pure ASGI middleware: validates unsafe requests, exposes the token to templates."""
 
@@ -95,13 +127,22 @@ class CSRFMiddleware:
         if scope["method"] not in SAFE_METHODS:
             body, receive = await self._buffer(receive, scope)
             supplied = _header(scope, HEADER.encode()) or self._form_token(scope, body)
-            if (
-                new_pre is not None
-                or not supplied
-                or not hmac.compare_digest(supplied, expected)
-                or not _same_origin(scope)
-            ):
-                await self._reject(send)
+            reason = rejection_reason(
+                has_binding_cookie=new_pre is None,
+                logged_in=bool(session_token),
+                supplied=supplied,
+                expected=expected,
+                same_origin=_same_origin(scope),
+            )
+            if reason is not None:
+                # Reason, method and path only: never token values or user data.
+                log.warning(
+                    "CSRF check refused a request: reason=%s method=%s path=%s",
+                    reason,
+                    scope["method"],
+                    scope.get("path", ""),
+                )
+                await self._reject(scope, receive, send)
                 return
 
         async def send_with_cookie(message: Message) -> None:
@@ -149,7 +190,18 @@ class CSRFMiddleware:
         return values[0] if values else None
 
     @staticmethod
-    async def _reject(send: Send) -> None:
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        """403 page in the application layout (Polish), plain text if templates are missing."""
+        app = scope.get("app")
+        templates = getattr(getattr(app, "state", None), "templates", None)
+        if templates is not None:
+            from starlette.requests import Request
+
+            response = templates.TemplateResponse(
+                Request(scope, receive), "csrf_error.html", {}, status_code=403
+            )
+            await response(scope, receive, send)
+            return
         await send(
             {
                 "type": "http.response.start",

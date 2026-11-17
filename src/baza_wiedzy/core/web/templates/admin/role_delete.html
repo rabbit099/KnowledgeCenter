@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import role_label, error_box, csrf %}
+{% from "admin/_macros.html" import role_label, error_box, csrf with context %}
 {% block admin %}
 <h1>{{ _("Delete the role") }} {{ role_label(role) }}</h1>
 {{ error_box(error) }}

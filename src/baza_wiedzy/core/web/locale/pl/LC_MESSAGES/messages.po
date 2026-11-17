@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 11:58+0100\n"
+"POT-Creation-Date: 2026-11-17 12:55+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -116,6 +116,9 @@ msgstr "Powrót do moich dokumentów"
 msgid "Back to the list"
 msgstr "Powrót do listy"
 
+msgid "Back to the start page"
+msgstr "Wróć na stronę główną"
+
 msgid "Background worker"
 msgstr "Przetwarzanie w tle"
 
@@ -213,6 +216,9 @@ msgstr "Od"
 msgid "From AD groups (change them in AD or in the group mapping):"
 msgstr "Z grup AD (zmieniaj je w AD albo w mapowaniu grup):"
 
+msgid "Go back, reload the page and repeat the action. If it keeps happening, log in again."
+msgstr "Wróć, odśwież stronę i powtórz czynność. Jeśli to się powtarza, zaloguj się ponownie."
+
 msgid "Group DN"
 msgstr "DN grupy"
 
@@ -249,6 +255,9 @@ msgstr "Wczytywanie wyodrębnionego tekstu…"
 
 msgid "Log in"
 msgstr "Zaloguj się"
+
+msgid "Log in again"
+msgstr "Zaloguj ponownie"
 
 msgid "Log out"
 msgstr "Wyloguj"
@@ -417,6 +426,9 @@ msgstr "Czytelnik"
 msgid "Remove"
 msgstr "Usuń"
 
+msgid "Request refused"
+msgstr "Żądanie odrzucone"
+
 #, python-format
 msgid "Results: %(total)s"
 msgstr "Wyniki: %(total)s"
@@ -556,6 +568,13 @@ msgstr "Po rozpakowaniu plik zajmuje znacznie więcej, niż pozwala limit (możl
 
 msgid "The file was uploaded. Processing runs in the background."
 msgstr "Plik został wgrany. Przetwarzanie trwa w tle."
+
+msgid ""
+"The form could not be accepted because its security token is missing or has expired, for example "
+"when the page was open across a login or logout. Nothing was changed."
+msgstr ""
+"Nie można przyjąć formularza, ponieważ brakuje jego tokenu bezpieczeństwa albo token wygasł, na "
+"przykład gdy strona była otwarta podczas logowania lub wylogowania. Nic nie zostało zmienione."
 
 msgid "The group was not found in Active Directory."
 msgstr "Nie znaleziono tej grupy w Active Directory."

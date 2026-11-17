@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import role_label, error_box, csrf %}
+{% from "admin/_macros.html" import role_label, error_box, csrf with context %}
 {% block admin %}
 <h1>{{ _("Add an AD user in advance") }}</h1>
 <p>{{ _("The account is linked to the Active Directory user with this name at their first login. Local accounts are created only with the command baza-wiedzy create-admin.") }}</p>

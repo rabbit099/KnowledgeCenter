@@ -30,4 +30,7 @@
 {% if done in messages %}<p class="ok" role="status">{{ messages[done] }}</p>{% endif %}
 {%- endmacro %}
 
-{% macro csrf() -%}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{%- endmacro %}
+{# Import with context: {% from "admin/_macros.html" import csrf with context %}. Without it the
+   macro cannot see the request's token; require_csrf() then fails the page instead of rendering
+   an empty field that every submit would trip over (403). #}
+{% macro csrf() -%}<input type="hidden" name="csrf_token" value="{{ require_csrf(csrf_token) }}">{%- endmacro %}

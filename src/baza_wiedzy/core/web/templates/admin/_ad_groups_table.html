@@ -1,4 +1,4 @@
-{% from "admin/_macros.html" import role_label, pagination, csrf %}
+{% from "admin/_macros.html" import role_label, pagination, csrf with context %}
 <table class="grid">
   <thead><tr><th>{{ _("Group DN") }}</th><th>{{ _("Role") }}</th><th></th></tr></thead>
   <tbody>

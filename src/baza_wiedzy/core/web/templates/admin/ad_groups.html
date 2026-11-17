@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import role_label, error_box, done_box, csrf %}
+{% from "admin/_macros.html" import role_label, error_box, done_box, csrf with context %}
 {% block admin %}
 <h1>{{ _("AD groups") }}</h1>
 <p>{{ _("Members of a mapped Active Directory group get the role at every login. Roles from groups are recalculated at each login; roles given in the application are kept.") }}</p>
