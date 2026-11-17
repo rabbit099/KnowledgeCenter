@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 12:55+0100\n"
+"POT-Creation-Date: 2026-11-17 13:13+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -38,6 +38,10 @@ msgstr "%(where)s: pominięto, załączniki zagnieżdżone zbyt głęboko"
 #, python-format
 msgid "%(where)s: skipped, the file is damaged or unreadable"
 msgstr "%(where)s: pominięto, plik jest uszkodzony lub nieczytelny"
+
+#, python-format
+msgid "%(where)s: skipped, the file is password protected"
+msgstr "%(where)s: pominięto, plik jest zabezpieczony hasłem"
 
 #, python-format
 msgid "%(where)s: skipped, this file type is not processed yet"
@@ -512,6 +516,12 @@ msgstr ""
 msgid "The Admin role is missing; run the migrations."
 msgstr "Brak roli Administrator; uruchom migracje."
 
+msgid "The PDF has more pages than the allowed limit."
+msgstr "PDF ma więcej stron, niż pozwala limit."
+
+msgid "The PDF is password protected. Upload a copy without a password."
+msgstr "PDF jest zabezpieczony hasłem. Wgraj kopię bez hasła."
+
 msgid ""
 "The account is linked to the Active Directory user with this name at their first login. Local "
 "accounts are created only with the command baza-wiedzy create-admin."
@@ -533,6 +543,9 @@ msgstr "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodz
 
 msgid "The document is being processed right now; try again when it has finished."
 msgstr "Dokument jest właśnie przetwarzany; spróbuj ponownie, gdy przetwarzanie się zakończy."
+
+msgid "The document is password protected. Upload a copy without a password."
+msgstr "Dokument jest zabezpieczony hasłem. Wgraj kopię bez hasła."
 
 msgid "The document was queued for processing again."
 msgstr "Dokument został ponownie skierowany do przetwarzania."
@@ -562,6 +575,9 @@ msgstr "Plik jest pusty."
 
 msgid "The file is larger than the allowed size."
 msgstr "Plik jest większy niż dozwolony rozmiar."
+
+msgid "The file needs more memory to process than allowed."
+msgstr "Przetworzenie pliku wymaga więcej pamięci, niż pozwala limit."
 
 msgid "The file unpacks to much more data than allowed (possible archive bomb)."
 msgstr "Po rozpakowaniu plik zajmuje znacznie więcej, niż pozwala limit (możliwa bomba dekompresyjna)."

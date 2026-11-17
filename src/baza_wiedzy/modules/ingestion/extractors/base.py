@@ -18,6 +18,7 @@ names of attachments, which the user sees on the document page; they are not log
 from __future__ import annotations
 
 import logging
+import tempfile
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -56,6 +57,12 @@ class Limits:
     max_depth: int = 3
     max_parts: int = 2000
     max_text_chars: int = 50 * 1024 * 1024
+    max_pages: int = 2000
+    ocr_min_chars: int = 25
+    child_memory_mb: int = 1024
+    child_timeout_seconds: int = 300
+    libreoffice_timeout_seconds: int = 120
+    libreoffice_memory_mb: int = 1024
 
 
 @dataclass
@@ -93,6 +100,10 @@ class Collector:
     def temp_file(self) -> Path:
         self.files += 1
         return self.workdir / f"attachment-{self.files}"
+
+    def new_dir(self, prefix: str) -> Path:
+        """A fresh directory inside the attempt's temporary directory (child processes)."""
+        return Path(tempfile.mkdtemp(prefix=f"{prefix}-", dir=self.workdir))
 
 
 Extractor = Callable[[Path, "Context"], None]
@@ -146,8 +157,8 @@ class Context:
     def note(self, code: str, **values: Any) -> None:
         self.collector.notes.append({"code": code, "origin": list(self.origin), **values})
 
-    def attachment(self, raw_name: str, data: bytes) -> None:
-        """Process an attachment: own origin segment, depth + 1, type checked by content."""
+    def nested(self, raw_name: str) -> Context | None:
+        """Context of an attachment (origin + depth); None, with a note, when too deep."""
         name = documents.sanitize_filename(raw_name)
         child = Context(
             collector=self.collector,
@@ -156,14 +167,28 @@ class Context:
         )
         if child.depth > self.limits.max_depth:
             child.note("skipped", reason="too_deep")
+            return None
+        return child
+
+    @property
+    def name(self) -> str:
+        """Sanitized name of the attachment this context belongs to ("" at the top)."""
+        return str(self.origin[-1].get("name", "")) if self.origin else ""
+
+    def attachment(self, raw_name: str, data: bytes) -> None:
+        """Process an attachment: own origin segment, depth + 1, type checked by content."""
+        child = self.nested(raw_name)
+        if child is None:
             return
+        name = child.name
         path = self.collector.temp_file()
         try:
             path.write_bytes(data)
             try:
                 kind = documents.detect_kind(path, name)
-            except documents.UnsupportedFile:
-                child.note("skipped", reason="unsupported")
+            except documents.UnsupportedFile as exc:
+                encrypted = "password" in exc.message
+                child.note("skipped", reason="encrypted" if encrypted else "unsupported")
                 return
             extractor = find(kind)
             if extractor is None:
@@ -175,7 +200,11 @@ class Context:
                 raise
             except PermanentError as exc:
                 log.info("attachment not readable: reason=%s kind=%s", exc.code, kind)
-                child.note("failed", reason=exc.code)
+                encrypted = exc.code.endswith("_encrypted")
+                child.note(
+                    "skipped" if encrypted else "failed",
+                    reason="encrypted" if encrypted else exc.code,
+                )
             except Exception as exc:  # a parser crash on one attachment spares the others
                 log.warning(
                     "attachment extractor crashed: kind=%s error=%s", kind, type(exc).__name__

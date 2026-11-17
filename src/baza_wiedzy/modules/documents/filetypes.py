@@ -17,6 +17,7 @@ from baza_wiedzy.core.web.i18n import N_
 
 ALLOWED = ("pdf", "docx", "doc", "txt", "eml", "msg")
 OLE2_MAGIC = bytes.fromhex("D0CF11E0A1B11AE1")
+ENCRYPTED_OOXML = "encrypted-ooxml"
 ZIP_MAGIC = b"PK\x03\x04"
 HEAD_BYTES = 64 * 1024
 # A header field of RFC 5322: name, colon (no whitespace before it).
@@ -61,6 +62,8 @@ def _ole_kind(path: Path) -> str | None:
             return "doc"
         if ole.exists("__properties_version1.0"):
             return "msg"
+        if ole.exists("EncryptionInfo") and ole.exists("EncryptedPackage"):
+            return ENCRYPTED_OOXML  # a password-protected .docx (or .xlsx...) is an OLE2 file
         return None  # another OLE2 file (old .xls, .ppt, ...): not accepted
     finally:
         ole.close()
@@ -106,6 +109,10 @@ def detect(path: Path, filename: str) -> str:
         kind = "txt" if _looks_like_text(head) else None
     else:
         kind = None
+    if kind == ENCRYPTED_OOXML and extension == "docx":
+        raise UnsupportedFile(
+            N_("The document is password protected. Upload a copy without a password.")
+        )
     if kind != extension:
         raise UnsupportedFile(
             N_("The content of the file does not match its extension, or the file is damaged.")

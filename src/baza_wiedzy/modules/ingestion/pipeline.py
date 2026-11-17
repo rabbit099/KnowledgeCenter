@@ -48,6 +48,7 @@ from baza_wiedzy.modules.ingestion.extractors.base import (
     find,
 )
 from baza_wiedzy.modules.ingestion.models import Part, Result
+from baza_wiedzy.modules.ingestion.sandbox import IsolationTimeout
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,12 @@ def limits_of(settings: Settings) -> Limits:
         max_depth=settings.ingest_max_depth,
         max_parts=settings.ingest_max_parts,
         max_text_chars=settings.ingest_max_text_mb * 1024 * 1024,
+        max_pages=settings.ingest_max_pages,
+        ocr_min_chars=settings.ocr_min_chars,
+        child_memory_mb=settings.ingest_child_memory_mb,
+        child_timeout_seconds=settings.ingest_child_timeout_seconds,
+        libreoffice_timeout_seconds=settings.libreoffice_timeout_seconds,
+        libreoffice_memory_mb=settings.libreoffice_memory_mb,
     )
 
 
@@ -292,7 +299,9 @@ def process(rt: Runtime, version_id: uuid.UUID) -> Outcome:
             type(exc).__name__,
             claim.attempt,
         )
-        return _retry(rt, claim, RETRYING)
+        # A child process (PDF, LibreOffice) that ran out of time: after the last attempt the
+        # user sees "took longer than the time limit" rather than a generic message.
+        return _retry(rt, claim, TIMEOUT if isinstance(exc, IsolationTimeout) else RETRYING)
     except Exception as exc:
         log.error(
             "ingestion: unexpected error version=%s kind=%s error=%s\n%s",

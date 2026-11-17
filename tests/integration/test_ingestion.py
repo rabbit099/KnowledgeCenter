@@ -7,10 +7,12 @@ Also: idempotence, permanent and transient errors, stuck recovery, the outbox, s
 from __future__ import annotations
 
 import os
+import shutil
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import dramatiq
@@ -34,7 +36,16 @@ from baza_wiedzy.modules.ingestion import outbox, pipeline, startup, tasks
 from baza_wiedzy.modules.ingestion.extractors.base import TransientError
 from baza_wiedzy.modules.ingestion.models import OutboxEntry, Part
 from baza_wiedzy.modules.ingestion.services import api
-from fixtures.samples import ENGLISH_TEXT, POLISH_TEXT, docx_bytes, eml_bytes
+from fixtures.msg import Attachment, Msg, msg_bytes
+from fixtures.samples import (
+    ENGLISH_TEXT,
+    POLISH_TEXT,
+    doc_bytes,
+    docx_bytes,
+    eml_bytes,
+    encrypted_pdf,
+    text_pdf,
+)
 from web_helpers import csrf, login, make_user
 
 pytestmark = pytest.mark.integration
@@ -581,3 +592,128 @@ def test_startup_hooks_run_once_the_schema_is_migrated(rt: runtime.Runtime) -> N
     thread = runtime.start_startup_hooks(rt, threading.Event())
     thread.join(timeout=30)
     assert not thread.is_alive() and not orphan.exists()
+
+
+# --- stage C: PDF, DOC, MSG ------------------------------------------------------------------
+
+needs_soffice = pytest.mark.skipif(
+    shutil.which("soffice") is None, reason="needs LibreOffice (test image)"
+)
+
+
+def test_eml_with_pdf_and_msg_attachments_end_to_end(
+    app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
+) -> None:
+    c = login(app, make_user(app, "publisher"))
+    mail = eml_bytes(
+        attachments=[
+            ("raport.pdf", text_pdf([POLISH_TEXT, ENGLISH_TEXT]), "application/pdf"),
+            (
+                "notatka.msg",
+                msg_bytes(Msg(body="Notatka z Outlooka: łódź i żółw.")),
+                "application/vnd.ms-outlook",
+            ),
+        ]
+    )
+    _, version_id = upload(c, "z-zalacznikami.eml", mail)
+    assert wait_final(rt, version_id).processing_status == "done"
+    stored = parts(rt, version_id)
+    origins = [(p.origin, p.page_no, p.language) for p in stored]
+    pdf = [{"type": "attachment", "name": "raport.pdf"}]
+    assert (pdf, 1, "pl") in origins and (pdf, 2, "en") in origins
+    note = next(p for p in stored if p.origin == [{"type": "attachment", "name": "notatka.msg"}])
+    assert note.text == "Notatka z Outlooka: łódź i żółw."
+    fragment = c.get(f"/ingestion/versions/{version_id}/parts").text
+    assert "załącznik: raport.pdf › strona 2" in fragment
+
+
+def test_msg_upload_end_to_end(app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker) -> None:
+    c = login(app, make_user(app, "publisher"))
+    doc_id, version_id = upload(c, "outlook.msg", msg_bytes(Msg(subject="Zebranie zarządu")))
+    version = wait_final(rt, version_id)
+    assert version.processing_status == "done"
+    with rt.session_factory() as db:
+        metadata = db.get(EmailMetadata, version_id)
+        document = db.get(Document, doc_id)
+    assert metadata is not None and metadata.subject == "Zebranie zarządu"
+    assert metadata.to_addrs is not None and "jan@example.com" in metadata.to_addrs
+    assert document is not None and document.title == "Zebranie zarządu"
+
+
+@needs_soffice
+def test_doc_upload_end_to_end(
+    app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker, tmp_path: Path
+) -> None:
+    doc = doc_bytes(
+        tmp_path, ["Dokument Word 97: zażółć gęślą jaźń."], table=[["Pozycja", "Kwota"]]
+    )
+    c = login(app, make_user(app, "publisher"))
+    _, version_id = upload(c, "stary.doc", doc)
+    assert wait_final(rt, version_id, timeout=120).processing_status == "done"
+    text = parts(rt, version_id)[0].text
+    assert "Dokument Word 97: zażółć gęślą jaźń." in text and "Pozycja | Kwota" in text
+
+
+def test_scanned_pdf_ends_as_needs_ocr(
+    app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
+) -> None:
+    c = login(app, make_user(app, "publisher"))
+    doc_id, version_id = upload(c, "skan.pdf", text_pdf([POLISH_TEXT, "x"], image_pages=(2,)))
+    version = wait_final(rt, version_id)
+    assert version.processing_status == "needs_ocr" and version.page_count == 2
+    assert [(p.page_no, p.needs_ocr) for p in parts(rt, version_id)] == [(1, False), (2, True)]
+    page = c.get(f"/documents/{doc_id}/status", headers={"HX-Request": "true"}).text
+    assert "wymaga OCR" in page
+
+
+def test_encrypted_pdf_fails_with_a_readable_message(
+    app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
+) -> None:
+    c = login(app, make_user(app, "publisher"))
+    doc_id, version_id = upload(c, "tajny.pdf", encrypted_pdf())
+    version = wait_final(rt, version_id)
+    assert version.processing_status == "failed" and version.processing_attempts == 1
+    assert "zabezpieczony hasłem" in c.get(f"/documents/{doc_id}").text
+
+
+def test_logs_of_new_formats_carry_no_content(
+    app: FastAPI,
+    rt: runtime.Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(tasks, "enqueue", lambda *a, **k: None)
+    c = login(app, make_user(app, "publisher"))
+    secret_msg = Msg(
+        subject="Temat-Sekretny",
+        sender="sekretny@example.com",
+        body="Treść-Sekretna",
+        attachments=[Attachment("Zalacznik-Sekretny.pdf", text_pdf(["Strona-Sekretna"]))],
+    )
+    uploads = [
+        ("Nazwa-Sekretna.pdf", text_pdf(["Strona-Sekretna"])),
+        ("Nazwa-Sekretna.msg", msg_bytes(secret_msg)),
+        ("Uszkodzony-Sekretny.pdf", b"%PDF-1.4 Sekretny-Smiec"),
+    ]
+    caplog.set_level("DEBUG")
+    for name, data in uploads:
+        _, version_id = upload(c, name, data)
+        pipeline.process(rt, version_id)
+    for secret in ("Sekret", "sekretny@", "Strona-"):
+        assert secret not in caplog.text
+
+
+def test_child_timeout_is_retried_then_reported_as_too_long(
+    rt: runtime.Runtime, uploaded: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from baza_wiedzy.modules.ingestion.sandbox import IsolationTimeout
+
+    def slow(*_: object) -> None:
+        raise IsolationTimeout("timeout")
+
+    monkeypatch.setattr(pipeline, "extract", slow)
+    rt.settings = rt.settings.model_copy(update={"ingest_max_attempts": 2})
+    assert pipeline.process(rt, uploaded) == pipeline.Outcome.RETRY
+    assert version_of(rt, uploaded).processing_error == pipeline.RETRYING
+    assert pipeline.process(rt, uploaded) == pipeline.Outcome.FAILED
+    assert version_of(rt, uploaded).processing_error == pipeline.TIMEOUT

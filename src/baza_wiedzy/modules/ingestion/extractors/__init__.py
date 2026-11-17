@@ -9,5 +9,7 @@ REGISTRY: dict[str, str] = {
     "txt": "baza_wiedzy.modules.ingestion.extractors.txt:extract",
     "eml": "baza_wiedzy.modules.ingestion.extractors.eml:extract",
     "docx": "baza_wiedzy.modules.ingestion.extractors.docx:extract",
-    # pdf, doc, msg: Phase 2 stage C.
+    "pdf": "baza_wiedzy.modules.ingestion.extractors.pdf:extract",
+    "doc": "baza_wiedzy.modules.ingestion.extractors.doc:extract",
+    "msg": "baza_wiedzy.modules.ingestion.extractors.msg:extract",
 }

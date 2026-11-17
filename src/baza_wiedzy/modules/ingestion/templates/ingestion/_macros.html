@@ -21,6 +21,7 @@
 {%- if note.code == "encoding" -%}{{ _("%(where)s: text encoding %(enc)s", where=where, enc=note.value) }}
 {%- elif note.code == "fallback" -%}{{ _("%(where)s: read in simplified mode (formatting ignored)", where=where) }}
 {%- elif note.code == "skipped" and note.reason == "too_deep" -%}{{ _("%(where)s: skipped, attachments nested too deeply", where=where) }}
+{%- elif note.code == "skipped" and note.reason == "encrypted" -%}{{ _("%(where)s: skipped, the file is password protected", where=where) }}
 {%- elif note.code == "skipped" and note.reason == "not_yet" -%}{{ _("%(where)s: skipped, this file type is not processed yet", where=where) }}
 {%- elif note.code == "skipped" -%}{{ _("%(where)s: skipped, unsupported file type", where=where) }}
 {%- elif note.code == "failed" -%}{{ _("%(where)s: skipped, the file is damaged or unreadable", where=where) }}

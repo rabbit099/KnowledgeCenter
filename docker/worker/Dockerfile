@@ -8,19 +8,30 @@ RUN uv sync --frozen --no-dev --extra worker --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev --extra worker --no-editable
 
-FROM python:3.12.16-slim-trixie
+# Shared base of the released image and of the test image.
+FROM python:3.12.16-slim-trixie AS base
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 # OCR (tesseract pol+eng, ghostscript for OCRmyPDF), DOC conversion (LibreOffice Writer, no GUI),
-# file type detection (libmagic).
+# fonts for LibreOffice. Type detection needs no system library (ADR-021).
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng \
-        ghostscript libreoffice-writer-nogui libmagic1t64 fonts-dejavu-core; \
+        ghostscript libreoffice-writer-nogui fonts-dejavu-core; \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app \
     && mkdir -p /data/storage /data/tmp && chown -R app:app /data
+
+# Test image for `make test-db` and CI (target `test`): the same system tools (LibreOffice,
+# Tesseract) plus uv; the project and its dev dependencies are installed by the test command
+# into a volume. Never released: the release and smoke builds use the default (last) stage.
+FROM base AS test
+COPY --from=ghcr.io/astral-sh/uv:0.13.8-python3.12-trixie-slim /usr/local/bin/uv /usr/local/bin/uv
+ENV UV_PYTHON_DOWNLOADS=never
+
+# Released image (default target: the last stage).
+FROM base AS runtime
 COPY --from=builder /opt/venv /opt/venv
 COPY alembic.ini /opt/app/alembic.ini
 COPY alembic /opt/app/alembic

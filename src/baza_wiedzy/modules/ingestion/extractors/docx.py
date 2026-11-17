@@ -31,7 +31,7 @@ ARCHIVE_LIMITS = N_("The file unpacks to much more data than allowed (possible a
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
-def check_archive(path: Path) -> None:
+def check_archive(path: Path, *, check_ratio: bool = True) -> None:
     try:
         with zipfile.ZipFile(path) as archive:
             entries = archive.infolist()
@@ -41,7 +41,7 @@ def check_archive(path: Path) -> None:
         raise PermanentError(ARCHIVE_LIMITS, "zip_entries")
     if sum(entry.file_size for entry in entries) > MAX_UNCOMPRESSED:
         raise PermanentError(ARCHIVE_LIMITS, "zip_size")
-    for entry in entries:
+    for entry in entries if check_ratio else ():
         if entry.file_size > RATIO_FROM and entry.file_size > MAX_RATIO * max(
             entry.compress_size, 1
         ):
@@ -98,8 +98,11 @@ def _with_raw_xml(path: Path) -> list[str]:
     return lines
 
 
-def extract(path: Path, ctx: Context) -> None:
-    check_archive(path)
+def extract(path: Path, ctx: Context, *, converted: bool = False) -> None:
+    """converted=True: the file is LibreOffice's output for a DOC (bounded by the upload size
+    and produced by us); highly repetitive documents compress beyond 100x legitimately, so only
+    the entry count and the total size are checked."""
+    check_archive(path, check_ratio=not converted)
     try:
         lines = _with_python_docx(path)
     except PermanentError:

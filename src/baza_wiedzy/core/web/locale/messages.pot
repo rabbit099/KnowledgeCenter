@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 12:55+0100\n"
+"POT-Creation-Date: 2026-11-17 13:13+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -37,6 +37,10 @@ msgstr ""
 
 #, python-format
 msgid "%(where)s: skipped, the file is damaged or unreadable"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: skipped, the file is password protected"
 msgstr ""
 
 #, python-format
@@ -500,6 +504,12 @@ msgstr ""
 msgid "The Admin role is missing; run the migrations."
 msgstr ""
 
+msgid "The PDF has more pages than the allowed limit."
+msgstr ""
+
+msgid "The PDF is password protected. Upload a copy without a password."
+msgstr ""
+
 msgid ""
 "The account is linked to the Active Directory user with this name at their first login. Local "
 "accounts are created only with the command baza-wiedzy create-admin."
@@ -518,6 +528,9 @@ msgid "The content of the file does not match its extension, or the file is dama
 msgstr ""
 
 msgid "The document is being processed right now; try again when it has finished."
+msgstr ""
+
+msgid "The document is password protected. Upload a copy without a password."
 msgstr ""
 
 msgid "The document was queued for processing again."
@@ -545,6 +558,9 @@ msgid "The file is empty."
 msgstr ""
 
 msgid "The file is larger than the allowed size."
+msgstr ""
+
+msgid "The file needs more memory to process than allowed."
 msgstr ""
 
 msgid "The file unpacks to much more data than allowed (possible archive bomb)."

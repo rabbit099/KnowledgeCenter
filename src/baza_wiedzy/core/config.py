@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     ingest_max_depth: int = 3
     ingest_max_parts: int = 2000
     ingest_max_text_mb: int = 50
+    # PDF: largest number of pages; a page with fewer non-space characters than OCR_MIN_CHARS
+    # that contains an image is marked "needs OCR" (OCR itself: Phase 4).
+    ingest_max_pages: int = 2000
+    ocr_min_chars: int = 25
+    # Native-code steps run in a child process: PDF (memory limit as address space in MB, time
+    # limit in seconds) and LibreOffice for DOC (same; one conversion at a time per worker
+    # container). The worker container's memory limit (WORKER_MEMORY_LIMIT) applies on top.
+    ingest_child_memory_mb: int = 1024
+    ingest_child_timeout_seconds: int = 300
+    libreoffice_timeout_seconds: int = 120
+    libreoffice_memory_mb: int = 1024
     # Parts with fewer letters than this get language "unknown" instead of a guess.
     language_min_letters: int = 40
     # Delivered events are kept this long in ing_outbox (diagnostics), then removed.

@@ -27,8 +27,10 @@ baza-wiedzy = "baza_wiedzy.cli:main"
 
 [project.optional-dependencies]
 worker = [
+    "extract-msg>=0.48",
     "lingua-language-detector>=2.0",
     "ocrmypdf>=16",
+    "pypdfium2>=4.30",
     "python-docx>=1.1",
 ]
 
@@ -70,6 +72,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Test data is Polish text with typographic dashes and quotes on purpose.
 "tests/**" = ["RUF001"]
+"scripts/make_samples.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -79,8 +82,8 @@ files = ["src", "tests", "scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# ldap3, olefile and lxml ship no type information; their use is confined to a few modules.
-module = ["ldap3", "ldap3.*", "olefile", "olefile.*", "lxml", "lxml.*"]
+# These libraries ship no type information; their use is confined to a few modules.
+module = ["ldap3", "ldap3.*", "olefile", "olefile.*", "lxml", "lxml.*", "pypdfium2", "pypdfium2.*", "extract_msg", "extract_msg.*", "RTFDE", "RTFDE.*", "compressed_rtf", "compressed_rtf.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -89,6 +92,7 @@ addopts = "-ra --strict-markers"
 pythonpath = ["src", "scripts", "tests"]
 markers = [
     "integration: needs real Postgres and Redis (Docker)",
+    "tools: needs LibreOffice (test image of make test-db)",
 ]
 
 [tool.coverage.run]
