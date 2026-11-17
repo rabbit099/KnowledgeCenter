@@ -6,6 +6,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 
 ## [Unreleased]
 
+### Changed
+- Dependabot proponuje tylko poprawki obrazów bazowych PostgreSQL 16.x i Python 3.12.x; nowa wersja główna PostgreSQL albo pomocnicza Pythona to zaplanowana migracja z własnym ADR (ADR-015). PR-y dla Dockera są sprawdzane ręcznie w przeglądzie miesięcznym (brak cooldownu dla obrazów Dockera).
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
