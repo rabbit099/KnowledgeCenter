@@ -215,6 +215,40 @@ Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpow
 
 Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
+## Przetwarzanie dokumentów (przewodnik operatora)
+
+Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje; `worker` wyciąga tekst w tle. Szczegóły i reguły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+
+**Start i migracje.** Kolejność na nowym serwerze i w środowisku deweloperskim: uruchom stos (`docker compose up -d` / `make up`), potem migruj (`docker compose run --rm app baza-wiedzy migrate` / `make migrate`). Worker uruchomiony przed migracją raz na minutę loguje `worker startup: waiting for database migrations`, a zadania startowe wykonuje potem: usuwa pozostałe katalogi tymczasowe, kolejkuje oczekujące wersje, odzyskuje zawieszone, dostarcza niedostarczone zdarzenia.
+
+**Statusy** widoczne w „Moje dokumenty” i na stronie dokumentu:
+
+| Status | Znaczenie | Co zrobić |
+|---|---|---|
+| oczekuje | w kolejce | nic; jeśli trwa: czy worker działa (`docker compose ps`)? |
+| przetwarzanie | trwa próba | nic; po `INGEST_STALE_MINUTES` (30) bez postępu wersja jest odzyskiwana przy najbliższym starcie workera albo przez `baza-wiedzy reprocess --stuck` |
+| gotowe | tekst wyciągnięty | — |
+| wymaga OCR | strony z tekstem wyciągnięte, co najmniej jedna zeskanowana strona bez tekstu | OCR dojdzie w Fazie 4; strony z tekstem są już zapisane |
+| błąd | błąd trwały (uszkodzony, zabezpieczony hasłem, nieznane kodowanie, limit) albo błędy przejściowe we wszystkich próbach | komunikat na stronie mówi, który; popraw plik i wgraj go ponownie albo po usunięciu przyczyny „Przetwórz ponownie” |
+
+**Ponawianie**: tylko błędy przejściowe (baza, Redis, limity czasu), do `INGEST_MAX_ATTEMPTS` (3) razy, po 30 s, 60 s, 120 s… (najwyżej 600 s). Błędy trwałe nie są ponawiane.
+
+**LibreOffice (DOC)**: jedna konwersja naraz na kontener workera, każda najwyżej `LIBREOFFICE_TIMEOUT_SECONDS` (120 s) i `LIBREOFFICE_MEMORY_MB` (1 GB); parsowanie PDF też działa w procesie potomnym (`INGEST_CHILD_*`). Ani worker, ani te procesy nie mają dostępu do internetu (ADR-024).
+
+**Pamięć workera**: zmierzona przy 2 procesach 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem. Reguła: `WORKER_MEMORY_LIMIT` ≥ 1,4 GB + 0,6 GB × `WORKER_PROCESSES` (domyślnie 2 procesy, 2 GB). Więcej procesów niż rdzeni CPU nie pomaga.
+
+**Polecenia** (w kontenerze `app`: `docker compose exec app baza-wiedzy …`):
+
+| Polecenie | Działanie | Oczekiwany wynik |
+|---|---|---|
+| `reprocess <ID dokumentu lub wersji> …` | przetwórz ponownie (audyt `document.reprocess`) | `Queued for processing again: 1; skipped (busy): 0.` |
+| `reprocess --failed` | każda wersja ze statusem „błąd” | jak wyżej, z liczbą |
+| `reprocess --stuck` | zawieszone i oczekujące wersje z powrotem do kolejki (bez audytu) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
+| `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
+| `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+
+Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`).
+
 ## Polecenia dla programisty
 
 Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync --all-extras` (dodatek `worker` zawiera parsery dokumentów potrzebne testom i sprawdzaniu typów; `make lint` i `make test` dodają go same).

@@ -79,7 +79,7 @@ baza-wiedzy/
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
 │       ├── documents/     # module.py, routes, models, services/api.py, storage
-│       ├── ingestion/     # module.py, extractors/, ocr.py, language.py, tasks.py, services/api.py
+│       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
 │       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
 ├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py)
 ├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh

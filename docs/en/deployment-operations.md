@@ -215,6 +215,40 @@ Zabbix: an HTTP check on `/ready` (expect 200) plus a trigger on the response ti
 
 Logs are JSON lines, one object per line: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; errors add `exc` with the traceback. `app` writes to stdout, worker processes to stderr. Exception: the Dramatiq main process of `worker` prints its few start and stop lines in Dramatiq's own text format (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` sets the level (default `INFO`). Compose sets Docker log rotation (`max-size 10m`, `max-file 5`). Read them with `docker compose logs -f app worker`; filter with `jq`, for example `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
+## Document processing (operator guide)
+
+What runs where: the web application (`app`) stores uploads and enqueues them; the `worker` extracts text in the background. Details and rules: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+
+**Start and migrations.** Order on a new server and in development: start the stack (`docker compose up -d` / `make up`), then migrate (`docker compose run --rm app baza-wiedzy migrate` / `make migrate`). A worker that starts before the migration logs `worker startup: waiting for database migrations` once a minute and does its startup work afterwards: removes leftover temporary directories, re-enqueues waiting versions, recovers stuck ones, delivers undelivered events.
+
+**Statuses** shown on "Moje dokumenty" and on the document page:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| oczekuje | queued | nothing; if it stays: is the worker running (`docker compose ps`)? |
+| przetwarzanie | an attempt is running | nothing; after `INGEST_STALE_MINUTES` (30) without progress it is recovered at the next worker start or with `baza-wiedzy reprocess --stuck` |
+| gotowe | text extracted | — |
+| wymaga OCR | text pages extracted, at least one scanned page without text | OCR comes in Phase 4; the text pages are already stored |
+| błąd | permanent error (damaged, password-protected, unknown encoding, limit) or transient errors in every attempt | the message on the page says which; fix the file and upload again, or "Przetwórz ponownie" after fixing the cause |
+
+**Retries**: only transient errors (database, Redis, time limits), up to `INGEST_MAX_ATTEMPTS` (3), after 30 s, 60 s, 120 s… (at most 600 s). Permanent errors are not retried.
+
+**LibreOffice (DOC)**: one conversion at a time per worker container, at most `LIBREOFFICE_TIMEOUT_SECONDS` (120 s) and `LIBREOFFICE_MEMORY_MB` (1 GB) each; PDF parsing runs in a child process too (`INGEST_CHILD_*`). Neither the worker nor these processes can reach the internet (ADR-024).
+
+**Memory of the worker**: measured with 2 processes 173 MiB idle, below 0.5 GB under load. Rule: `WORKER_MEMORY_LIMIT` ≥ 1.4 GB + 0.6 GB × `WORKER_PROCESSES` (default 2 processes, 2 GB). More processes than CPU cores do not help.
+
+**Commands** (in the `app` container: `docker compose exec app baza-wiedzy …`):
+
+| Command | Effect | Expected output |
+|---|---|---|
+| `reprocess <document or version ID> …` | process again (audited `document.reprocess`) | `Queued for processing again: 1; skipped (busy): 0.` |
+| `reprocess --failed` | every version with status "błąd" | same, with the count |
+| `reprocess --stuck` | stuck and waiting versions back to the queue (no audit) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
+| `events redeliver` | deliver undelivered events, remove old delivered ones | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
+| `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+
+Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`).
+
 ## Developer commands
 
 Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync --all-extras` once (the `worker` extra holds the document parsers the tests and type checks need; `make lint` and `make test` add it themselves).
