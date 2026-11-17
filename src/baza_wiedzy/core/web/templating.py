@@ -55,6 +55,8 @@ def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) ->
     env.install_gettext_translations(get_translations(DEFAULT_LOCALE), newstyle=True)  # type: ignore[attr-defined]
     env.globals["app_name"] = settings.app_name
     env.globals["app_version"] = __version__
+    # Templates of one module may offer links to pages of another module only when it is on.
+    env.globals["enabled_modules"] = frozenset(settings.enabled_modules)
     env.globals["lang"] = DEFAULT_LOCALE
     # The database stores UTC; the UI shows Europe/Warsaw (CLAUDE.md section 6).
     env.globals["tz"] = ZoneInfo("Europe/Warsaw")

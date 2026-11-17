@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import threading
+from collections.abc import Callable
 from typing import Any
 
 import dramatiq
@@ -90,6 +91,19 @@ class Heartbeat(Middleware):
             self.client.delete(self.key)
         except redis.RedisError:
             log.warning("worker heartbeat: could not remove the key", exc_info=True)
+
+
+class StartupHooks(Middleware):
+    """Runs `hook` once in each worker process, after the worker has started."""
+
+    def __init__(self, hook: Callable[[], None]) -> None:
+        self.hook = hook
+
+    def after_worker_boot(self, broker: Broker, worker: dramatiq.Worker) -> None:
+        try:
+            self.hook()
+        except Exception:
+            log.exception("worker startup hooks failed")
 
 
 def heartbeat_check(client: redis.Redis) -> ReadyCheck:

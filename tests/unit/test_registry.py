@@ -177,11 +177,11 @@ def test_event_without_subscribers_is_ignored() -> None:
 def test_modules_subscribe_through_on_register() -> None:
     received: list[str] = []
 
-    def on_register(bus: EventBus) -> None:
+    def on_register(bus: EventBus, settings: Settings) -> None:
         bus.subscribe("ping", lambda p: received.append(p["x"]))
 
     registry = build_registry(["a"], available(manifest("a", on_register=on_register)))
     bus = EventBus()
-    registry.register_events(bus)
+    registry.register_events(bus, Settings(_env_file=None))  # type: ignore[call-arg]
     bus.publish("ping", {"x": "ok"})
     assert received == ["ok"]
