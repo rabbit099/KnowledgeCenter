@@ -74,6 +74,23 @@ class RawPart:
     needs_ocr: bool = False
 
 
+def format_addresses(pairs: list[tuple[str, str]], limit: int = 4000) -> str | None:
+    """One format for sender, To and Cc of EML and MSG: "Name <address>" (only the address when
+    there is no name), separated by ", ". Control characters removed, length limited."""
+    items: list[str] = []
+    for name, address in pairs:
+        name = clean_text(" ".join((name or "").split())).strip('"')
+        address = clean_text((address or "").strip())
+        if not address and not name:
+            continue
+        if name and address and name.lower() != address.lower():
+            items.append(f"{name} <{address}>")
+        else:
+            items.append(address or name)
+    text = ", ".join(items)[:limit]
+    return text or None
+
+
 @dataclass
 class EmailHeaders:
     subject: str | None = None

@@ -23,6 +23,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 - Dziennik audytu: kolumna szczegółów jest szersza, a długie skróty są skracane (pełna wartość po najechaniu i w eksporcie CSV); obszar strony jest szerszy.
 - „Dodaj z wyprzedzeniem użytkownika AD”: checkboxy ról są obok etykiet, wyrównane do lewej.
 - Formularze panelu admina (zmiana ról, aktywacja użytkowników, unieważnianie sesji, dodawanie z wyprzedzeniem użytkowników AD, role, mapowanie grup AD, eksport CSV audytu) były odrzucane z kodem 403 (CSRF): ich ukryte pole tokenu było puste od wprowadzenia panelu (0.2.0). Naprawione; każdy formularz POST jest teraz testowany z tokenem, który sam wyrenderował. Odrzucone żądanie pokazuje stronę w układzie aplikacji z odnośnikami „Wróć na stronę główną” i „Zaloguj ponownie” i trafia do logu z powodem (bez wartości tokenów).
+- Tytuł z tematu maila pojawiał się dopiero po przeładowaniu strony dokumentu: strona aktualizuje teraz nagłówek po zakończeniu przetwarzania (tytuł był już zapisany), a `updated_at` zmienia się razem z nim.
+- Nadawca, odbiorcy i DW mają ten sam format dla EML i MSG (`Nazwa <adres>`, oddzielone „, ”); zagnieżdżone pochodzenie zawiera słowo „załącznik” raz („załącznik: a.msg › b.docx”); strony bez warstwy tekstowej pokazują „brak warstwy tekstowej, wymaga OCR” zamiast pustego rozwijanego pola; stopka jest wyrównana do treści.
+
 
 ## [0.2.1] - 2026-11-17
 

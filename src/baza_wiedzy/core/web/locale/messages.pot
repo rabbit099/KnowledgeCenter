@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 13:13+0100\n"
+"POT-Creation-Date: 2026-11-17 13:54+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -250,6 +250,9 @@ msgid "Last login"
 msgstr ""
 
 msgid "Linked to AD"
+msgstr ""
+
+msgid "Little text on this page; it needs OCR."
 msgstr ""
 
 msgid "Loading the extracted text…"
@@ -733,6 +736,9 @@ msgid "needs OCR"
 msgstr ""
 
 msgid "no"
+msgstr ""
+
+msgid "no text layer, needs OCR"
 msgstr ""
 
 msgid "not yet (first login pending)"

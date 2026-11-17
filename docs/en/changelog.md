@@ -23,6 +23,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 - Audit log: the details column is wider and long hashes are shortened (full value on hover and in the CSV export); the page area is wider.
 - "Dodaj z wyprzedzeniem użytkownika AD": role checkboxes are next to their labels, aligned left.
 - Admin panel forms (changing roles, activating users, revoking sessions, adding AD users in advance, roles, AD group mappings, audit CSV export) were refused with 403 (CSRF): their hidden token field was rendered empty since the admin panel was introduced (0.2.0). Fixed; every POST form is now tested with the token it renders. A refused request shows a page in the application layout with "Wróć na stronę główną" and "Zaloguj ponownie" and is logged with its reason (no token values).
+- The title taken from an e-mail subject appeared only after reloading the document page: the page now updates the heading when processing ends (it was already stored), and `updated_at` changes with it.
+- Sender, To and Cc have the same format for EML and MSG (`Name <address>`, separated by ", "); nested origins name "załącznik" once ("załącznik: a.msg › b.docx"); pages without a text layer show "brak warstwy tekstowej, wymaga OCR" instead of an empty expandable box; the footer is aligned with the content.
+
 
 ## [0.2.1] - 2026-11-17
 

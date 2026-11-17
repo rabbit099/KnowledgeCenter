@@ -664,6 +664,9 @@ def test_scanned_pdf_ends_as_needs_ocr(
     assert [(p.page_no, p.needs_ocr) for p in parts(rt, version_id)] == [(1, False), (2, True)]
     page = c.get(f"/documents/{doc_id}/status", headers={"HX-Request": "true"}).text
     assert "wymaga OCR" in page
+    fragment = c.get(f"/ingestion/versions/{version_id}/parts").text
+    assert 'strona 2 · <span class="muted">brak warstwy tekstowej, wymaga OCR</span>' in fragment
+    assert fragment.count("<details") == 1  # only the page with text can be expanded
 
 
 def test_encrypted_pdf_fails_with_a_readable_message(

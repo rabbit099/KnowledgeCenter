@@ -19,12 +19,17 @@
 {% if parts %}
 <p class="muted">{{ ngettext("%(num)d part", "%(num)d parts", parts|length) }}</p>
 {% for part in parts %}
+{% if part.needs_ocr and not part.text.strip() %}
+<p class="part part-empty">{{ origin_label(part) }} · <span class="muted">{{ _("no text layer, needs OCR") }}</span></p>
+{% else %}
 <details class="part">
   <summary>{{ origin_label(part) }} · {{ language_label(part.language) }} · {{ _("%(n)s characters", n=part.char_count) }}</summary>
   <pre class="part-text">{{ part.text[:preview_chars] }}{% if part.char_count > preview_chars %}
 …{% endif %}</pre>
   {% if part.char_count > preview_chars %}<p class="muted">{{ _("Preview: the first %(n)s characters.", n=preview_chars) }}</p>{% endif %}
+  {% if part.needs_ocr %}<p class="muted">{{ _("Little text on this page; it needs OCR.") }}</p>{% endif %}
 </details>
+{% endif %}
 {% endfor %}
 {% else %}
 <p class="muted">{{ _("No text was extracted.") }}</p>

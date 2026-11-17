@@ -414,3 +414,38 @@ def test_large_repetitive_doc_is_not_mistaken_for_an_archive_bomb(tmp_path: Path
     doc = doc_bytes(tmp_path, [POLISH_TEXT] * 3000)
     result = run(tmp_path, "doc", "a.doc", doc)
     assert sum(len(p.text) for p in result.parts) > 500_000
+
+
+def test_eml_and_msg_headers_have_the_same_format(tmp_path: Path) -> None:
+    eml = run(tmp_path, "eml", "a.eml", eml_bytes()).email
+    message = Msg(
+        to=[("Biuro", "biuro@example.com"), ("Jan Testowy", "jan@example.com")],
+        cc=[("", "archiwum@example.com")],
+    )
+    msg = run(tmp_path, "msg", "a.msg", msg_bytes(message)).email
+    assert eml is not None and msg is not None
+    expected = (
+        "Anna Przykładowa <anna@example.com>",
+        "Biuro <biuro@example.com>, Jan Testowy <jan@example.com>",
+        "archiwum@example.com",
+    )
+    assert (eml.from_addr, eml.to_addrs, eml.cc_addrs) == expected
+    assert (msg.from_addr, msg.to_addrs, msg.cc_addrs) == expected
+
+
+def test_nested_origin_names_the_word_attachment_once() -> None:
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.web.templating import make_templates
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    env = make_templates(settings, ("baza_wiedzy.modules.ingestion",)).env
+    render = env.from_string(
+        '{% from "ingestion/_macros.html" import origin_path %}{{ origin_path(o) }}'
+    ).render
+    nested = [
+        {"type": "attachment", "name": "a.msg"},
+        {"type": "attachment", "name": "b.docx"},
+        {"type": "page", "no": 2},
+    ]
+    assert render(o=nested) == "załącznik: a.msg › b.docx › strona 2"
+    assert render(o=[]) == "treść"

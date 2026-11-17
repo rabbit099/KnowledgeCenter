@@ -4,8 +4,9 @@
 {%- else -%}{{ _("content") }}{%- endif -%}
 {%- endmacro %}
 
+{# "załącznik: a.msg › b.docx › strona 2": the word appears once, before the first attachment. #}
 {% macro origin_path(origin) -%}
-{%- if origin -%}{% for s in origin %}{{ segment(s) }}{% if not loop.last %} › {% endif %}{% endfor %}{%- else -%}{{ _("content") }}{%- endif -%}
+{%- if origin -%}{% for s in origin %}{% if s.type == "attachment" and loop.index0 > 0 and loop.previtem.type == "attachment" %}{{ s.name }}{% else %}{{ segment(s) }}{% endif %}{% if not loop.last %} › {% endif %}{% endfor %}{%- else -%}{{ _("content") }}{%- endif -%}
 {%- endmacro %}
 
 {% macro origin_label(part) -%}

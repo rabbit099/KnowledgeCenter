@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from email import policy
 from email.message import EmailMessage, Message
 from email.parser import BytesParser
-from email.utils import parsedate_to_datetime
+from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 
 from baza_wiedzy.modules.ingestion.extractors.base import (
@@ -25,6 +25,7 @@ from baza_wiedzy.modules.ingestion.extractors.base import (
     EmailHeaders,
     PermanentError,
     clean_text,
+    format_addresses,
 )
 from baza_wiedzy.modules.ingestion.extractors.html_text import html_to_text
 
@@ -54,12 +55,27 @@ def _date(message: Message) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+def _addresses(message: Message, name: str) -> str | None:
+    try:
+        values = message.get_all(name) or []
+        pairs: list[tuple[str, str]] = []
+        for value in values:
+            parsed = getattr(value, "addresses", None)  # policy=default: parsed header
+            if parsed is not None:
+                pairs.extend((a.display_name, a.addr_spec) for a in parsed)
+            else:
+                pairs.extend(getaddresses([str(value)]))
+    except Exception:  # malformed address header: keep the raw text, cleaned
+        return _header(message, name)
+    return format_addresses(pairs)
+
+
 def headers(message: Message) -> EmailHeaders:
     return EmailHeaders(
         subject=_header(message, "subject"),
-        from_addr=_header(message, "from"),
-        to_addrs=_header(message, "to"),
-        cc_addrs=_header(message, "cc"),
+        from_addr=_addresses(message, "from"),
+        to_addrs=_addresses(message, "to"),
+        cc_addrs=_addresses(message, "cc"),
         sent_at=_date(message),
         message_id=_header(message, "message-id"),
     )

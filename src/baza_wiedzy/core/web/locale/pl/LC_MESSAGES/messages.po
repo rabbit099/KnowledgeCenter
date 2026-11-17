@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 13:13+0100\n"
+"POT-Creation-Date: 2026-11-17 13:54+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -253,6 +253,9 @@ msgstr "Ostatnie logowanie"
 
 msgid "Linked to AD"
 msgstr "Połączone z AD"
+
+msgid "Little text on this page; it needs OCR."
+msgstr "Na tej stronie jest mało tekstu; wymaga OCR."
 
 msgid "Loading the extracted text…"
 msgstr "Wczytywanie wyodrębnionego tekstu…"
@@ -758,6 +761,9 @@ msgstr "wymaga OCR"
 
 msgid "no"
 msgstr "nie"
+
+msgid "no text layer, needs OCR"
+msgstr "brak warstwy tekstowej, wymaga OCR"
 
 msgid "not yet (first login pending)"
 msgstr "jeszcze nie (czeka na pierwsze logowanie)"

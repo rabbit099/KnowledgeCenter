@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from email.utils import getaddresses
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from baza_wiedzy.modules.ingestion.extractors.base import (
     PermanentError,
     TransientError,
     clean_text,
+    format_addresses,
 )
 from baza_wiedzy.modules.ingestion.extractors.html_text import html_to_text
 from baza_wiedzy.modules.ingestion.extractors.rtf_text import rtf_to_text
@@ -35,6 +37,7 @@ for _name in ("extract_msg", "RTFDE", "compressed_rtf", "olefile", "msoffcrypto"
     logging.getLogger(_name).setLevel(logging.CRITICAL + 1)
 
 MAX_HEADER = 4000
+TO, CC = 1, 2  # PR_RECIPIENT_TYPE (MAPI_TO, MAPI_CC; BCC is not kept)
 
 
 def _safe(read: Any) -> Any:
@@ -62,15 +65,25 @@ def _decode_html(data: Any) -> str:
         return data.decode("cp1250", errors="replace")
 
 
+def _recipients(message: Any, kind: int) -> str | None:
+    recipients = _safe(lambda: message.recipients) or []
+    pairs = [
+        (str(_safe(lambda r=r: r.name) or ""), str(_safe(lambda r=r: r.email) or ""))
+        for r in recipients
+        if _safe(lambda r=r: int(r.type)) == kind
+    ]
+    return format_addresses(pairs)
+
+
 def headers(message: Any) -> EmailHeaders:
     sent = _safe(lambda: message.date)
     if isinstance(sent, datetime) and sent.tzinfo is None:
         sent = sent.replace(tzinfo=UTC)
     return EmailHeaders(
         subject=_text(_safe(lambda: message.subject)),
-        from_addr=_text(_safe(lambda: message.sender)),
-        to_addrs=_text(_safe(lambda: message.to)),
-        cc_addrs=_text(_safe(lambda: message.cc)),
+        from_addr=format_addresses(getaddresses([str(_safe(lambda: message.sender) or "")])),
+        to_addrs=_recipients(message, TO),
+        cc_addrs=_recipients(message, CC),
         sent_at=sent if isinstance(sent, datetime) else None,
         message_id=_text(_safe(lambda: message.messageId)),
     )
