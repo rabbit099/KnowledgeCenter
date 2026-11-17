@@ -6,6 +6,9 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 
 ## [Unreleased]
 
+### Security
+- `opentelemetry-api` 1.45.1 → 1.45.2 (alert Dependabota #1, umiarkowany: odmowa usługi przez kwadratowe parsowanie nagłówka `traceparent`), dociągany przez FastAPI. Niewykorzystywalny u nas: FastAPI parsuje `traceparent` tylko przy skonfigurowanym dostawcy OpenTelemetry, a aplikacja żadnego nie konfiguruje (pilnuje tego test). Mimo to podniesiony przez wyjątek dla pojedynczej paczki od `exclude-newer` (ADR-015); w `uv.lock` zmieniła się tylko ta paczka.
+
 ### Changed
 - Dependabot proponuje tylko poprawki obrazów bazowych PostgreSQL 16.x i Python 3.12.x; nowa wersja główna PostgreSQL albo pomocnicza Pythona to zaplanowana migracja z własnym ADR (ADR-015). PR-y dla Dockera są sprawdzane ręcznie w przeglądzie miesięcznym (brak cooldownu dla obrazów Dockera).
 

@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Security
+- `opentelemetry-api` 1.45.1 → 1.45.2 (Dependabot alert #1, moderate: denial of service through quadratic parsing of the `traceparent` header), pulled in by FastAPI. Not exploitable here: FastAPI parses `traceparent` only when an OpenTelemetry provider is configured, and the application configures none (a test keeps it that way). Upgraded anyway through a per-package exception to `exclude-newer` (ADR-015); only this package changed in `uv.lock`.
+
 ### Changed
 - Dependabot proposes only patch releases of the PostgreSQL 16.x and Python 3.12.x base images; a new PostgreSQL major or Python minor version is a planned migration with its own ADR (ADR-015). Docker PRs are checked by hand in the monthly review (no cooldown for Docker images).
 
