@@ -21,7 +21,7 @@ services:
       retries: 30
 
   redis-test:
-    image: redis:8.2.3-alpine
+    image: redis:8.10.2-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "test"]
     tmpfs:
       - /data
