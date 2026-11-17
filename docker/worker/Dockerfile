@@ -1,5 +1,5 @@
 # Background worker image (Dramatiq): parsing, OCR, DOC conversion. Build context: repository root.
-FROM ghcr.io/astral-sh/uv:0.13.7-python3.12-trixie-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.13.8-python3.12-trixie-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /build
