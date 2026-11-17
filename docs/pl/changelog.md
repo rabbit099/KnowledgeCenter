@@ -1,10 +1,12 @@
 # Dziennik zmian
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-11-17
 
 ### Added
 - `make smoke` (i zadanie CI `images`) sprawdza też logowanie przez proxy: admin awaryjny tworzony z wygenerowanym hasłem, odrzucenie złego hasła, logowanie, panel admina, dziennik audytu, wylogowanie.

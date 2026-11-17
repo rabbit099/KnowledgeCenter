@@ -1,10 +1,12 @@
 # Changelog
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-17
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-11-17
 
 ### Added
 - `make smoke` (and the CI job `images`) also checks logging in through the proxy: break-glass admin created with a generated password, wrong password refused, login, admin panel, audit log, logout.

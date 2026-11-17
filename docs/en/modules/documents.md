@@ -1,6 +1,6 @@
 # Module: documents
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 ## Scope
 

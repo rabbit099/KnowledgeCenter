@@ -1,6 +1,6 @@
 # Moduł: ingestion
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 ## Zakres
 

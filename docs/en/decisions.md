@@ -1,6 +1,6 @@
 # Decisions, assumptions and open questions
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-17
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 Decision log (ADR). New decisions are appended; an old decision is never rewritten, only superseded by a new entry.
 

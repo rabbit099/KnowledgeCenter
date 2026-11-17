@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
