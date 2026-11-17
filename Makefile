@@ -82,6 +82,15 @@ shell: _need-docker ## Shell in the app container
 seed-samples: _need-docker ## Load synthetic sample documents (not available yet)
 	@echo "Not implemented yet (needs upload and ingestion, Phase 2)."; exit 1
 
+.PHONY: probki
+probki: ## Synthetic sample files for a manual test: make probki DIR=~/bw-probki
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	@test -n "$(DIR)" || { echo 'Usage: make probki DIR=<directory>'; exit 1; }
+	mkdir -p "$(DIR)"
+	docker compose -f docker-compose.test.yml run --rm --build --no-deps \
+		-e OWNER="$$(id -u):$$(id -g)" -v "$$(cd "$(DIR)" && pwd):/out" tests \
+		sh -c 'uv sync --frozen --all-extras --quiet && PYTHONPATH=/src/tests uv run --frozen --no-sync python scripts/make_samples.py /out && chown "$$OWNER" /out/*'
+
 .PHONY: test-db
 test-db: ## Integration and golden search tests in Docker (throwaway DB, no host ports)
 	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
