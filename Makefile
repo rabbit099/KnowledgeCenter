@@ -37,7 +37,7 @@ build: _need-docker ## Build the images
 lint: ## ruff, mypy, import boundaries
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy
+	uv run --all-extras mypy
 	uv run lint-imports
 
 .PHONY: fmt
@@ -47,7 +47,7 @@ fmt: ## Format and auto-fix
 
 .PHONY: test
 test: ## Run tests (unit; integration when the stack is up)
-	uv run pytest
+	uv run --all-extras pytest
 
 .PHONY: messages
 messages: ## Extract UI strings and update the Polish catalog (then translate msgstr)

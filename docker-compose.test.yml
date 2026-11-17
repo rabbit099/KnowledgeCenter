@@ -50,7 +50,7 @@ services:
       - venv:/venv
       - uv-cache:/uv-cache
     command: >-
-      sh -c "uv sync --frozen --quiet && uv run --frozen --no-sync
+      sh -c "uv sync --frozen --all-extras --quiet && uv run --frozen --no-sync
       pytest -p no:cacheprovider -m integration"
 
 volumes:

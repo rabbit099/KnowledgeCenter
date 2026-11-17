@@ -51,7 +51,12 @@ def test_second_run_changes_nothing(settings: Settings) -> None:
 
 def test_partial_module_set_still_migrates_everything(settings: Settings) -> None:
     only_documents = settings.model_copy(update={"enabled_modules": ("documents",)})
-    assert upgrade(only_documents) == ["core_0003", "documents_0002", "search_0001"]
+    assert upgrade(only_documents) == [
+        "core_0003",
+        "documents_0002",
+        "ingestion_0001",
+        "search_0001",
+    ]
     with TestClient(create_app(only_documents, setup_logging=False)) as client:
         assert client.get("/ready").json()["checks"]["schema"] == "ok"
 

@@ -14,6 +14,7 @@ from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.db.base import Base
 from baza_wiedzy.core.db.models import AuditEntry  # noqa: F401  (registers the models)
 from baza_wiedzy.modules.documents import models as document_models  # noqa: F401
+from baza_wiedzy.modules.ingestion import models as ingestion_models  # noqa: F401
 
 pytestmark = pytest.mark.integration
 

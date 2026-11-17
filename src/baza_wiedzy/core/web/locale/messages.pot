@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 09:51+0100\n"
+"POT-Creation-Date: 2026-11-17 11:58+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,40 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+#, python-format
+msgid "%(n)s characters"
+msgstr ""
+
+#, python-format
+msgid "%(num)d part"
+msgid_plural "%(num)d parts"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-format
+msgid "%(where)s: read in simplified mode (formatting ignored)"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: skipped, attachments nested too deeply"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: skipped, the file is damaged or unreadable"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: skipped, this file type is not processed yet"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: skipped, unsupported file type"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: text encoding %(enc)s"
+msgstr ""
 
 msgid "A new document is a draft: only you and administrators can see it."
 msgstr ""
@@ -86,6 +120,9 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+msgid "Cc"
+msgstr ""
+
 msgid "Change application settings"
 msgstr ""
 
@@ -114,6 +151,9 @@ msgid "Database"
 msgstr ""
 
 msgid "Database schema"
+msgstr ""
+
+msgid "Date"
 msgstr ""
 
 msgid "Deactivate (revokes all sessions)"
@@ -146,7 +186,13 @@ msgstr ""
 msgid "Edit metadata, archive and restore documents of others"
 msgstr ""
 
+msgid "English"
+msgstr ""
+
 msgid "Export CSV (current filters)"
+msgstr ""
+
+msgid "Extracted text"
 msgstr ""
 
 msgid "File"
@@ -194,6 +240,9 @@ msgid "Last login"
 msgstr ""
 
 msgid "Linked to AD"
+msgstr ""
+
+msgid "Loading the extracted text…"
 msgstr ""
 
 msgid "Log in"
@@ -272,6 +321,9 @@ msgstr ""
 msgid "No roles match the filter."
 msgstr ""
 
+msgid "No text was extracted."
+msgstr ""
+
 msgid "No user holds this role."
 msgstr ""
 
@@ -279,6 +331,9 @@ msgid "No users match the filter."
 msgstr ""
 
 msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
+msgstr ""
+
+msgid "Notes"
 msgstr ""
 
 msgid "OK"
@@ -309,13 +364,32 @@ msgstr ""
 msgid "Permissions"
 msgstr ""
 
+msgid "Polish"
+msgstr ""
+
 msgid "Possible duplicate: a file with identical content already exists in:"
+msgstr ""
+
+#, python-format
+msgid "Preview: the first %(n)s characters."
 msgstr ""
 
 msgid "Previous"
 msgstr ""
 
+msgid "Process again"
+msgstr ""
+
 msgid "Processing"
+msgstr ""
+
+msgid "Processing failed several times because of a temporary problem. Try again later."
+msgstr ""
+
+msgid "Processing took longer than the time limit."
+msgstr ""
+
+msgid "Processing was interrupted too many times. Use “Process again” to retry."
 msgstr ""
 
 msgid "Publish and unpublish documents uploaded by others"
@@ -388,6 +462,9 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
+msgid "Subject"
+msgstr ""
+
 msgid "System"
 msgstr ""
 
@@ -398,6 +475,9 @@ msgid "System roles cannot be deleted."
 msgstr ""
 
 msgid "System status"
+msgstr ""
+
+msgid "Temporary problem; processing will be retried automatically."
 msgstr ""
 
 msgid ""
@@ -425,16 +505,37 @@ msgstr ""
 msgid "The content of the file does not match its extension, or the file is damaged."
 msgstr ""
 
+msgid "The document is being processed right now; try again when it has finished."
+msgstr ""
+
+msgid "The document was queued for processing again."
+msgstr ""
+
 #, python-format
 msgid ""
 "The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to "
 "export the rest."
 msgstr ""
 
+msgid "The file contains more text than the allowed limit."
+msgstr ""
+
+msgid "The file could not be processed because of an internal error. Details are in the log."
+msgstr ""
+
+msgid "The file has more parts than the allowed limit."
+msgstr ""
+
+msgid "The file is damaged or has an unexpected structure and cannot be read."
+msgstr ""
+
 msgid "The file is empty."
 msgstr ""
 
 msgid "The file is larger than the allowed size."
+msgstr ""
+
+msgid "The file unpacks to much more data than allowed (possible archive bomb)."
 msgstr ""
 
 msgid "The file was uploaded. Processing runs in the background."
@@ -446,7 +547,15 @@ msgstr ""
 msgid "The role name must have 1 to 64 characters."
 msgstr ""
 
+msgid ""
+"The text encoding could not be recognised (supported: UTF-8, Windows-1250, ISO-8859-2). Save the "
+"file as UTF-8 and upload it again."
+msgstr ""
+
 msgid "These users hold the role and will lose its permissions:"
+msgstr ""
+
+msgid "This file type cannot be processed yet."
 msgstr ""
 
 msgid "This file type is not supported. Allowed: PDF, DOCX, DOC, TXT, EML, MSG."
@@ -549,7 +658,14 @@ msgid "all documents I can see"
 msgstr ""
 
 #, python-format
+msgid "attachment: %(name)s"
+msgstr ""
+
+#, python-format
 msgid "attempts: %(n)s"
+msgstr ""
+
+msgid "content"
 msgstr ""
 
 msgid "custom"
@@ -561,7 +677,14 @@ msgstr ""
 msgid "error"
 msgstr ""
 
+#, python-format
+msgid "fragment %(n)s"
+msgstr ""
+
 msgid "inactive"
+msgstr ""
+
+msgid "language unknown"
 msgstr ""
 
 msgid "local"
@@ -580,6 +703,10 @@ msgid "no"
 msgstr ""
 
 msgid "not yet (first login pending)"
+msgstr ""
+
+#, python-format
+msgid "page %(n)s"
 msgstr ""
 
 msgid "processing"

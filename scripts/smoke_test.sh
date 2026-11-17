@@ -5,7 +5,8 @@
 #   3. run `baza-wiedzy migrate`
 #   4. require /ready to answer HTTP 200 with database, redis, schema and worker all "ok"
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
-#      proxy: refuse a wrong password, log in, open the admin panel, log out
+#      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
+#      and wait until the worker has processed it ("ready"), log out
 # Everything (containers, volumes, the temporary env file) is removed at the end.
 # Ports: SMOKE_HTTP_PORT / SMOKE_HTTPS_PORT (default 18080 / 18443), so a running dev stack
 # on 80/443 is not disturbed.
@@ -114,8 +115,33 @@ expect "login" 303 "$(status -X POST "$BASE/login" --data-urlencode username=smo
     --data-urlencode "password=$ADMIN_PASSWORD" --data-urlencode "csrf_token=$(token /login)")"
 expect "admin panel" 200 "$(status "$BASE/admin/users")"
 expect "audit log" 200 "$(status "$BASE/admin/audit")"
+echo "==> Upload a small TXT file and wait until it is processed"
+SAMPLE="$(mktemp)"
+HEADERS="$(mktemp)"
+printf 'Test dymny: zażółć gęślą jaźń. Przegląd urządzeń w spółdzielni mieszkaniowej.\n' > "$SAMPLE"
+expect "upload" 204 "$(status -D "$HEADERS" -X POST "$BASE/documents/upload" \
+    -H "HX-Request: true" -H "X-CSRF-Token: $(token /documents/upload)" \
+    -F "file=@$SAMPLE;filename=smoke.txt;type=text/plain")"
+DOC_PATH="$(sed -n 's/^[Hh][Xx]-[Rr]edirect: \([^?[:space:]]*\).*/\1/p' "$HEADERS")"
+rm -f "$SAMPLE" "$HEADERS"
+if [ -z "$DOC_PATH" ]; then echo "FAILED: no HX-Redirect after the upload"; rm -f "$JAR"; exit 1; fi
+processed=""
+for _ in $(seq 60); do
+    fragment="$(curl -sk -c "$JAR" -b "$JAR" -H "HX-Request: true" "$BASE$DOC_PATH/status")"
+    case "$fragment" in
+        *badge-done*) processed=done; break ;;
+        *badge-failed*) processed=failed; break ;;
+    esac
+    sleep 2
+done
+if [ "$processed" != "done" ]; then
+    echo "FAILED: the uploaded file is not \"ready\" (state: ${processed:-still waiting})"
+    rm -f "$JAR"; exit 1
+fi
+echo "    processing: ready"
+expect "extracted parts" 200 "$(status "$BASE/ingestion/versions/$(curl -sk -c "$JAR" -b "$JAR" -H "HX-Request: true" "$BASE$DOC_PATH/status" | sed -n 's|.*/ingestion/versions/\([0-9a-f-]*\)/parts.*|\1|p' | head -n 1)/parts")"
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work"
+echo "==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to \"ready\", logout"
 exit 0

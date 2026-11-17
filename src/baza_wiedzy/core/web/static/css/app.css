@@ -47,3 +47,7 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .badge-needs_ocr { background: #fff1cc; }
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: block; }
+.part { margin: 0.5rem 0; border: 1px solid #e3e7ee; border-radius: 4px; padding: 0.35rem 0.6rem; }
+.part summary { cursor: pointer; }
+.part-text { white-space: pre-wrap; word-break: break-word; max-height: 30rem; overflow: auto; background: #f6f8fb; padding: 0.5rem; font-size: 0.9rem; }
+.notes { padding-left: 1.2rem; }

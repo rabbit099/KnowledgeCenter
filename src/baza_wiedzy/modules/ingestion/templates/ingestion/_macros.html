@@ -1,0 +1,28 @@
+{% macro segment(s) -%}
+{%- if s.type == "attachment" -%}{{ _("attachment: %(name)s", name=s.name) }}
+{%- elif s.type == "page" -%}{{ _("page %(n)s", n=s.no) }}
+{%- else -%}{{ _("content") }}{%- endif -%}
+{%- endmacro %}
+
+{% macro origin_path(origin) -%}
+{%- if origin -%}{% for s in origin %}{{ segment(s) }}{% if not loop.last %} › {% endif %}{% endfor %}{%- else -%}{{ _("content") }}{%- endif -%}
+{%- endmacro %}
+
+{% macro origin_label(part) -%}
+{{ origin_path(part.origin) }}{% if part.page_no %} › {{ _("page %(n)s", n=part.page_no) }}{% endif %}{% if part.chunk_no > 1 %} › {{ _("fragment %(n)s", n=part.chunk_no) }}{% endif %}
+{%- endmacro %}
+
+{% macro language_label(code) -%}
+{% set labels = {"pl": _("Polish"), "en": _("English"), "unknown": _("language unknown")} %}{{ labels.get(code, code) }}
+{%- endmacro %}
+
+{% macro note_text(note) -%}
+{%- set where = origin_path(note.origin) -%}
+{%- if note.code == "encoding" -%}{{ _("%(where)s: text encoding %(enc)s", where=where, enc=note.value) }}
+{%- elif note.code == "fallback" -%}{{ _("%(where)s: read in simplified mode (formatting ignored)", where=where) }}
+{%- elif note.code == "skipped" and note.reason == "too_deep" -%}{{ _("%(where)s: skipped, attachments nested too deeply", where=where) }}
+{%- elif note.code == "skipped" and note.reason == "not_yet" -%}{{ _("%(where)s: skipped, this file type is not processed yet", where=where) }}
+{%- elif note.code == "skipped" -%}{{ _("%(where)s: skipped, unsupported file type", where=where) }}
+{%- elif note.code == "failed" -%}{{ _("%(where)s: skipped, the file is damaged or unreadable", where=where) }}
+{%- else -%}{{ where }}: {{ note.code }}{%- endif -%}
+{%- endmacro %}

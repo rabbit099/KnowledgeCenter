@@ -138,6 +138,10 @@ def test_every_ui_string_has_a_polish_translation() -> None:
     }
     with (LOCALE_DIR / "pl" / "LC_MESSAGES" / "messages.po").open("rb") as po_file:
         catalog = read_po(po_file, locale="pl")
-    translated = {m.id for m in catalog if m.id and m.string and not m.fuzzy}
+    translated = {
+        m.id[0] if isinstance(m.id, tuple) else m.id
+        for m in catalog
+        if m.id and m.string and not m.fuzzy and (not isinstance(m.string, tuple) or all(m.string))
+    }
     assert extracted, "no strings extracted; check the extraction setup"
     assert extracted <= translated, f"untranslated: {sorted(extracted - translated)}"

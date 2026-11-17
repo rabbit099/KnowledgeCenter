@@ -5,8 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from baza_wiedzy import __version__
+
+if TYPE_CHECKING:
+    from baza_wiedzy.core.runtime import Runtime
 
 
 def _migrate(_: argparse.Namespace) -> int:
@@ -238,6 +242,92 @@ def _storage_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_runtime() -> Runtime:
+    from baza_wiedzy.core import runtime
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.queue import setup_broker
+    from baza_wiedzy.core.registry import load_registry
+
+    settings = Settings()
+    registry = load_registry(settings.enabled_modules)
+    if "ingestion" not in registry:
+        raise _CliError("The ingestion module is not enabled (ENABLED_MODULES).")
+    setup_broker(settings, registry)
+    return runtime.build(settings, registry)
+
+
+def _reprocess(args: argparse.Namespace) -> int:
+    import uuid
+
+    from baza_wiedzy.core.audit.service import CLI_ACTOR
+    from baza_wiedzy.modules.documents.services import api as documents
+    from baza_wiedzy.modules.ingestion import startup
+    from baza_wiedzy.modules.ingestion.services import api
+    from baza_wiedzy.modules.ingestion.tasks import enqueue
+
+    if not (args.ids or args.failed or args.stuck):
+        raise _CliError("Give document or version IDs, --failed or --stuck.")
+    rt = _cli_runtime()
+    try:
+        if args.stuck:
+            result = startup.recover(rt)
+            print(
+                f"Stuck versions: {result.requeued_stuck} queued again, {result.failed_stuck} "
+                f"failed (no attempts left); waiting versions queued again: "
+                f"{result.requeued_pending}."
+            )
+        targets: list[uuid.UUID] = []
+        with rt.session_factory() as db:
+            if args.failed:
+                targets.extend(documents.ids_with_status(db, documents.FAILED))
+            for raw in args.ids:
+                try:
+                    key = uuid.UUID(raw)
+                except ValueError as exc:
+                    raise _CliError(f"Not an ID: {raw!r}.") from exc
+                if db.get(documents.Version, key) is not None:
+                    targets.append(key)
+                    continue
+                document = db.get(documents.Document, key)
+                if document is None or document.latest_version_id is None:
+                    raise _CliError(f"No document or version with ID {raw}.")
+                targets.append(document.latest_version_id)
+        queued = busy = 0
+        for version_id in dict.fromkeys(targets):
+            try:
+                with rt.session_factory.begin() as db:
+                    api.request_reprocess(db, rt.settings, version_id, actor=CLI_ACTOR, ip=None)
+            except api.ReprocessBusy:
+                busy += 1
+                print(f"  {version_id}: being processed right now, skipped")
+                continue
+            enqueue(version_id, rt.settings)
+            queued += 1
+        if targets:
+            print(f"Queued for processing again: {queued}; skipped (busy): {busy}.")
+    finally:
+        rt.close()
+    return 0
+
+
+def _events_redeliver(_: argparse.Namespace) -> int:
+    from baza_wiedzy.modules.ingestion import outbox
+
+    rt = _cli_runtime()
+    try:
+        delivery = outbox.deliver(rt.session_factory, rt.events)
+        pruned = outbox.prune(rt.session_factory, older_than_days=rt.settings.outbox_retention_days)
+        with rt.session_factory() as db:
+            left = outbox.undelivered(db)
+    finally:
+        rt.close()
+    print(
+        f"Events delivered: {delivery.delivered}, failed: {delivery.failed}, still undelivered: "
+        f"{left}; old delivered entries removed: {pruned}."
+    )
+    return 0 if delivery.failed == 0 else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -297,6 +387,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--older-than", type=float, default=1.0, metavar="HOURS", help="age limit (default 1)"
     )
     cleanup.set_defaults(handler=_storage_cleanup)
+
+    reprocess = commands.add_parser(
+        "reprocess",
+        help="process documents again (audited), or recover versions stuck in processing",
+    )
+    reprocess.add_argument(
+        "ids", nargs="*", metavar="ID", help="document ID (its latest version) or version ID"
+    )
+    reprocess.add_argument("--failed", action="store_true", help="every version that failed")
+    reprocess.add_argument(
+        "--stuck",
+        action="store_true",
+        help="versions processing longer than INGEST_STALE_MINUTES, and waiting ones (no audit)",
+    )
+    reprocess.set_defaults(handler=_reprocess)
+
+    events = commands.add_parser("events", help="event outbox of the ingestion module")
+    events_commands = events.add_subparsers(dest="events_command", metavar="ACTION", required=True)
+    redeliver = events_commands.add_parser(
+        "redeliver", help="deliver events that were not delivered yet; remove old delivered ones"
+    )
+    redeliver.set_defaults(handler=_events_redeliver)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"
