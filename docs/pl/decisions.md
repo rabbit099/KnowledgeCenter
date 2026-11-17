@@ -1,6 +1,6 @@
 # Decyzje, założenia i otwarte pytania
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-13
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
 
 Rejestr decyzji (ADR). Nowe decyzje się dopisuje; starej decyzji nigdy się nie przepisuje, tylko zastępuje ją nowym wpisem.
 

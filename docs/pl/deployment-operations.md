@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -89,7 +89,7 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 - Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
 - Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
 
-CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje i wymaga, żeby `/ready` zwrócił 4 × `ok`). Przed pushem uruchom to samo lokalnie.
+CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 4 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
 
 ## Aktualizacja
 
@@ -219,7 +219,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready reports 4 x ok` (około minuty przy zbuforowanych warstwach) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (około minuty przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
