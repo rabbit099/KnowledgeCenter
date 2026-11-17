@@ -78,12 +78,13 @@ Active Directory przez LDAPS (konto serwisowe znajduje użytkownika, potem bind 
 ## Przechowywanie plików
 
 ```
-/data/storage/<aa>/<bb>/<uuid>          plik oryginalny (niezmienny)
-/data/storage/derived/<uuid>.pdf        PDF po OCR (z warstwą tekstu), podglądy
-/data/tmp/                              katalog roboczy workera (czyszczony po każdym zadaniu)
+/data/storage/originals/<aa>/<bb>/<klucz>  plik oryginalny (niezmienny, tylko do odczytu, klucz = losowy UUID)
+/data/storage/.incoming/<uuid>.part        wgrywanie w toku (ten sam wolumen, potem atomowa zmiana nazwy)
+/data/storage/derived/<klucz>.pdf          PDF po OCR (z warstwą tekstu), podglądy (Faza 4)
+/data/tmp/                                 katalog roboczy workera (czyszczony po każdym zadaniu)
 ```
 
-`<aa>/<bb>` to pierwsze znaki UUID, żeby nie tworzyć ogromnych katalogów.
+`<aa>/<bb>` to pierwsze znaki klucza, żeby nie tworzyć ogromnych katalogów. Nazwa pliku użytkownika nigdy nie jest częścią ścieżki. `.incoming/` leży na tym samym wolumenie co `originals/`, więc ostatnie przeniesienie to atomowa zmiana nazwy; pliki starsze niż godzina to pozostałości przerwanych wgrań i są usuwane (przy każdym wgraniu i poleceniem `baza-wiedzy storage-cleanup`). Magazyn plików należy do modułu `documents` (`modules/documents/storage.py`).
 
 ## Zasady przekrojowe
 

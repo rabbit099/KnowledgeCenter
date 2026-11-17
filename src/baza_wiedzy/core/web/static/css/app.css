@@ -39,3 +39,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .pairs dt { color: var(--muted); }
 .pairs dd { margin: 0; overflow-wrap: anywhere; }
 .export { display: block; margin-bottom: 0.5rem; }
+.mainnav { display: flex; gap: 1rem; margin-right: auto; margin-left: 2rem; }
+.mainnav a { color: #fff; }
+.badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 0.75rem; font-size: 0.85rem; background: #e8ecf2; }
+.badge-done { background: #d9f2e1; color: var(--ok); }
+.badge-failed { background: #f9dedc; color: var(--fail); }
+.badge-needs_ocr { background: #fff1cc; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: block; }

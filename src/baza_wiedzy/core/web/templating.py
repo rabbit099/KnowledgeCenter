@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import BaseLoader, ChoiceLoader, Environment, FileSystemLoader, select_autoescape
 
 from baza_wiedzy import __version__
 from baza_wiedzy.core.config import Settings
@@ -24,16 +25,30 @@ def _request_context(request: Request) -> dict[str, Any]:
     def has_perm(code: str) -> bool:
         return user is not None and bool(user.can(code))
 
+    registry = getattr(request.app.state, "registry", None)
+    main_nav = [
+        item
+        for item in (registry.menu("main") if registry is not None and user is not None else ())
+        if item.permission is None or has_perm(item.permission)
+    ]
     return {
         "current_user": user,
         "has_perm": has_perm,
         "csrf_token": getattr(request.state, "csrf_token", ""),
+        "main_nav": main_nav,
     }
 
 
-def make_templates(settings: Settings) -> Jinja2Templates:
+def make_templates(settings: Settings, module_packages: tuple[str, ...] = ()) -> Jinja2Templates:
+    """Core templates first, then each module's `templates/` folder (manifest `templates`)."""
+    loaders: list[BaseLoader] = [FileSystemLoader(TEMPLATE_DIR)]
+    for package in module_packages:
+        spec = importlib.util.find_spec(package)
+        if spec and spec.submodule_search_locations:
+            folder = Path(next(iter(spec.submodule_search_locations))) / "templates"
+            loaders.append(FileSystemLoader(folder))
     env = Environment(
-        loader=FileSystemLoader(TEMPLATE_DIR),
+        loader=ChoiceLoader(loaders),
         autoescape=select_autoescape(default=True, default_for_string=True),
         extensions=["jinja2.ext.i18n"],
     )

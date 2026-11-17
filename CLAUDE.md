@@ -136,7 +136,7 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 
 ## 8. Security rules
 
-- Validate uploads by content (libmagic), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
+- Validate uploads by content (own signature and structure checks, ADR-021), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
 - Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
 - Never render the HTML body of an e-mail as HTML. Convert to text.
 - Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.

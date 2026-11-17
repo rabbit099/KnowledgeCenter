@@ -45,7 +45,8 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `DOCKER_SUBNET`, `PROXY_IP` | Fixed Docker network of the stack (default `172.30.70.0/24`) and the proxy's address inside it (`172.30.70.10`); the app trusts `X-Forwarded-For` only from `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Host ports of the proxy (default 80, 443) |
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
-| `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy (default 51, keep it `MAX_UPLOAD_MB` + 1) |
+| `MAX_UPLOAD_MB`, `STORAGE_DIR` | Largest uploaded file (default 50 MB); storage volume path in the containers (default `/data/storage`) |
 | `POSTGRES_PASSWORD` | Password of the PostgreSQL superuser; used only inside the `db` container |
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Non-superuser that owns the application database; the application and migrations use it. `DATABASE_URL` is built from these in `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
@@ -259,6 +260,8 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 | "Zbyt wiele nieudanych prób" (HTTP 429) on login | Failed-login lock for the name and/or address | Wait `LOGIN_LOCKOUT_MINUTES`, or `docker compose exec app baza-wiedzy unlock-login --user <name>` / `--ip <address>` |
 | `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` collides with another Docker network or route | Choose another `DOCKER_SUBNET` and `PROXY_IP` (Configuration) |
 | 403 "Żądanie odrzucone (brak lub błędny token CSRF)" | Page open for a long time across a `SECRET_KEY` change or a new session, or a blocked cross-site request | Reload the page and repeat the action |
+| Upload ends with "Plik jest większy niż dozwolony rozmiar" (413), or the browser shows a proxy error for big files | File above `MAX_UPLOAD_MB`, or `MAX_REQUEST_MB` (proxy) not above `MAX_UPLOAD_MB` | Raise both in `.env` (`MAX_REQUEST_MB` = `MAX_UPLOAD_MB` + 1), `docker compose up -d proxy app` |
+| Files accumulate in `/data/storage/.incoming` | Uploads interrupted (browser closed, app restarted) | Harmless; removed after an hour at the next upload, or now: `docker compose exec app baza-wiedzy storage-cleanup` (expected: `Removed N orphaned incoming file(s) ...`) |
 | Application refuses to start: `module ... requires ...` | `ENABLED_MODULES` lists a module without one it depends on | Add the required module to `ENABLED_MODULES` in `.env`, or remove the dependent one |
 
 ## Security notes for operators

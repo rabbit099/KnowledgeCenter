@@ -20,13 +20,29 @@ Załączniki EML/MSG będące PDF, DOCX, DOC, TXT, EML lub MSG są wyciągane re
 
 ## Walidacja uploadu (w `app`)
 
-1. Rozmiar ≤ `MAX_UPLOAD_MB` (domyślnie 100); proxy wymusza ten sam limit.
-2. Rozszerzenie z listy dozwolonych **oraz** typ wykryty przez libmagic zgadza się z rozszerzeniem.
-3. SHA-256 liczone w trakcie zapisu strumieniowego na dysk.
-4. Zapis pod kluczem UUID; nazwa pliku użytkownika jest tylko metadaną i nigdy nie służy jako ścieżka.
-5. Jeśli taki SHA-256 już istnieje, użytkownik dostaje ostrzeżenie (bez blokady).
-6. Opcjonalne skanowanie antywirusowe ClamAV, gdy włączony jest profil `antivirus`.
-7. Tworzone są wiersze w bazie, publikowane jest zdarzenie `document.version.uploaded` (`ingestion` kolejkuje zadanie), zapisywany jest wpis audytowy.
+Strona „Moje dokumenty” → „Wgraj dokument” (`/documents/upload`, uprawnienie `documents.upload`). Wgrywanie wymaga JavaScriptu: HTMX wysyła token CSRF w nagłówku `X-CSRF-Token` (middleware CSRF nie czyta ciał multipart); bez JavaScriptu strona pokazuje komunikat w `<noscript>`.
+
+1. Rozmiar: żądanie jest odrzucane wcześnie, gdy `Content-Length` przekracza `MAX_UPLOAD_MB` (domyślnie 50), a kopiowanie przerywa się, gdy tylko faktyczny rozmiar go przekroczy (HTTP 413, „Plik jest większy niż dozwolony rozmiar.”). Proxy odrzuca ciała większe niż `MAX_REQUEST_MB` (domyślnie 51: plik plus narzut multipart); trzymaj go o jeden MB powyżej `MAX_UPLOAD_MB`.
+2. Ciało parsuje Starlette (najwyżej 1 MB w pamięci, reszta w tymczasowym pliku buforowym, nigdy cały plik w pamięci); plik jest kopiowany porcjami po 1 MB do `/data/storage/.incoming/`, a w trakcie liczone są SHA-256 i rozmiar.
+3. Typ **po zawartości**, nigdy po rozszerzeniu ani `Content-Type` (ADR-021): rozszerzenie musi być na liście dozwolonych (pdf, docx, doc, txt, eml, msg) **i** zgadzać się z wykrytym typem:
+
+   | Typ | Sprawdzenie |
+   |---|---|
+   | PDF | `%PDF-` w pierwszych 1024 bajtach |
+   | DOCX | ZIP, którego katalog centralny zawiera `[Content_Types].xml` i `word/document.xml` (`.xlsx` ze zmienioną nazwą jest odrzucany) |
+   | DOC | kontener OLE2 ze strumieniem `WordDocument` |
+   | MSG | kontener OLE2 ze strumieniem `__properties_version1.0` |
+   | EML | blok nagłówków RFC 5322 z `From` i co najmniej jednym innym nagłówkiem poczty, bez bajtów NUL |
+   | TXT | brak bajtów NUL w pierwszych 64 KB (UTF-16 z BOM dozwolony) |
+
+   Każdy inny plik OLE2 (np. stary `.xls` ze zmienioną nazwą na `.doc`) i każda niezgodność są odrzucane (HTTP 422, „Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony.”); plik przychodzący jest usuwany.
+4. Plik jest przenoszony atomową zmianą nazwy do `originals/<aa>/<bb>/<klucz>` (klucz = losowy UUID) i ustawiany tylko do odczytu. Nazwa pliku od użytkownika jest oczyszczana (części katalogów, znaki sterujące i dwukierunkowe usunięte, NFC, najwyżej 255 znaków) i zostaje tylko metadaną.
+5. Powstaje dokument-szkic z wersją 1 (`doc_documents`, `doc_versions`, `processing_status = pending`); tytuł = opcjonalne pole „Tytuł” albo nazwa pliku bez rozszerzenia.
+6. Duplikaty: strona dokumentu pokazuje „Możliwy duplikat” z odnośnikami, gdy inny dokument **widoczny dla wgrywającego** ma wersję o tym samym SHA-256. Cudze szkice nigdy nie są porównywane, więc ostrzeżenie niczego nie zdradza. Wgranie nie jest blokowane; usuwanie duplikatu dojdzie z cyklem życia (Faza 5).
+7. Audyt `document.upload` z identyfikatorem dokumentu, `version_id`, `sha256`, `size_bytes` i `kind` (bez nazwy pliku i treści). Po zatwierdzeniu publikowane jest zdarzenie `document.version.uploaded` (`ingestion` kolejkuje przetwarzanie, etap B).
+8. Skanowanie antywirusowe: krok skanowania w pipeline przetwarzania, domyślnie wyłączony (etap B); ClamAV nie jest podłączany w Fazie 2.
+
+Szkice widzi tylko wgrywający i posiadacze `documents.read_drafts` (Admin); każdy inny dostaje **404** na stronie dokumentu, więc jego istnienie nie jest ujawniane.
 
 ## Przetwarzanie (w `worker`)
 
@@ -63,7 +79,7 @@ Znane ograniczenia, o których warto powiedzieć użytkownikom: jakość OCR zal
 
 | Limit | Domyślnie | Ustawienie |
 |---|---|---|
-| Maksymalny rozmiar uploadu | 100 MB | `MAX_UPLOAD_MB` |
+| Maksymalny rozmiar uploadu | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
 | Maksymalna głębokość załączników maila | 3 | `MAX_ATTACHMENT_DEPTH` |
 | Maksymalna ilość wyciągniętego tekstu na wersję | 50 MB | `MAX_EXTRACTED_TEXT_MB` |
 | Współczynnik rozpakowania ZIP (DOCX) | 100× | `MAX_ZIP_RATIO` |

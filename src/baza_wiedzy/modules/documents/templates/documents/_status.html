@@ -1,0 +1,5 @@
+{% from "documents/_macros.html" import status_badge %}
+<div{% if busy %} hx-get="/documents/{{ document.id }}/status" hx-trigger="every 3s" hx-target="#processing" hx-swap="innerHTML"{% endif %}>
+  <p>{{ status_badge(version.processing_status) }}{% if version.processing_attempts %} <span class="muted">({{ _("attempts: %(n)s", n=version.processing_attempts) }})</span>{% endif %}</p>
+  {% if version.processing_error %}<p class="fail">{{ _(version.processing_error) }}</p>{% endif %}
+</div>

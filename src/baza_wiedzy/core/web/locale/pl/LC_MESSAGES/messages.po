@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 08:48+0100\n"
+"POT-Creation-Date: 2026-11-17 09:51+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -15,6 +15,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "A new document is a draft: only you and administrators can see it."
+msgstr "Nowy dokument jest szkicem: widzisz go tylko ty i administratorzy."
 
 msgid "A role with this name already exists."
 msgstr "Rola o tej nazwie już istnieje."
@@ -72,6 +75,9 @@ msgstr "Dozwolone"
 msgid "Audit log"
 msgstr "Dziennik audytu"
 
+msgid "Back to my documents"
+msgstr "Powrót do moich dokumentów"
+
 msgid "Back to the list"
 msgstr "Powrót do listy"
 
@@ -89,6 +95,9 @@ msgstr "Sprawdź, czy grupa istnieje w Active Directory"
 
 msgid "Checking system status..."
 msgstr "Sprawdzanie stanu systemu…"
+
+msgid "Choose a file to upload."
+msgstr "Wybierz plik do wgrania."
 
 msgid "Create"
 msgstr "Utwórz"
@@ -132,9 +141,6 @@ msgstr "Szczegóły"
 msgid "Display name (optional)"
 msgstr "Nazwa wyświetlana (opcjonalnie)"
 
-msgid "Documents"
-msgstr "Dokumenty"
-
 msgid "E-mail"
 msgstr "E-mail"
 
@@ -143,6 +149,13 @@ msgstr "Edycja metadanych, archiwizacja i przywracanie dokumentów innych osób"
 
 msgid "Export CSV (current filters)"
 msgstr "Eksportuj CSV (bieżące filtry)"
+
+msgid "File"
+msgstr "Plik"
+
+#, python-format
+msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
+msgstr "Plik (PDF, DOCX, DOC, TXT, EML, MSG; do %(mb)s MB)"
 
 msgid "Filter"
 msgstr "Filtruj"
@@ -200,6 +213,9 @@ msgstr ""
 msgid "Login attribute"
 msgstr "Atrybut logowania"
 
+msgid "Main menu"
+msgstr "Menu główne"
+
 msgid "Manage users, assign roles, revoke sessions"
 msgstr "Zarządzanie użytkownikami, nadawanie ról, unieważnianie sesji"
 
@@ -233,6 +249,9 @@ msgstr "Moduł"
 msgid "Modules"
 msgstr "Moduły"
 
+msgid "My documents"
+msgstr "Moje dokumenty"
+
 msgid "Name"
 msgstr "Nazwa"
 
@@ -247,6 +266,9 @@ msgstr "Nowa rola"
 
 msgid "Next"
 msgstr "Następna"
+
+msgid "No documents yet."
+msgstr "Nie ma jeszcze dokumentów."
 
 msgid "No entries match the filter."
 msgstr "Żaden wpis nie pasuje do filtra."
@@ -294,8 +316,14 @@ msgstr "Uprawnienie"
 msgid "Permissions"
 msgstr "Uprawnienia"
 
+msgid "Possible duplicate: a file with identical content already exists in:"
+msgstr "Możliwy duplikat: plik o identycznej treści już istnieje w:"
+
 msgid "Previous"
 msgstr "Poprzednia"
+
+msgid "Processing"
+msgstr "Przetwarzanie"
 
 msgid "Publish and unpublish documents uploaded by others"
 msgstr "Publikowanie i wycofywanie dokumentów wgranych przez innych"
@@ -340,6 +368,9 @@ msgstr "Zapisano."
 msgid "Search"
 msgstr "Szukaj"
 
+msgid "Search in titles and file names"
+msgstr "Szukaj w tytułach i nazwach plików"
+
 msgid "Search, view and download published documents"
 msgstr "Wyszukiwanie, przeglądanie i pobieranie opublikowanych dokumentów"
 
@@ -348,6 +379,12 @@ msgstr "Widzenie i wyszukiwanie wszystkich szkiców"
 
 msgid "See version, queue and health status"
 msgstr "Podgląd wersji, kolejki i stanu systemu"
+
+msgid "Show"
+msgstr "Pokaż"
+
+msgid "Size"
+msgstr "Rozmiar"
 
 msgid "Some systems are not working."
 msgstr "Niektóre usługi nie działają."
@@ -396,6 +433,9 @@ msgstr "Konto zostało dezaktywowane, a jego sesje unieważnione."
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
 msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
 
+msgid "The content of the file does not match its extension, or the file is damaged."
+msgstr "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony."
+
 #, python-format
 msgid ""
 "The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to "
@@ -403,6 +443,15 @@ msgid ""
 msgstr ""
 "Eksport obejmie tylko %(max)s najnowszych z %(total)s wpisów; zawęź filtry, aby wyeksportować "
 "resztę."
+
+msgid "The file is empty."
+msgstr "Plik jest pusty."
+
+msgid "The file is larger than the allowed size."
+msgstr "Plik jest większy niż dozwolony rozmiar."
+
+msgid "The file was uploaded. Processing runs in the background."
+msgstr "Plik został wgrany. Przetwarzanie trwa w tle."
 
 msgid "The group was not found in Active Directory."
 msgstr "Nie znaleziono tej grupy w Active Directory."
@@ -412,6 +461,9 @@ msgstr "Nazwa roli musi mieć od 1 do 64 znaków."
 
 msgid "These users hold the role and will lose its permissions:"
 msgstr "Ci użytkownicy mają tę rolę i stracą jej uprawnienia:"
+
+msgid "This file type is not supported. Allowed: PDF, DOCX, DOC, TXT, EML, MSG."
+msgstr "Ten typ pliku nie jest obsługiwany. Dozwolone: PDF, DOCX, DOC, TXT, EML, MSG."
 
 msgid "This group is already mapped to this role."
 msgstr "Ta grupa jest już zmapowana na tę rolę."
@@ -435,6 +487,12 @@ msgstr ""
 "Czas w strefie Europe/Warsaw. Akcja zakończona kropką (na przykład \"role.\") znajduje wszystkie "
 "akcje, które się tak zaczynają."
 
+msgid "Title"
+msgstr "Tytuł"
+
+msgid "Title (optional; by default the file name)"
+msgstr "Tytuł (opcjonalnie; domyślnie nazwa pliku)"
+
 msgid "To"
 msgstr "Do"
 
@@ -447,8 +505,23 @@ msgstr "Typ"
 msgid "Unknown permission code."
 msgstr "Nieznany kod uprawnienia."
 
+msgid "Upload"
+msgstr "Wgraj"
+
+msgid "Upload a document"
+msgstr "Wgraj dokument"
+
 msgid "Upload documents and new versions (they start as drafts)"
 msgstr "Wgrywanie dokumentów i nowych wersji (zaczynają jako szkice)"
+
+msgid "Uploaded"
+msgstr "Wgrano"
+
+msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
+msgstr "Wgrywanie wymaga JavaScriptu. Włącz JavaScript w przeglądarce i odśwież stronę."
+
+msgid "Uploading..."
+msgstr "Wgrywanie…"
 
 msgid "User name"
 msgstr "Nazwa użytkownika"
@@ -489,8 +562,21 @@ msgstr "aktywne"
 msgid "all"
 msgstr "wszystkie"
 
+msgid "all documents I can see"
+msgstr "wszystkie dokumenty, które widzę"
+
+#, python-format
+msgid "attempts: %(n)s"
+msgstr "próby: %(n)s"
+
 msgid "custom"
 msgstr "własna"
+
+msgid "draft"
+msgstr "szkic"
+
+msgid "error"
+msgstr "błąd"
 
 msgid "inactive"
 msgstr "nieaktywne"
@@ -501,14 +587,29 @@ msgstr "lokalne"
 msgid "local (break-glass)"
 msgstr "lokalne (awaryjne)"
 
+msgid "my documents"
+msgstr "moje dokumenty"
+
+msgid "needs OCR"
+msgstr "wymaga OCR"
+
 msgid "no"
 msgstr "nie"
 
 msgid "not yet (first login pending)"
 msgstr "jeszcze nie (czeka na pierwsze logowanie)"
 
+msgid "processing"
+msgstr "przetwarzanie"
+
+msgid "ready"
+msgstr "gotowe"
+
 msgid "system"
 msgstr "systemowa"
+
+msgid "waiting"
+msgstr "oczekuje"
 
 msgid "yes"
 msgstr "tak"

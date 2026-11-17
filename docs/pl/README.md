@@ -40,7 +40,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Log audytowy i jego przeglądarka
 
 ### Faza 2 — Upload i przetwarzanie
-- [ ] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
+- [x] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
 - [ ] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
 - [ ] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
 - [ ] Wykrywanie języka dla każdej części

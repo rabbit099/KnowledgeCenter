@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 08:48+0100\n"
+"POT-Creation-Date: 2026-11-17 09:51+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid "A new document is a draft: only you and administrators can see it."
+msgstr ""
 
 msgid "A role with this name already exists."
 msgstr ""
@@ -71,6 +74,9 @@ msgstr ""
 msgid "Audit log"
 msgstr ""
 
+msgid "Back to my documents"
+msgstr ""
+
 msgid "Back to the list"
 msgstr ""
 
@@ -87,6 +93,9 @@ msgid "Check that the group exists in Active Directory"
 msgstr ""
 
 msgid "Checking system status..."
+msgstr ""
+
+msgid "Choose a file to upload."
 msgstr ""
 
 msgid "Create"
@@ -131,9 +140,6 @@ msgstr ""
 msgid "Display name (optional)"
 msgstr ""
 
-msgid "Documents"
-msgstr ""
-
 msgid "E-mail"
 msgstr ""
 
@@ -141,6 +147,13 @@ msgid "Edit metadata, archive and restore documents of others"
 msgstr ""
 
 msgid "Export CSV (current filters)"
+msgstr ""
+
+msgid "File"
+msgstr ""
+
+#, python-format
+msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
 msgstr ""
 
 msgid "Filter"
@@ -197,6 +210,9 @@ msgstr ""
 msgid "Login attribute"
 msgstr ""
 
+msgid "Main menu"
+msgstr ""
+
 msgid "Manage users, assign roles, revoke sessions"
 msgstr ""
 
@@ -226,6 +242,9 @@ msgstr ""
 msgid "Modules"
 msgstr ""
 
+msgid "My documents"
+msgstr ""
+
 msgid "Name"
 msgstr ""
 
@@ -239,6 +258,9 @@ msgid "New role"
 msgstr ""
 
 msgid "Next"
+msgstr ""
+
+msgid "No documents yet."
 msgstr ""
 
 msgid "No entries match the filter."
@@ -287,7 +309,13 @@ msgstr ""
 msgid "Permissions"
 msgstr ""
 
+msgid "Possible duplicate: a file with identical content already exists in:"
+msgstr ""
+
 msgid "Previous"
+msgstr ""
+
+msgid "Processing"
 msgstr ""
 
 msgid "Publish and unpublish documents uploaded by others"
@@ -333,6 +361,9 @@ msgstr ""
 msgid "Search"
 msgstr ""
 
+msgid "Search in titles and file names"
+msgstr ""
+
 msgid "Search, view and download published documents"
 msgstr ""
 
@@ -340,6 +371,12 @@ msgid "See and find all drafts"
 msgstr ""
 
 msgid "See version, queue and health status"
+msgstr ""
+
+msgid "Show"
+msgstr ""
+
+msgid "Size"
 msgstr ""
 
 msgid "Some systems are not working."
@@ -385,10 +422,22 @@ msgstr ""
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
 msgstr ""
 
+msgid "The content of the file does not match its extension, or the file is damaged."
+msgstr ""
+
 #, python-format
 msgid ""
 "The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to "
 "export the rest."
+msgstr ""
+
+msgid "The file is empty."
+msgstr ""
+
+msgid "The file is larger than the allowed size."
+msgstr ""
+
+msgid "The file was uploaded. Processing runs in the background."
 msgstr ""
 
 msgid "The group was not found in Active Directory."
@@ -398,6 +447,9 @@ msgid "The role name must have 1 to 64 characters."
 msgstr ""
 
 msgid "These users hold the role and will lose its permissions:"
+msgstr ""
+
+msgid "This file type is not supported. Allowed: PDF, DOCX, DOC, TXT, EML, MSG."
 msgstr ""
 
 msgid "This group is already mapped to this role."
@@ -420,6 +472,12 @@ msgid ""
 "starting with it."
 msgstr ""
 
+msgid "Title"
+msgstr ""
+
+msgid "Title (optional; by default the file name)"
+msgstr ""
+
 msgid "To"
 msgstr ""
 
@@ -432,7 +490,22 @@ msgstr ""
 msgid "Unknown permission code."
 msgstr ""
 
+msgid "Upload"
+msgstr ""
+
+msgid "Upload a document"
+msgstr ""
+
 msgid "Upload documents and new versions (they start as drafts)"
+msgstr ""
+
+msgid "Uploaded"
+msgstr ""
+
+msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
+msgstr ""
+
+msgid "Uploading..."
 msgstr ""
 
 msgid "User name"
@@ -472,7 +545,20 @@ msgstr ""
 msgid "all"
 msgstr ""
 
+msgid "all documents I can see"
+msgstr ""
+
+#, python-format
+msgid "attempts: %(n)s"
+msgstr ""
+
 msgid "custom"
+msgstr ""
+
+msgid "draft"
+msgstr ""
+
+msgid "error"
 msgstr ""
 
 msgid "inactive"
@@ -484,13 +570,28 @@ msgstr ""
 msgid "local (break-glass)"
 msgstr ""
 
+msgid "my documents"
+msgstr ""
+
+msgid "needs OCR"
+msgstr ""
+
 msgid "no"
 msgstr ""
 
 msgid "not yet (first login pending)"
 msgstr ""
 
+msgid "processing"
+msgstr ""
+
+msgid "ready"
+msgstr ""
+
 msgid "system"
+msgstr ""
+
+msgid "waiting"
 msgstr ""
 
 msgid "yes"

@@ -178,9 +178,10 @@ Akcje zapisywane od Fazy 1:
 | Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
+| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
-Akcje dokumentów (`upload`, `publish`, `download`, ...) dojdą razem z fazami dokumentów.
+Kolejne akcje dokumentów (`reprocess`, `publish`, `download`, ...) dojdą razem z dalszymi fazami.
 
 **Przeglądarka** `/admin/audit` (uprawnienie `audit.view`, menu „Dziennik audytu”): od najnowszych, 50 na stronę, filtry: zakres dat (dni lokalne, Europe/Warsaw), wykonawca (zawiera), akcja (dokładna nazwa albo prefiks zakończony kropką, np. `role.`), obiekt (typ lub identyfikator, zawiera). `details` jest pokazywane jako escapowane pary klucz–wartość (klucze zagnieżdżone jako `before.name`, listy po przecinku), nigdy jako surowy JSON.
 

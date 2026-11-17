@@ -32,6 +32,8 @@ x-app-env: &app-env
   ARGON2_MAX_CONCURRENT: ${ARGON2_MAX_CONCURRENT:-3}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   AUDIT_EXPORT_MAX_ROWS: ${AUDIT_EXPORT_MAX_ROWS:-10000}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+  STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
   LDAP_ENABLED: ${LDAP_ENABLED:-false}
   LDAP_URI: ${LDAP_URI:-}
   LDAP_BIND_DN: ${LDAP_BIND_DN:-}
@@ -62,7 +64,7 @@ services:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       TLS_MODE: ${TLS_MODE:-internal}
       ACME_EMAIL: ${ACME_EMAIL:-}
-      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-110}
+      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-51}
     volumes:
       - caddy-data:/data
       - caddy-config:/config

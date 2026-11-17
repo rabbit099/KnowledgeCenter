@@ -1,1 +1,113 @@
-"""Public interface of the documents module (the only part other modules may import)."""
+"""Public interface of the documents module (the only part other modules may import).
+
+Visibility (CLAUDE.md 6, ADR-013): every query that returns documents or versions applies
+`visibility_clause(user)` in SQL, never a filter on results.
+
+    draft      -> owner, holders of documents.read_drafts (Admin has every permission)
+    published  -> holders of documents.read
+    archived   -> holders of documents.edit_any
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy.orm import Session
+
+from baza_wiedzy.core.permissions.service import CurrentUser
+from baza_wiedzy.core.web.pagination import Page
+from baza_wiedzy.modules.documents.models import (
+    STATUS_ARCHIVED,
+    STATUS_DRAFT,
+    STATUS_PUBLISHED,
+    Document,
+    Version,
+)
+
+__all__ = [
+    "Document",
+    "Version",
+    "get_visible_document",
+    "list_documents",
+    "versions_of",
+    "visibility_clause",
+    "visible_duplicates",
+]
+
+
+def visibility_clause(user: CurrentUser) -> ColumnElement[bool]:
+    """SQL condition on doc_documents: which documents this user may see."""
+    rules: list[ColumnElement[bool]] = [
+        and_(Document.status == STATUS_DRAFT, Document.owner_id == user.id)
+    ]
+    if user.can("documents.read_drafts"):
+        rules.append(Document.status == STATUS_DRAFT)
+    if user.can("documents.read"):
+        rules.append(Document.status == STATUS_PUBLISHED)
+    if user.can("documents.edit_any"):
+        rules.append(Document.status == STATUS_ARCHIVED)
+    return or_(*rules) if rules else false()
+
+
+def get_visible_document(db: Session, user: CurrentUser, document_id: uuid.UUID) -> Document | None:
+    return db.scalar(select(Document).where(Document.id == document_id, visibility_clause(user)))
+
+
+def versions_of(db: Session, document: Document) -> list[Version]:
+    return list(
+        db.scalars(
+            select(Version)
+            .where(Version.document_id == document.id)
+            .order_by(Version.version_no.desc())
+        )
+    )
+
+
+def list_documents(
+    db: Session, user: CurrentUser, *, q: str = "", scope: str = "own", page: int = 1
+) -> Page[Any]:
+    """Rows of (Document, latest Version). scope: own (default) or all (every visible one)."""
+    query = (
+        select(Document, Version)
+        .join(Version, Version.id == Document.latest_version_id)
+        .where(visibility_clause(user))
+        .order_by(Document.created_at.desc(), Document.id)
+    )
+    if scope != "all":
+        query = query.where(Document.owner_id == user.id)
+    if q:
+        like = f"%{q.lower()}%"
+        query = query.where(
+            or_(
+                func.lower(Document.title).like(like),
+                func.lower(Version.original_filename).like(like),
+            )
+        )
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+    size = 25
+    page = max(1, min(page, max(1, -(-total // size))))
+    rows = [tuple(row) for row in db.execute(query.limit(size).offset((page - 1) * size))]
+    return Page(items=rows, page=page, total=total, size=size)
+
+
+def visible_duplicates(
+    db: Session, user: CurrentUser, sha256: str, *, exclude_version_id: uuid.UUID | None = None
+) -> list[Document]:
+    """Other documents with a version of identical content that THIS user may see.
+
+    Never looks at documents the user cannot see (for example other people's drafts), so the
+    duplicate warning does not reveal their existence.
+    """
+    query = (
+        select(Document)
+        .join(Version, Version.document_id == Document.id)
+        .where(Version.sha256 == sha256, visibility_clause(user))
+        .distinct()
+        .order_by(Document.title)
+        .limit(10)
+    )
+    if exclude_version_id is not None:
+        query = query.where(Version.id != exclude_version_id)
+    return list(db.scalars(query))

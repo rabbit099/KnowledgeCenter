@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     ldap_connect_timeout_seconds: int = 5
     ldap_receive_timeout_seconds: int = 10
     ldap_page_size: int = 500
+    # Documents: largest accepted file (the proxy's MAX_REQUEST_MB must be a little larger) and
+    # the storage volume (originals, .incoming/ for uploads in progress).
+    max_upload_mb: int = 50
+    storage_dir: str = "/data/storage"
     # Largest number of audit entries in one CSV export (the export says when it was cut).
     audit_export_max_rows: int = 10000
     # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id

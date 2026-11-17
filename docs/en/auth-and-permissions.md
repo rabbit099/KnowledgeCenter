@@ -178,9 +178,10 @@ Actions recorded since Phase 1:
 | Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audit | `audit.export` (`filters`, `rows`, `truncated`) |
+| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
-Document actions (`upload`, `publish`, `download`, ...) are added with the document phases.
+Further document actions (`reprocess`, `publish`, `download`, ...) are added with the later phases.
 
 **Viewer** `/admin/audit` (permission `audit.view`, menu "Dziennik audytu"): newest first, 50 per page, filters by date range (local days, Europe/Warsaw), actor (contains), action (exact name, or a prefix ending with a dot such as `role.`), object (type or id, contains). `details` is shown as escaped key–value pairs (nested keys as `before.name`, lists comma-separated), never as raw JSON.
 

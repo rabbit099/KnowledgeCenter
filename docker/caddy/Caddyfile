@@ -30,7 +30,7 @@ https://{$PUBLIC_HOSTNAME} {
 	import tls-{$TLS_MODE}
 	encode zstd gzip
 	request_body {
-		max_size {$MAX_REQUEST_MB:110}MB
+		max_size {$MAX_REQUEST_MB:51}MB
 	}
 	header {
 		Strict-Transport-Security "max-age=31536000"

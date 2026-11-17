@@ -45,7 +45,8 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `DOCKER_SUBNET`, `PROXY_IP` | Stała sieć Dockera stosu (domyślnie `172.30.70.0/24`) i adres proxy w niej (`172.30.70.10`); aplikacja ufa `X-Forwarded-For` tylko od `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
-| `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 51, trzymaj `MAX_UPLOAD_MB` + 1) |
+| `MAX_UPLOAD_MB`, `STORAGE_DIR` | Największy wgrywany plik (domyślnie 50 MB); ścieżka wolumenu plików w kontenerach (domyślnie `/data/storage`) |
 | `POSTGRES_PASSWORD` | Hasło superużytkownika PostgreSQL; używane tylko wewnątrz kontenera `db` |
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Zwykły użytkownik (nie superużytkownik), właściciel bazy aplikacji; używają go aplikacja i migracje. `DATABASE_URL` jest z nich składany w `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
@@ -259,6 +260,8 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 | „Zbyt wiele nieudanych prób” (HTTP 429) przy logowaniu | Blokada po nieudanych logowaniach dla nazwy i/lub adresu | Odczekaj `LOGIN_LOCKOUT_MINUTES` albo `docker compose exec app baza-wiedzy unlock-login --user <nazwa>` / `--ip <adres>` |
 | `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` koliduje z inną siecią Dockera albo trasą | Wybierz inne `DOCKER_SUBNET` i `PROXY_IP` (Konfiguracja) |
 | 403 „Żądanie odrzucone (brak lub błędny token CSRF)” | Strona otwarta długo, w międzyczasie zmiana `SECRET_KEY` albo nowa sesja, albo zablokowane żądanie z innej witryny | Odśwież stronę i powtórz czynność |
+| Wgranie kończy się komunikatem „Plik jest większy niż dozwolony rozmiar” (413) albo przeglądarka pokazuje błąd proxy przy dużych plikach | Plik większy niż `MAX_UPLOAD_MB` albo `MAX_REQUEST_MB` (proxy) nie większy od `MAX_UPLOAD_MB` | Zwiększ oba w `.env` (`MAX_REQUEST_MB` = `MAX_UPLOAD_MB` + 1), `docker compose up -d proxy app` |
+| W `/data/storage/.incoming` gromadzą się pliki | Przerwane wgrania (zamknięta przeglądarka, restart aplikacji) | Nieszkodliwe; usuwane po godzinie przy następnym wgraniu albo od razu: `docker compose exec app baza-wiedzy storage-cleanup` (oczekiwane: `Removed N orphaned incoming file(s) ...`) |
 | Aplikacja nie startuje: `module ... requires ...` | `ENABLED_MODULES` zawiera moduł bez modułu, od którego zależy | Dodaj wymagany moduł do `ENABLED_MODULES` w `.env` albo usuń moduł zależny |
 
 ## Uwagi bezpieczeństwa dla operatorów

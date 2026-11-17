@@ -100,9 +100,9 @@ def test_menu_sections_order_and_availability() -> None:
     registry = load_registry(["documents", "search"])
     admin = [i.label for i in registry.menu("admin")]
     assert admin == ["Users", "Roles", "AD groups", "Audit log", "System"]
-    # Search and Documents have no pages yet (available=False), so the main menu is empty.
-    assert registry.menu("main") == ()
-    assert all(i.section == "admin" for i in registry.menu())
+    # Search has no pages yet (available=False); the documents module has "My documents".
+    assert [i.label for i in registry.menu("main")] == ["My documents"]
+    assert {i.section for i in registry.menu()} == {"admin", "main"}
 
 
 # --- registry logic with synthetic manifests ----------------------------------------------

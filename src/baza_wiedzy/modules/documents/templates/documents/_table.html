@@ -1,0 +1,22 @@
+{% from "documents/_macros.html" import status_badge %}
+{% from "admin/_macros.html" import pagination %}
+<div{% if busy %} hx-get="/documents?{{ dict(filters, page=result.page)|urlencode }}" hx-trigger="every 5s" hx-target="#documents-table" hx-swap="innerHTML"{% endif %}>
+<table class="grid">
+  <thead><tr><th>{{ _("Title") }}</th><th>{{ _("File") }}</th><th>{{ _("Type") }}</th><th>{{ _("Size") }}</th><th>{{ _("Uploaded") }}</th><th>{{ _("Processing") }}</th></tr></thead>
+  <tbody>
+  {% for document, version in result.items %}
+    <tr>
+      <td><a href="/documents/{{ document.id }}">{{ document.title }}</a></td>
+      <td>{{ version.original_filename }}</td>
+      <td>{{ version.kind|upper }}</td>
+      <td>{{ (version.size_bytes / 1024)|round(1) }} KB</td>
+      <td>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ status_badge(version.processing_status) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">{{ _("No documents yet.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(result, filters, "#documents-table") }}
+</div>

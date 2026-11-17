@@ -1,0 +1,4 @@
+{% macro status_badge(status) -%}
+{% set labels = {"pending": _("waiting"), "processing": _("processing"), "done": _("ready"), "failed": _("error"), "needs_ocr": _("needs OCR")} %}
+<span class="badge badge-{{ status }}">{{ labels.get(status, status) }}</span>
+{%- endmacro %}

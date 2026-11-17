@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115",
     "jinja2>=3.1",
     "ldap3>=2.9",
+    "olefile>=0.46",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -72,8 +73,8 @@ files = ["src", "tests", "scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# ldap3 ships no type information; its use is confined to core/auth/ldap.py.
-module = ["ldap3", "ldap3.*"]
+# ldap3 and olefile ship no type information; their use is confined to a few modules.
+module = ["ldap3", "ldap3.*", "olefile", "olefile.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

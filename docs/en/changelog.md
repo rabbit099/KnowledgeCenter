@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Added
+- Document upload (Phase 2, stage A): page "Moje dokumenty" with search and live status, "Wgraj dokument" (JavaScript required; CSRF token in a header), document page. Files up to `MAX_UPLOAD_MB` (default 50; proxy limit `MAX_REQUEST_MB` now 51), type detected by content (ADR-021: PDF, DOCX, DOC, TXT, EML, MSG; other OLE2 files such as renamed `.xls` refused), stored under a random key on the `storage` volume via `.incoming/` and an atomic rename, read-only originals, sanitised file names, SHA-256, "possible duplicate" warning only against documents the uploader can see. New uploads are drafts visible to the owner and `documents.read_drafts` holders (others get 404). Tables `doc_documents`, `doc_versions`, `doc_email_metadata` (migration `documents_0002`). Audit `document.upload` (ids and hash only). Command `baza-wiedzy storage-cleanup`. New variables `MAX_UPLOAD_MB`, `STORAGE_DIR`.
+
 ## [0.2.1] - 2026-11-17
 
 ### Security

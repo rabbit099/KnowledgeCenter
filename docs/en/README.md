@@ -40,7 +40,7 @@ Tick items when they are finished and documented.
 - [x] Audit log and its viewer
 
 ### Phase 2 — Upload and ingestion
-- [ ] Upload with validation, storage, SHA-256, duplicate warning
+- [x] Upload with validation, storage, SHA-256, duplicate warning
 - [ ] Extractors: PDF (text), DOCX, DOC, TXT, EML, MSG (+ attachments)
 - [ ] Worker pipeline, statuses, retries, reprocess action
 - [ ] Language detection per part

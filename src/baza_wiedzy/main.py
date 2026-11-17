@@ -83,7 +83,9 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
     app.state.engine = engine
     app.state.redis = redis_client
     app.state.events = EventBus()
-    app.state.templates = make_templates(settings)
+    app.state.templates = make_templates(
+        settings, tuple(m.templates for m in registry.modules if m.templates)
+    )
     app.state.ready_checks = {
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),

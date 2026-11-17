@@ -78,12 +78,13 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 ## Storage
 
 ```
-/data/storage/<aa>/<bb>/<uuid>          original file (immutable)
-/data/storage/derived/<uuid>.pdf        OCR'd (searchable) PDF, previews
-/data/tmp/                              worker scratch space (cleaned after each job)
+/data/storage/originals/<aa>/<bb>/<key>    original file (immutable, read-only, key = random UUID)
+/data/storage/.incoming/<uuid>.part        upload in progress (same volume, then atomic rename)
+/data/storage/derived/<key>.pdf            OCR'd (searchable) PDF, previews (Phase 4)
+/data/tmp/                                 worker scratch space (cleaned after each job)
 ```
 
-`<aa>/<bb>` are the first characters of the UUID, to avoid huge directories.
+`<aa>/<bb>` are the first characters of the key, to avoid huge directories. The user's file name is never part of a path. `.incoming/` lives on the same volume as `originals/`, so the final move is an atomic rename; files older than an hour there are orphans of interrupted uploads and are removed (at every upload and with `baza-wiedzy storage-cleanup`). The storage belongs to the `documents` module (`modules/documents/storage.py`).
 
 ## Cross-cutting rules
 

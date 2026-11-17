@@ -25,17 +25,16 @@ manifest = ModuleManifest(
         Permission("documents.delete", N_("Hard-delete documents (GDPR/RODO erasure)")),
         Permission("categories.manage", N_("Create, rename, delete categories")),
     ),
-    # Hidden until the pages exist (Phase 2).
-    # Hidden until the pages exist (Phase 2).
     menu=(
         MenuItem(
-            label=N_("Documents"),
+            label=N_("My documents"),
             path="/documents",
-            permission="documents.read",
+            permission="documents.upload",
             order=20,
-            available=False,
         ),
     ),
+    routers=("baza_wiedzy.modules.documents.routes:router",),
+    templates="baza_wiedzy.modules.documents",
     migrations_branch="documents",
     migrations_path="baza_wiedzy.modules.documents.migrations",
 )

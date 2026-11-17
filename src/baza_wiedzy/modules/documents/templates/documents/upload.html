@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Upload a document") }} · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>{{ _("Upload a document") }}</h1>
+<noscript><p class="fail">{{ _("Uploading needs JavaScript. Enable JavaScript in the browser and reload the page.") }}</p></noscript>
+<div id="upload-area">{% include "documents/_upload_form.html" %}</div>
+{% endblock %}

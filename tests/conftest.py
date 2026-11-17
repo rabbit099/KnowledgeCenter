@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 import dramatiq
 import pytest
@@ -30,6 +31,7 @@ def test_settings() -> Settings:
         database_url=database_url,
         redis_url=_env("TEST_REDIS_URL"),
         secret_key="integration-test-secret-key-0123456789",
+        storage_dir=tempfile.mkdtemp(prefix="bw-storage-"),
         db_pool_size=1,
         db_max_overflow=0,
     )

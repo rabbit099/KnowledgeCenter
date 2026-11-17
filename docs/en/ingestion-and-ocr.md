@@ -20,13 +20,29 @@ Attachments of EML/MSG that are PDF, DOCX, DOC, TXT, EML or MSG are extracted re
 
 ## Upload validation (in `app`)
 
-1. Size ≤ `MAX_UPLOAD_MB` (default 100); the proxy enforces the same limit.
-2. Extension in the allow-list **and** content type detected by libmagic matches the extension.
-3. SHA-256 computed while streaming to disk.
-4. Stored under a UUID key; the user's file name is kept only as metadata and never used as a path.
-5. If the same SHA-256 already exists, the user gets a warning (not a block).
-6. Optional virus scan with ClamAV when the `antivirus` profile is enabled.
-7. Database rows created, the event `document.version.uploaded` published (`ingestion` enqueues the job), audit entry written.
+Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `documents.upload`). Uploading needs JavaScript: HTMX sends the CSRF token in the `X-CSRF-Token` header (the CSRF middleware does not read multipart bodies); without JavaScript the page shows a `<noscript>` notice.
+
+1. Size: the request is refused early when `Content-Length` exceeds `MAX_UPLOAD_MB` (default 50), and the copy stops as soon as the real size passes it (HTTP 413, "Plik jest większy niż dozwolony rozmiar."). The proxy refuses bodies above `MAX_REQUEST_MB` (default 51: the file plus multipart overhead); keep it one MB above `MAX_UPLOAD_MB`.
+2. The body is parsed by Starlette (at most 1 MB in memory, the rest in a temporary spool file, never the whole file in memory); the file is copied in 1 MB chunks to `/data/storage/.incoming/` while SHA-256 and the size are computed.
+3. Type **by content**, never by extension or `Content-Type` (ADR-021): the extension must be in the allow-list (pdf, docx, doc, txt, eml, msg) **and** match the detected type:
+
+   | Type | Check |
+   |---|---|
+   | PDF | `%PDF-` within the first 1024 bytes |
+   | DOCX | ZIP whose central directory contains `[Content_Types].xml` and `word/document.xml` (a renamed `.xlsx` is refused) |
+   | DOC | OLE2 compound file with the stream `WordDocument` |
+   | MSG | OLE2 compound file with the stream `__properties_version1.0` |
+   | EML | RFC 5322 header block with `From` and at least one more mail header, no NUL bytes |
+   | TXT | no NUL bytes in the first 64 KB (UTF-16 with BOM allowed) |
+
+   Any other OLE2 file (for example an old `.xls` renamed to `.doc`) and any mismatch are refused (HTTP 422, "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony."); the incoming file is deleted.
+4. The file is moved with an atomic rename to `originals/<aa>/<bb>/<key>` (key = random UUID) and made read-only. The user's file name is sanitised (directory parts, control and bidi characters removed, NFC, at most 255 characters) and kept only as metadata.
+5. A draft document with version 1 is created (`doc_documents`, `doc_versions`, `processing_status = pending`); title = the optional "Tytuł" field or the file name without extension.
+6. Duplicates: the document page shows "Możliwy duplikat" with links when another document **visible to the uploader** has a version with the same SHA-256. Other people's drafts are never compared, so the warning reveals nothing. The upload is not blocked; removing a duplicate comes with the lifecycle (Phase 5).
+7. Audit `document.upload` with the document id, `version_id`, `sha256`, `size_bytes` and `kind` (no file name, no content). After the commit the event `document.version.uploaded` is published (`ingestion` enqueues processing, stage B).
+8. Virus scan: a scan step in the processing pipeline, disabled by default (stage B); ClamAV is not wired in Phase 2.
+
+Drafts are visible only to the uploader and to holders of `documents.read_drafts` (Admin); anyone else gets **404** for the document page, so its existence is not revealed.
 
 ## Processing (in `worker`)
 
@@ -63,7 +79,7 @@ Known limits to mention to users: OCR quality depends on scan quality; handwriti
 
 | Limit | Default | Setting |
 |---|---|---|
-| Max upload size | 100 MB | `MAX_UPLOAD_MB` |
+| Max upload size | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
 | Max e-mail attachment depth | 3 | `MAX_ATTACHMENT_DEPTH` |
 | Max total extracted text per version | 50 MB | `MAX_EXTRACTED_TEXT_MB` |
 | ZIP expansion ratio (DOCX) | 100× | `MAX_ZIP_RATIO` |

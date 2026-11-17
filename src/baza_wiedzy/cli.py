@@ -228,6 +228,16 @@ def _user_active(args: argparse.Namespace) -> int:
     return 0
 
 
+def _storage_cleanup(args: argparse.Namespace) -> int:
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.modules.documents.storage import LocalStorage
+
+    settings = Settings()
+    removed = LocalStorage(settings.storage_dir).cleanup_incoming(int(args.older_than * 3600))
+    print(f"Removed {removed} orphaned incoming file(s) from {settings.storage_dir}/.incoming.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -279,6 +289,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     user_active.add_argument("username")
     user_active.add_argument("state", choices=["on", "off"])
     user_active.set_defaults(handler=_user_active)
+
+    cleanup = commands.add_parser(
+        "storage-cleanup", help="remove orphaned files of interrupted uploads from .incoming/"
+    )
+    cleanup.add_argument(
+        "--older-than", type=float, default=1.0, metavar="HOURS", help="age limit (default 1)"
+    )
+    cleanup.set_defaults(handler=_storage_cleanup)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"

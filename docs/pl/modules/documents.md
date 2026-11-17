@@ -26,7 +26,7 @@ Nie wymaga żadnego innego modułu. Wymagany przez [ingestion](ingestion.md) i [
 
 ## Interfejs publiczny
 
-`modules/documents/services/api.py`, jedyna część, którą mogą importować inne moduły. Planowana zawartość (jeszcze niezaimplementowana): odczyt wersji, aktualizacja statusu i metadanych przetwarzania, zapis metadanych maila, otwarcie pliku oryginalnego i zapis pliku pochodnego oraz fragment SQL z regułą widoczności dokumentów dla `search`.
+`modules/documents/services/api.py`, jedyna część, którą mogą importować inne moduły. Zaimplementowane (Faza 2, etap A): `visibility_clause(user)` (warunek SQL do każdego zapytania: szkice dla właściciela i `documents.read_drafts`, opublikowane dla `documents.read`, zarchiwizowane dla `documents.edit_any`), `get_visible_document`, `versions_of`, `list_documents`, `visible_duplicates` (tylko dokumenty widoczne dla użytkownika). W etapie B dla `ingestion`: odczyt wersji i otwarcie jej oryginału, aktualizacja statusu przetwarzania, zapis metadanych maila. Później: zapis pliku pochodnego (Faza 4).
 
 ## Punkty rozszerzeń
 
@@ -34,4 +34,4 @@ Magazyn plików: pliki oryginalne i pochodne są dostępne przez interfejs magaz
 
 ## Status
 
-Faza 0: manifest, uprawnienia, pozycja menu i pusty interfejs publiczny. Implementacja w Fazie 2 (upload) i Fazie 5 (cykl życia, wersje, kategorie).
+Faza 2, etap A: tabele `doc_documents`, `doc_versions`, `doc_email_metadata` (`documents_0002`); magazyn plików na wolumenie `storage`; wgrywanie z rozpoznawaniem typu po zawartości (ADR-021), limitem rozmiaru, oczyszczonymi nazwami plików i SHA-256; szkice z widocznością w SQL; strony „Moje dokumenty” (`/documents`, uprawnienie `documents.upload` albo `documents.read_drafts`), „Wgraj dokument” i strona dokumentu; ostrzeżenie o duplikacie; audyt `document.upload`; polecenie `baza-wiedzy storage-cleanup`. Cykl życia, wersje użytkownika i kategorie w Fazie 5; pobieranie później.
