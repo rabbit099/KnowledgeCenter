@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from baza_wiedzy.core.config import Settings
 
@@ -16,3 +17,8 @@ def make_engine(settings: Settings) -> Engine:
         pool_recycle=3600,
         connect_args={"connect_timeout": 3, "application_name": "baza-wiedzy"},
     )
+
+
+def make_session_factory(engine: Engine) -> sessionmaker[Session]:
+    # expire_on_commit=False: objects stay readable after commit (templates render them).
+    return sessionmaker(bind=engine, expire_on_commit=False)

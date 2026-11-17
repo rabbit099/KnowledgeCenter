@@ -1,6 +1,6 @@
 # Przetwarzanie dokumentów i OCR
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 Jak wgrany plik staje się przeszukiwalnym tekstem. Walidacja uploadu i zapis plików należą do modułu `documents`; opisane tu przetwarzanie należy do modułu `ingestion` (zobacz [modules/ingestion.md](modules/ingestion.md)).
 

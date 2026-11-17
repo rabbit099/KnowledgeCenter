@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import role_label, error_box, csrf %}
+{% block admin %}
+<h1>{{ _("Add an AD user in advance") }}</h1>
+<p>{{ _("The account is linked to the Active Directory user with this name at their first login. Local accounts are created only with the command baza-wiedzy create-admin.") }}</p>
+{{ error_box(error) }}
+<form method="post" action="/admin/users" class="stack">
+  {{ csrf() }}
+  <label>{{ _("AD user name") }} <input type="text" name="username" value="{{ values.username or '' }}" required maxlength="256"></label>
+  <label>{{ _("Display name (optional)") }} <input type="text" name="display_name" value="{{ values.display_name or '' }}" maxlength="256"></label>
+  <fieldset>
+    <legend>{{ _("Roles") }}</legend>
+    {% for role in all_roles %}
+    <label class="check"><input type="checkbox" name="role_ids" value="{{ role.id }}"{% if role.id|string in (values.role_ids or []) %} checked{% endif %}> {{ role_label(role) }}</label>
+    {% endfor %}
+  </fieldset>
+  <button type="submit">{{ _("Create") }}</button>
+</form>
+{% endblock %}

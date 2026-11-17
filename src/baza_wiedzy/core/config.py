@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     app_name: str = "Baza Wiedzy"
     # DEBUG, INFO, WARNING, ERROR. Logs are JSON lines (baza_wiedzy.core.logs).
     log_level: str = "INFO"
-    # Image tag the operator runs; shown on /health and /ready.
-    app_version: str = "0.0.0"
     # postgresql+psycopg://user:password@db:5432/name (built in docker-compose.yml).
     database_url: str = "postgresql+psycopg://baza_wiedzy@localhost:5432/baza_wiedzy"
     # Small fixed pool: every connection holds the Polish dictionary (~27 MB, ADR-016).
@@ -29,6 +27,46 @@ class Settings(BaseSettings):
     alembic_ini: str = "alembic.ini"
     # redis://:password@redis:6379/0 (built in docker-compose.yml).
     redis_url: str = "redis://localhost:6379/0"
+    # Signs CSRF tokens. The web application refuses to start with fewer than 32 characters.
+    secret_key: str = ""
+    # Sessions (ADR-007): idle limit and absolute lifetime.
+    session_idle_minutes: int = 120
+    session_absolute_hours: int = 12
+    # Only for local experiments without TLS; production always uses Secure cookies.
+    session_cookie_secure: bool = True
+    # Failed logins (counted in Redis, fixed window). Locks expire by themselves.
+    login_window_minutes: int = 15
+    login_lockout_minutes: int = 15
+    login_max_failures_account: int = 30
+    login_max_failures_account_ip: int = 5
+    login_max_failures_ip: int = 20
+    # Active Directory (LDAPS only; certificate verification cannot be turned off).
+    ldap_enabled: bool = False
+    # One or more ldaps:// URIs, comma-separated; tried in order when one is unreachable.
+    ldap_uri: str = ""
+    ldap_bind_dn: str = ""
+    ldap_bind_password: str = ""
+    # Alternative to LDAP_BIND_PASSWORD: path of a file holding it (Docker secrets).
+    ldap_bind_password_file: str = ""
+    ldap_base_dn: str = ""
+    # sAMAccountName (log in as "jan") or userPrincipalName (log in as "jan@firma.local").
+    ldap_login_attribute: str = "sAMAccountName"
+    # UPN suffix added to bare names when LDAP_LOGIN_ATTRIBUTE=userPrincipalName.
+    ldap_upn_suffix: str = ""
+    # Extra filter AND-ed to the user search.
+    ldap_user_filter: str = "(objectClass=user)"
+    ldap_ca_file: str = ""
+    ldap_nested_groups: bool = False
+    ldap_connect_timeout_seconds: int = 5
+    ldap_receive_timeout_seconds: int = 10
+    ldap_page_size: int = 500
+    # Largest number of audit entries in one CSV export (the export says when it was cut).
+    audit_export_max_rows: int = 10000
+    # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id
+    # hashes computed at the same time per process (each one uses 64 MiB of memory).
+    local_password_min_length: int = 14
+    local_password_max_length: int = 256
+    argon2_max_concurrent: int = 3
     # Each worker process writes a heartbeat key this often; the key expires after 4 intervals,
     # so /ready reports "no heartbeat" about a minute after the last worker stopped.
     worker_heartbeat_seconds: int = 15

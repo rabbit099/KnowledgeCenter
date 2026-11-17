@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+{% block admin %}
+<h1>{{ _("System") }}</h1>
+<dl class="facts">
+  <dt>{{ _("Version") }}</dt><dd>{{ version }}</dd>
+  <dt>{{ _("Modules") }}</dt><dd>{% for name, v in modules %}{{ name }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+  <dt>{{ _("Users") }}</dt><dd>{{ counts.users }} ({{ _("active") }}: {{ counts.active_users }})</dd>
+  <dt>{{ _("Open sessions") }}</dt><dd>{{ counts.sessions }}</dd>
+</dl>
+<h2>{{ _("System status") }}</h2>
+{% include "_status.html" %}
+<h2>Active Directory</h2>
+{% if ad.enabled %}
+<dl class="facts">
+  <dt>URI</dt><dd>{{ ad.uri }}</dd>
+  <dt>Base DN</dt><dd>{{ ad.base_dn }}</dd>
+  <dt>{{ _("Login attribute") }}</dt><dd>{{ ad.login_attribute }}</dd>
+  <dt>{{ _("Nested groups") }}</dt><dd>{{ _("yes") if ad.nested_groups else _("no") }}</dd>
+</dl>
+{% else %}
+<p>{{ _("Active Directory login is disabled (LDAP_ENABLED=false): only local accounts can log in.") }}</p>
+{% endif %}
+{% endblock %}

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-12 11:27+0100\n"
+"POT-Creation-Date: 2026-11-17 08:48+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -16,14 +16,91 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
+msgid "A role with this name already exists."
+msgstr "Rola o tej nazwie już istnieje."
+
+msgid "A user with this name already exists."
+msgstr "Użytkownik o tej nazwie już istnieje."
+
+msgid "AD groups"
+msgstr "Grupy AD"
+
+msgid "AD user name"
+msgstr "Nazwa użytkownika w AD"
+
+msgid "Access denied"
+msgstr "Brak dostępu"
+
+msgid "Account"
+msgstr "Konto"
+
+msgid "Action"
+msgstr "Akcja"
+
+msgid "Activate"
+msgstr "Aktywuj"
+
+msgid "Active Directory login is disabled (LDAP_ENABLED=false): only local accounts can log in."
+msgstr ""
+"Logowanie przez Active Directory jest wyłączone (LDAP_ENABLED=false): logować mogą się tylko "
+"konta lokalne."
+
+msgid "Actor"
+msgstr "Wykonawca"
+
+msgid "Add an AD user in advance"
+msgstr "Dodaj z wyprzedzeniem użytkownika AD"
+
+msgid "Add the mapping"
+msgstr "Dodaj mapowanie"
+
+msgid "Admin"
+msgstr "Administrator"
+
+msgid "Administration"
+msgstr "Administracja"
+
+msgid "All sessions of the user were revoked."
+msgstr "Wszystkie sesje użytkownika zostały unieważnione."
+
 msgid "All systems are working."
 msgstr "Wszystkie usługi działają."
+
+msgid "Allowed"
+msgstr "Dozwolone"
+
+msgid "Audit log"
+msgstr "Dziennik audytu"
+
+msgid "Back to the list"
+msgstr "Powrót do listy"
 
 msgid "Background worker"
 msgstr "Przetwarzanie w tle"
 
+msgid "Cancel"
+msgstr "Anuluj"
+
+msgid "Change application settings"
+msgstr "Zmiana ustawień aplikacji"
+
+msgid "Check that the group exists in Active Directory"
+msgstr "Sprawdź, czy grupa istnieje w Active Directory"
+
 msgid "Checking system status..."
 msgstr "Sprawdzanie stanu systemu…"
+
+msgid "Create"
+msgstr "Utwórz"
+
+msgid "Create and edit roles, map AD groups to roles"
+msgstr "Tworzenie i edycja ról, mapowanie grup AD na role"
+
+msgid "Create, rename, delete categories"
+msgstr "Tworzenie, zmiana nazwy i usuwanie kategorii"
+
+msgid "Created."
+msgstr "Utworzono."
 
 msgid "Database"
 msgstr "Baza danych"
@@ -31,22 +108,408 @@ msgstr "Baza danych"
 msgid "Database schema"
 msgstr "Schemat bazy danych"
 
+msgid "Deactivate (revokes all sessions)"
+msgstr "Dezaktywuj (unieważnia wszystkie sesje)"
+
+msgid "Delete"
+msgstr "Usuń"
+
+msgid "Delete the role"
+msgstr "Usuń rolę"
+
+msgid "Delete this role"
+msgstr "Usuń tę rolę"
+
+msgid "Deleted."
+msgstr "Usunięto."
+
+msgid "Description"
+msgstr "Opis"
+
+msgid "Details"
+msgstr "Szczegóły"
+
+msgid "Display name (optional)"
+msgstr "Nazwa wyświetlana (opcjonalnie)"
+
+msgid "Documents"
+msgstr "Dokumenty"
+
+msgid "E-mail"
+msgstr "E-mail"
+
+msgid "Edit metadata, archive and restore documents of others"
+msgstr "Edycja metadanych, archiwizacja i przywracanie dokumentów innych osób"
+
+msgid "Export CSV (current filters)"
+msgstr "Eksportuj CSV (bieżące filtry)"
+
+msgid "Filter"
+msgstr "Filtruj"
+
+msgid "From"
+msgstr "Od"
+
+msgid "From AD groups (change them in AD or in the group mapping):"
+msgstr "Z grup AD (zmieniaj je w AD albo w mapowaniu grup):"
+
+msgid "Group DN"
+msgstr "DN grupy"
+
+msgid "Hard-delete documents (GDPR/RODO erasure)"
+msgstr "Trwałe usuwanie dokumentów (usunięcie zgodnie z RODO)"
+
+msgid "I confirm: members of this group get the Admin role."
+msgstr "Potwierdzam: członkowie tej grupy dostaną rolę Administrator."
+
+#, python-format
+msgid "I understand that %(count)s user(s) will lose this role."
+msgstr "Rozumiem, że użytkownicy (%(count)s) stracą tę rolę."
+
+msgid "IP address"
+msgstr "Adres IP"
+
+msgid "Invalid user name or password."
+msgstr "Nieprawidłowa nazwa użytkownika lub hasło."
+
+msgid "Invalid user name: use letters, digits and '.', '_', '@', '-' (up to 128)."
+msgstr "Nieprawidłowa nazwa użytkownika: użyj liter, cyfr oraz '.', '_', '@', '-' (do 128 znaków)."
+
 msgid "Job queue"
 msgstr "Kolejka zadań"
+
+msgid "Last login"
+msgstr "Ostatnie logowanie"
+
+msgid "Linked to AD"
+msgstr "Połączone z AD"
+
+msgid "Log in"
+msgstr "Zaloguj się"
+
+msgid "Log out"
+msgstr "Wyloguj"
+
+msgid ""
+"Logging in with a company account is temporarily unavailable. Try again later or contact the "
+"administrator."
+msgstr ""
+"Logowanie kontem firmowym jest chwilowo niedostępne. Spróbuj ponownie później albo skontaktuj się"
+" z administratorem."
+
+msgid "Login attribute"
+msgstr "Atrybut logowania"
+
+msgid "Manage users, assign roles, revoke sessions"
+msgstr "Zarządzanie użytkownikami, nadawanie ról, unieważnianie sesji"
+
+msgid "Mapping saved without checking Active Directory."
+msgstr "Mapowanie zapisane bez sprawdzania w Active Directory."
+
+msgid "Mapping saved; Active Directory could not be asked, the group was not checked."
+msgstr "Mapowanie zapisane; nie udało się zapytać Active Directory, grupa nie została sprawdzona."
+
+msgid "Mapping saved; the group exists in Active Directory."
+msgstr "Mapowanie zapisane; grupa istnieje w Active Directory."
+
+msgid "Mappings"
+msgstr "Mapowania"
+
+msgid ""
+"Members of a mapped Active Directory group get the role at every login. Roles from groups are "
+"recalculated at each login; roles given in the application are kept."
+msgstr ""
+"Członkowie zmapowanej grupy Active Directory dostają rolę przy każdym logowaniu. Role z grup są "
+"przeliczane przy każdym logowaniu; role nadane w aplikacji zostają."
+
+msgid "Members of this group will get the Admin role with all permissions. Tick the confirmation to save."
+msgstr ""
+"Członkowie tej grupy dostaną rolę Administrator ze wszystkimi uprawnieniami. Zaznacz "
+"potwierdzenie, aby zapisać."
+
+msgid "Module"
+msgstr "Moduł"
+
+msgid "Modules"
+msgstr "Moduły"
+
+msgid "Name"
+msgstr "Nazwa"
+
+msgid "Name, e-mail and DN come from Active Directory and are updated at every login."
+msgstr "Nazwa, e-mail i DN pochodzą z Active Directory i są aktualizowane przy każdym logowaniu."
+
+msgid "Nested groups"
+msgstr "Grupy zagnieżdżone"
+
+msgid "New role"
+msgstr "Nowa rola"
+
+msgid "Next"
+msgstr "Następna"
+
+msgid "No entries match the filter."
+msgstr "Żaden wpis nie pasuje do filtra."
+
+msgid "No mappings."
+msgstr "Brak mapowań."
+
+msgid "No roles match the filter."
+msgstr "Żadna rola nie pasuje do filtra."
+
+msgid "No user holds this role."
+msgstr "Nikt nie ma tej roli."
+
+msgid "No users match the filter."
+msgstr "Żaden użytkownik nie pasuje do filtra."
+
+msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
+msgstr "To nie jest poprawny DN grupy. Przykład: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
 
 msgid "OK"
 msgstr "OK"
 
+msgid "Object"
+msgstr "Obiekt"
+
+msgid "One of the selected roles does not exist any more."
+msgstr "Jedna z wybranych ról już nie istnieje."
+
+msgid "Open sessions"
+msgstr "Otwarte sesje"
+
+#, python-format
+msgid "Page %(page)s of %(pages)s"
+msgstr "Strona %(page)s z %(pages)s"
+
+msgid "Pages"
+msgstr "Strony"
+
+msgid "Password"
+msgstr "Hasło"
+
+msgid "Permission"
+msgstr "Uprawnienie"
+
+msgid "Permissions"
+msgstr "Uprawnienia"
+
+msgid "Previous"
+msgstr "Poprzednia"
+
+msgid "Publish and unpublish documents uploaded by others"
+msgstr "Publikowanie i wycofywanie dokumentów wgranych przez innych"
+
+msgid "Publish and unpublish own documents"
+msgstr "Publikowanie i wycofywanie własnych dokumentów"
+
+msgid "Publisher"
+msgstr "Publikujący"
+
+msgid "Reader"
+msgstr "Czytelnik"
+
+msgid "Remove"
+msgstr "Usuń"
+
+#, python-format
+msgid "Results: %(total)s"
+msgstr "Wyniki: %(total)s"
+
+msgid "Revoke all sessions"
+msgstr "Unieważnij wszystkie sesje"
+
+msgid "Role"
+msgstr "Rola"
+
+msgid "Roles"
+msgstr "Role"
+
+msgid "Roles given in the application"
+msgstr "Role nadane w aplikacji"
+
+msgid "Save"
+msgstr "Zapisz"
+
+msgid "Save roles"
+msgstr "Zapisz role"
+
+msgid "Saved."
+msgstr "Zapisano."
+
+msgid "Search"
+msgstr "Szukaj"
+
+msgid "Search, view and download published documents"
+msgstr "Wyszukiwanie, przeglądanie i pobieranie opublikowanych dokumentów"
+
+msgid "See and find all drafts"
+msgstr "Widzenie i wyszukiwanie wszystkich szkiców"
+
+msgid "See version, queue and health status"
+msgstr "Podgląd wersji, kolejki i stanu systemu"
+
 msgid "Some systems are not working."
 msgstr "Niektóre usługi nie działają."
 
+msgid "Source"
+msgstr "Źródło"
+
+msgid "Status"
+msgstr "Stan"
+
+msgid "System"
+msgstr "System"
+
+msgid "System role: it cannot be renamed or deleted."
+msgstr "Rola systemowa: nie można zmienić jej nazwy ani jej usunąć."
+
+msgid "System roles cannot be deleted."
+msgstr "Ról systemowych nie można usuwać."
+
 msgid "System status"
 msgstr "Stan systemu"
+
+msgid ""
+"The Admin role always has all permissions, including those of modules added later. It cannot be "
+"changed."
+msgstr ""
+"Rola Administrator zawsze ma wszystkie uprawnienia, także modułów dodanych później. Nie można "
+"tego zmienić."
+
+msgid "The Admin role is missing; run the migrations."
+msgstr "Brak roli Administrator; uruchom migracje."
+
+msgid ""
+"The account is linked to the Active Directory user with this name at their first login. Local "
+"accounts are created only with the command baza-wiedzy create-admin."
+msgstr ""
+"Konto zostanie połączone z użytkownikiem Active Directory o tej nazwie przy jego pierwszym "
+"logowaniu. Konta lokalne tworzy się wyłącznie poleceniem baza-wiedzy create-admin."
+
+msgid "The account was activated."
+msgstr "Konto zostało aktywowane."
+
+msgid "The account was deactivated and its sessions were revoked."
+msgstr "Konto zostało dezaktywowane, a jego sesje unieważnione."
 
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
 msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
 
 #, python-format
+msgid ""
+"The export will contain only the newest %(max)s of %(total)s entries; narrow the filters to "
+"export the rest."
+msgstr ""
+"Eksport obejmie tylko %(max)s najnowszych z %(total)s wpisów; zawęź filtry, aby wyeksportować "
+"resztę."
+
+msgid "The group was not found in Active Directory."
+msgstr "Nie znaleziono tej grupy w Active Directory."
+
+msgid "The role name must have 1 to 64 characters."
+msgstr "Nazwa roli musi mieć od 1 do 64 znaków."
+
+msgid "These users hold the role and will lose its permissions:"
+msgstr "Ci użytkownicy mają tę rolę i stracą jej uprawnienia:"
+
+msgid "This group is already mapped to this role."
+msgstr "Ta grupa jest już zmapowana na tę rolę."
+
+msgid "This is the last active administrator; activate or create another first."
+msgstr "To ostatni aktywny administrator; najpierw aktywuj albo utwórz innego."
+
+msgid "This is the last active administrator; the Admin role must stay."
+msgstr "To ostatni aktywny administrator; rola Administrator musi zostać."
+
+msgid "This role is assigned to users; confirm to delete it."
+msgstr "Ta rola jest przypisana użytkownikom; potwierdź, aby ją usunąć."
+
+msgid "Time"
+msgstr "Czas"
+
+msgid ""
+"Times in Europe/Warsaw. An action ending with a dot (for example \"role.\") finds all actions "
+"starting with it."
+msgstr ""
+"Czas w strefie Europe/Warsaw. Akcja zakończona kropką (na przykład \"role.\") znajduje wszystkie "
+"akcje, które się tak zaczynają."
+
+msgid "To"
+msgstr "Do"
+
+msgid "Too many failed attempts. Try again in a few minutes."
+msgstr "Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut."
+
+msgid "Type"
+msgstr "Typ"
+
+msgid "Unknown permission code."
+msgstr "Nieznany kod uprawnienia."
+
+msgid "Upload documents and new versions (they start as drafts)"
+msgstr "Wgrywanie dokumentów i nowych wersji (zaczynają jako szkice)"
+
+msgid "User name"
+msgstr "Nazwa użytkownika"
+
+msgid "Users"
+msgstr "Użytkownicy"
+
+msgid "Version"
+msgstr "Wersja"
+
+#, python-format
 msgid "Version %(version)s"
 msgstr "Wersja %(version)s"
+
+msgid "View the audit log"
+msgstr "Przeglądanie dziennika audytu"
+
+msgid "Warning: every member of this group will become an administrator with all permissions."
+msgstr "Uwaga: każdy członek tej grupy zostanie administratorem ze wszystkimi uprawnieniami."
+
+msgid "You cannot deactivate your own account."
+msgstr "Nie możesz dezaktywować własnego konta."
+
+msgid "You cannot remove the Admin role from your own account."
+msgstr "Nie możesz odebrać roli Administrator własnemu kontu."
+
+msgid "You do not have permission to open this page. Contact an administrator if you need access."
+msgstr "Nie masz uprawnień do tej strony. Jeśli potrzebujesz dostępu, skontaktuj się z administratorem."
+
+msgid "Your account has no permissions yet. Contact an administrator to get access."
+msgstr ""
+"Twoje konto nie ma jeszcze żadnych uprawnień. Skontaktuj się z administratorem, aby uzyskać "
+"dostęp."
+
+msgid "active"
+msgstr "aktywne"
+
+msgid "all"
+msgstr "wszystkie"
+
+msgid "custom"
+msgstr "własna"
+
+msgid "inactive"
+msgstr "nieaktywne"
+
+msgid "local"
+msgstr "lokalne"
+
+msgid "local (break-glass)"
+msgstr "lokalne (awaryjne)"
+
+msgid "no"
+msgstr "nie"
+
+msgid "not yet (first login pending)"
+msgstr "jeszcze nie (czeka na pierwsze logowanie)"
+
+msgid "system"
+msgstr "systemowa"
+
+msgid "yes"
+msgstr "tak"
 

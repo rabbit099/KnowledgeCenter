@@ -34,9 +34,10 @@ def test_creates_extensions_dictionary_and_configurations(settings: Settings) ->
     assert {"pg_trgm", "unaccent"} <= extensions
     assert {"pl", "simple_unaccent", "english"} <= configs
     assert lexemes == (["faktura"],)
-    # alembic_version keeps only heads; core_0001 is implied by search_0001's depends_on.
+    # alembic_version keeps only heads; the rest is implied by down revisions and depends_on.
     script = ScriptDirectory.from_config(make_config(settings))
-    assert applied_revisions(script, versions) == {"core_0001", "search_0001"}
+    every_revision = {r.revision for r in script.walk_revisions()}
+    assert applied_revisions(script, versions) == every_revision
 
 
 def test_second_run_changes_nothing(settings: Settings) -> None:
@@ -45,12 +46,12 @@ def test_second_run_changes_nothing(settings: Settings) -> None:
     upgrade(settings)
     with _connect(settings) as conn:
         after = {r[0] for r in conn.execute("SELECT version_num FROM alembic_version")}
-    assert before == after == {"search_0001"}
+    assert before == after
 
 
 def test_partial_module_set_still_migrates_everything(settings: Settings) -> None:
     only_documents = settings.model_copy(update={"enabled_modules": ("documents",)})
-    assert upgrade(only_documents) == ["core_0001", "search_0001"]
+    assert upgrade(only_documents) == ["core_0003", "documents_0001", "search_0001"]
     with TestClient(create_app(only_documents, setup_logging=False)) as client:
         assert client.get("/ready").json()["checks"]["schema"] == "ok"
 

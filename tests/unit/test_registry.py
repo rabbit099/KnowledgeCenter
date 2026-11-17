@@ -96,9 +96,13 @@ def test_catalog_matches_documented_permissions() -> None:
     }
 
 
-def test_menu_is_ordered() -> None:
-    labels = [i.label for i in load_registry(["documents", "search"]).menu()]
-    assert labels == ["Search", "Documents"]
+def test_menu_sections_order_and_availability() -> None:
+    registry = load_registry(["documents", "search"])
+    admin = [i.label for i in registry.menu("admin")]
+    assert admin == ["Users", "Roles", "AD groups", "Audit log", "System"]
+    # Search and Documents have no pages yet (available=False), so the main menu is empty.
+    assert registry.menu("main") == ()
+    assert all(i.section == "admin" for i in registry.menu())
 
 
 # --- registry logic with synthetic manifests ----------------------------------------------

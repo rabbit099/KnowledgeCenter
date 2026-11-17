@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Administration") }} · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="admin">
+  <nav class="admin-nav" aria-label="{{ _('Administration') }}">
+    <ul>
+      {% for item in admin_nav %}
+      <li><a href="{{ item.path }}"{% if item.path == active %} aria-current="page"{% endif %}>{{ _(item.label) }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+  <section class="admin-main">
+    {% block admin %}{% endblock %}
+  </section>
+</div>
+{% endblock %}

@@ -12,7 +12,7 @@ The application is a modular monolith: an always-on core plus the modules `docum
 Requires `git`, `make` and [`uv`](https://docs.astral.sh/uv/) (it installs Python 3.12 by itself).
 
 ```
-cp .env.example .env
+cp .env.example .env   # then set SECRET_KEY (at least 32 characters)
 uv sync
 make lint
 make test
@@ -24,6 +24,8 @@ With Docker (Compose plugin):
 ```
 make build && make up && make migrate
 curl -k https://localhost/ready   # {"status":"ok", ... 4 checks "ok"}
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin
+# then log in at https://localhost/login (admin panel: "Administracja")
 make test-db                       # integration and golden search tests
 make smoke                         # production Compose file with fresh images
 ```

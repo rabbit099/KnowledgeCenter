@@ -3,13 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "selfRequestsOnly": true}'>
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='css/app.css').path }}">
   <script src="{{ url_for('static', path='vendor/htmx-2.0.11.min.js').path }}" defer></script>
 </head>
-<body>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
   <header class="topbar">
     <a class="brand" href="{{ url_for('home').path }}">{{ app_name }}</a>
+    {% if current_user %}
+    <nav class="usermenu">
+      {% if has_perm("users.manage") or has_perm("roles.manage") or has_perm("audit.view") or has_perm("system.view") %}
+      <a href="/admin">{{ _("Administration") }}</a>
+      {% endif %}
+      <span class="username">{{ current_user.display_name }}</span>
+      <form method="post" action="{{ url_for('logout').path }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="linklike">{{ _("Log out") }}</button>
+      </form>
+    </nav>
+    {% endif %}
   </header>
   <main class="content">
     {% block content %}{% endblock %}

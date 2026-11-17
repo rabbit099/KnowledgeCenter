@@ -1,10 +1,25 @@
 # Changelog
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-11-17
+
+### Added
+- `make smoke` (and the CI job `images`) also checks logging in through the proxy: break-glass admin created with a generated password, wrong password refused, login, admin panel, audit log, logout.
+- Audit log viewer `/admin/audit` (permission `audit.view`): filters by date, actor, action and object, newest first, details as readable key-value pairs; CSV export of the current filters (UTF-8, `;`, protection against CSV injection, at most `AUDIT_EXPORT_MAX_ROWS` rows with a notice when cut), recorded as `audit.export`. GDPR/RODO description of the personal data processed; retention proposal (24 months) to confirm. Tests: role × endpoint matrix generated from the route list, security tests (account enumeration by content and time, foreign Origin, security headers).
+- Admin panel `/admin` (Polish UI, works without JavaScript): users (search, filters, pages; AD users created in advance; activate/deactivate with immediate session revocation; manual roles; revoke sessions), roles with a permission matrix (Admin always full and read-only; system roles cannot be deleted; deleting a role in use shows the affected users and needs confirmation), AD group → role mapping (DN validation, confirmation for Admin, optional lookup in AD), system view. An admin cannot deactivate themselves or drop their own Admin role, and the last active admin is protected (also in the new command `baza-wiedzy user-active`). Every change is audited with before/after. Navigation built from module manifests. A test fails for any route without a login or permission check.
+- Login with Active Directory (`LDAP_ENABLED=true`, off by default): LDAPS with mandatory certificate verification, users created at first login and identified by `objectGUID`, accounts created in advance linked by name, AD groups mapped to roles at every login (optionally nested groups), one account for `FIRMA\jan`, `jan@firma.local` and `jan`, same error message and limits as local logins, "temporarily unavailable" message and audit `auth.ad_unavailable` when AD cannot be reached (the local admin keeps working). New command `baza-wiedzy ad-check` and a documented test procedure for a real AD. New `LDAP_*` variables; `./secrets/ldap/` is mounted in `app`.
+- Login with a local account (`/login`, `/logout`): server-side sessions with rotation at login, idle (120 min) and absolute (12 h) limits, CSRF protection for every state-changing request, failed-login limits per name, name + address and address (`baza-wiedzy unlock-login`), one generic error message, security headers (CSP), client address only from the proxy's fixed address (`DOCKER_SUBNET`, `PROXY_IP`). All pages except `/login`, `/health`, `/ready` and static files need a session. The application refuses to start with a `SECRET_KEY` shorter than 32 characters.
+- `baza-wiedzy create-admin <name>` creates the local break-glass admin or resets its password (asked twice, or `--password-stdin`); Argon2id with a limit of concurrent hashes; 14-256 characters; audited as `cli.create_admin` / `cli.reset_password`. New variables `LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`, `ARGON2_MAX_CONCURRENT`.
+- Database tables of the core for Phase 1 (migrations `core_0002`, `core_0003`): `users`, `roles` with the system roles Admin, Publisher and Reader, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions` and the append-only `audit_log` (a trigger rejects UPDATE, DELETE, TRUNCATE). Migration `documents_0001` grants `documents.*` permissions to Publisher and Reader.
+
+### Changed
+- Release workflow refuses a tag whose commit is not on `main`.
+- The application reports its version from the installed package (`pyproject.toml`); `APP_VERSION` only selects the image tag in `docker-compose.yml` and is no longer passed to the containers. `.env.example` now uses `APP_VERSION=0.1.0`.
 
 ## [0.1.0] - 2026-11-12
 

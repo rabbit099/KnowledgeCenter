@@ -1,7 +1,8 @@
 # Release: push a tag vX.Y.Z -> checks -> CI -> four images in GHCR (ADR-017).
 #   <registry>/<owner>/baza-wiedzy-{app,worker,db,proxy}:X.Y.Z
-# Refused when the tag differs from pyproject.toml or a changelog has no `## [X.Y.Z]` section.
-# Prepared in Phase 0; not run yet. Only this workflow may write packages.
+# Refused when the tagged commit is not on main, the tag differs from pyproject.toml, or a
+# changelog has no `## [X.Y.Z]` section. Only this workflow may write packages.
+# First release through this workflow: v0.1.0 (2026-11-12, end of Phase 0).
 name: Release
 
 on:
@@ -17,13 +18,25 @@ concurrency:
 
 jobs:
   verify:
-    name: Tag matches pyproject.toml and changelogs
+    name: Tag is on main and matches pyproject.toml and changelogs
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Full history and all branches, so that origin/main is available below.
+          fetch-depth: 0
           persist-credentials: false
+      - name: Tagged commit is on main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "$TAG ($GITHUB_SHA) is an ancestor of origin/main."
+          else
+            echo "::error::$TAG points to $GITHUB_SHA, which is not on main. Tag a commit of main."
+            exit 1
+          fi
       - name: Check release
         env:
           TAG: ${{ github.ref_name }}

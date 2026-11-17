@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf %}
+{% block admin %}
+<h1>{{ _("Audit log") }}</h1>
+<form method="get" action="/admin/audit" class="filters" hx-get="/admin/audit" hx-target="#audit-table" hx-push-url="true" hx-trigger="change, input changed delay:400ms from:input[type=text], submit">
+  <label>{{ _("From") }} <input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+  <label>{{ _("To") }} <input type="date" name="date_to" value="{{ filters.date_to }}"></label>
+  <label>{{ _("Actor") }} <input type="text" name="actor" value="{{ filters.actor }}" maxlength="200"></label>
+  <label>{{ _("Action") }} <input type="text" name="action" value="{{ filters.action }}" maxlength="100" list="audit-actions" placeholder="role."></label>
+  <datalist id="audit-actions">{% for a in actions %}<option value="{{ a }}">{% endfor %}</datalist>
+  <label>{{ _("Object") }} <input type="text" name="entity" value="{{ filters.entity }}" maxlength="200"></label>
+  <button type="submit">{{ _("Filter") }}</button>
+</form>
+<p class="muted">{{ _("Times in Europe/Warsaw. An action ending with a dot (for example \"role.\") finds all actions starting with it.") }}</p>
+<div id="audit-table">{% include "admin/_audit_table.html" %}</div>
+{% endblock %}

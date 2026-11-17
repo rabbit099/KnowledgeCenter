@@ -4,6 +4,8 @@
 #   2. start docker-compose.yml in a separate Compose project with generated secrets
 #   3. run `baza-wiedzy migrate`
 #   4. require /ready to answer HTTP 200 with database, redis, schema and worker all "ok"
+#   5. create the break-glass admin (generated password, --password-stdin) and, through the
+#      proxy: refuse a wrong password, log in, open the admin panel, log out
 # Everything (containers, volumes, the temporary env file) is removed at the end.
 # Ports: SMOKE_HTTP_PORT / SMOKE_HTTPS_PORT (default 18080 / 18443), so a running dev stack
 # on 80/443 is not disturbed.
@@ -36,6 +38,8 @@ PUBLIC_HOSTNAME=localhost
 TLS_MODE=internal
 HTTP_PORT=$HTTP_PORT
 HTTPS_PORT=$HTTPS_PORT
+DOCKER_SUBNET=${SMOKE_SUBNET:-172.30.71.0/24}
+PROXY_IP=${SMOKE_PROXY_IP:-172.30.71.10}
 SECRET_KEY=$(secret)
 POSTGRES_PASSWORD=$(secret)
 APP_DB_PASSWORD=$(secret)
@@ -81,10 +85,37 @@ sys.exit(0 if data.get("status") == "ok" and data.get("checks") == expected else
 PY
     then
         echo "$body"
-        echo "==> Smoke test passed: /ready reports 4 x ok"
-        exit 0
+        echo "==> /ready reports 4 x ok"
+        ready=1
+        break
     fi
     sleep 2
 done
-echo "Last /ready answer: ${body:-<none>}"
-exit 1
+if [ "${ready:-0}" != "1" ]; then
+    echo "Last /ready answer: ${body:-<none>}"
+    exit 1
+fi
+
+echo "==> Login through the proxy"
+BASE="https://localhost:$HTTPS_PORT"
+ADMIN_PASSWORD="$(secret)"
+JAR="$(mktemp)"
+printf '%s\n' "$ADMIN_PASSWORD" | compose exec -T app baza-wiedzy create-admin smoke-admin --password-stdin
+token() { curl -sk -c "$JAR" -b "$JAR" "$BASE$1" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -n 1; }
+status() { curl -sk -o /dev/null -w '%{http_code}' -c "$JAR" -b "$JAR" "$@"; }
+expect() {  # expect <label> <wanted> <got>
+    if [ "$3" != "$2" ]; then echo "FAILED: $1: expected HTTP $2, got $3"; rm -f "$JAR"; exit 1; fi
+    echo "    $1: HTTP $3"
+}
+expect "admin panel without a session" 303 "$(status "$BASE/admin/users")"
+expect "wrong password" 401 "$(status -X POST "$BASE/login" --data-urlencode username=smoke-admin \
+    --data-urlencode password=wrong-password --data-urlencode "csrf_token=$(token /login)")"
+expect "login" 303 "$(status -X POST "$BASE/login" --data-urlencode username=smoke-admin \
+    --data-urlencode "password=$ADMIN_PASSWORD" --data-urlencode "csrf_token=$(token /login)")"
+expect "admin panel" 200 "$(status "$BASE/admin/users")"
+expect "audit log" 200 "$(status "$BASE/admin/audit")"
+expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
+expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
+rm -f "$JAR"
+echo "==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work"
+exit 0

@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -30,14 +30,14 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Docker Compose: proxy, app, worker, db, redis (+ opcjonalny profil ClamAV)
 - [x] Własny obraz Postgresa ze słownikiem Hunspell dla polskiego; wynik spike'a opisany w `search.md`
 - [x] Baza Alembica, `/health` i `/ready`
-- [x] CI (lint, typy, testy, docs-check, budowanie obrazów, test dymny); workflow wydania przygotowany, jeszcze nieuruchamiany. Zweryfikowane lokalnie tymi samymi celami make; pierwszy przebieg na GitHubie nastąpi przy pierwszym pushu
+- [x] CI (lint, typy, testy, docs-check, budowanie obrazów, test dymny); workflow wydania użyty dla v0.1.0
 - [x] `scripts/check_docs.py`
 
 ### Faza 1 — Użytkownicy i uprawnienia
-- [ ] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania
-- [ ] Logowanie przez Active Directory, mapowanie grup na role
-- [ ] Role i katalog uprawnień, panel admina dla użytkowników i ról
-- [ ] Log audytowy i jego przeglądarka
+- [x] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania
+- [x] Logowanie przez Active Directory, mapowanie grup na role
+- [x] Role i katalog uprawnień, panel admina dla użytkowników i ról
+- [x] Log audytowy i jego przeglądarka
 
 ### Faza 2 — Upload i przetwarzanie
 - [ ] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
@@ -70,3 +70,4 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Przegląd bezpieczeństwa względem sekcji 8 pliku `CLAUDE.md`
 - [ ] Test odbiorczy na prawdziwych dokumentach (w tym skany i maile)
 - [ ] Instrukcja dla czytelników i publikujących
+- [ ] Rozdzielenie ról bazy (właściciel schematu do migracji vs rola aplikacji bez praw właściciela) i `REVOKE UPDATE, DELETE, TRUNCATE` na `audit_log`

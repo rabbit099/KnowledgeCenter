@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
@@ -20,6 +20,7 @@ Everything an operator needs: installing, configuring, updating, rolling back, b
 ├── .env                 # configuration and secrets (chmod 600)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem and key.pem, only with TLS_MODE=files
+├── secrets/ldap/        # ca.pem and bind_password for Active Directory (owner 10001, mode 400)
 ├── logs/                # update.log, backup.log
 └── backups/             # created by backup.sh
 ```
@@ -33,12 +34,15 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | Variable | Meaning |
 |---|---|
 | `APP_NAME` | Display name (default "Baza Wiedzy") |
-| `APP_VERSION` | Image tag to run, for example `1.0.0` |
+| `APP_VERSION` | Tag of the project images to run, for example `0.1.0` (required by `docker-compose.yml`). It only selects images: the application reports its own version from the installed package (`version` in `pyproject.toml`), shown on `/health`, `/ready` and in the page footer |
 | `LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR`; logs are JSON lines (see Monitoring) |
 | `ENABLED_MODULES` | Optional modules to run, comma-separated (default `documents,ingestion,search`); the core is always on |
 | `PUBLIC_HOSTNAME` | DNS name used by Caddy |
 | `TLS_MODE` | `internal`, `files` or `acme` |
-| `SECRET_KEY` | Signing key for sessions/CSRF |
+| `SECRET_KEY` | Signs CSRF tokens; at least 32 characters, the application refuses to start otherwise. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_HOURS` | Session idle limit (120) and absolute lifetime (12) |
+| `LOGIN_WINDOW_MINUTES`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_FAILURES_ACCOUNT`, `LOGIN_MAX_FAILURES_ACCOUNT_IP`, `LOGIN_MAX_FAILURES_IP` | Failed-login limits ([auth-and-permissions.md](auth-and-permissions.md)) |
+| `DOCKER_SUBNET`, `PROXY_IP` | Fixed Docker network of the stack (default `172.30.70.0/24`) and the proxy's address inside it (`172.30.70.10`); the app trusts `X-Forwarded-For` only from `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Host ports of the proxy (default 80, 443) |
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy |
@@ -49,11 +53,13 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `WORKER_PROCESSES` | Worker processes (default 2; one thread and one database connection each; not more than CPU cores) |
 | `REDIS_PASSWORD` | Password required by Redis (`requirepass`); URL-safe characters only. `REDIS_URL` is built from it in `docker-compose.yml` |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
-| `LDAP_*` | See [auth-and-permissions.md](auth-and-permissions.md) |
+| `LDAP_*` | Active Directory login, off by default (`LDAP_ENABLED=false`). `./secrets/ldap/` is mounted read-only at `/run/secrets/ldap/` in `app` for the CA certificate and the service-account password file. Details, normalization of names and the test procedure for a real AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-over-tls) |
 
 `ENABLED_MODULES` must have the same value for `app` and `worker` (both read the same `.env`). At startup the application checks module dependencies and refuses to start with a message such as `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` applies the migrations of the core and of **every** module, independent of `ENABLED_MODULES`: the schema is always complete, so enabling a module later needs no migration step and `/ready` compares the database with all migration heads. Disabling a module does not delete its tables or data.
 
 Database user and privileges: the application and `baza-wiedzy migrate` connect as one database user that is **not** a superuser but **owns the application database**. That is enough for everything the migrations do: `CREATE EXTENSION pg_trgm` and `CREATE EXTENSION unaccent` (both are "trusted" extensions in PostgreSQL 13+, so the database owner may create them; the extension files are already in the `db` image), and `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (need `CREATE` on schema `public`, which the database owner has in PostgreSQL 15+). If the database is created by someone else, grant: `GRANT CREATE ON DATABASE <db> TO <user>; GRANT CREATE ON SCHEMA public TO <user>;`. `make test-db` runs the search objects as such a non-superuser, so a regression shows up in tests. On the first start of an empty `pgdata` volume, the `db` image creates this user and database from `APP_DB_USER`, `APP_DB_PASSWORD` and `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Changing these variables later does **not** change an existing database; change the password with `ALTER ROLE` as `postgres` and update `.env` at the same time.
+
+**Network collisions:** the stack uses the fixed subnet `DOCKER_SUBNET` (default `172.30.70.0/24`). If the company network or a VPN route uses the same range, hosts in it become unreachable from the server (traffic goes to the Docker bridge instead), and `docker compose up` may fail with `Pool overlaps with other one on this address space`. Before the first installation check with the network administrator, and compare with `ip route` on the server. To change it, set both `DOCKER_SUBNET` and `PROXY_IP` (inside the new subnet) in `.env`, then `docker compose down && docker compose up -d` (the network is recreated; volumes are kept).
 
 ### Database connections and memory
 
@@ -70,20 +76,20 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 2. Log in to the registry. GHCR packages are **private by default**, so the server needs a token: create a GitHub personal access token (classic) with only the `read:packages` scope, ideally for a dedicated account with read access to the repository, then on the server: `echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin` (expected: `Login Succeeded`; the credentials are stored in `~/.docker/config.json` of the user running Docker, protect that file). Without it `docker compose pull` fails with `denied` or `unauthorized`. Renew the token before it expires; the same applies to the machine that builds the offline bundle.
 3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull && docker compose up -d`. All four project images (`app`, `worker`, `db`, `proxy`) come from GHCR; nothing is built on the server.
 4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
-5. Create the first admin: `docker compose exec app baza-wiedzy create-admin <username>`.
+5. Create the first admin: `docker compose exec app baza-wiedzy create-admin bw-admin` (asks for the password twice; 14-256 characters), then log in at `https://<PUBLIC_HOSTNAME>/login`.
 6. Check `https://<PUBLIC_HOSTNAME>/ready` returns OK.
 7. Log in as the admin, configure AD group mapping, test an AD login.
 8. Schedule backups (see below).
 
 ## Releases
 
-- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`.
+- Versioning: SemVer. A Git tag `vX.Y.Z` on `main` triggers `.github/workflows/release.yml`. First release: `v0.1.0` (2026-11-12).
 - Before tagging: set `version = "X.Y.Z"` in `pyproject.toml` (the application reads its version from there), move `[Unreleased]` in both changelogs under `## [X.Y.Z] - YYYY-MM-DD`, add a new empty `[Unreleased]`, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Check locally first: `uv run python scripts/check_release.py vX.Y.Z` must print `Release vX.Y.Z matches pyproject.toml and both changelogs.`
-- The workflow (1) refuses the release if the tag differs from `pyproject.toml` or a changelog has no `## [X.Y.Z]` section, (2) runs the complete CI (including the smoke test), (3) builds and pushes four images for `linux/amd64`: `ghcr.io/<owner>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, all tagged `X.Y.Z` (no `latest`). Each image carries the labels `org.opencontainers.image.version`, `.revision` (the commit SHA), `.source` and `.created`. The run summary lists every image with its digest; record them in the release notes.
+- The workflow (1) refuses the release if the tagged commit is not on `main` (`git merge-base --is-ancestor`; tag the commit of `main` after the release PR is merged, not a commit of a feature branch), if the tag differs from `pyproject.toml` or if a changelog has no `## [X.Y.Z]` section, (2) runs the complete CI (including the smoke test), (3) builds and pushes four images for `linux/amd64`: `ghcr.io/<owner>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, all tagged `X.Y.Z` (no `latest`). Each image carries the labels `org.opencontainers.image.version`, `.revision` (the commit SHA), `.source` and `.created`. The run summary lists every image with its digest; record them in the release notes.
 - Check what a server runs: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>`.
 - Workflow security: actions are pinned to commit SHAs; the default token is read-only (`contents: read`), only the publish job of `release.yml` gets `packages: write`; CI uses no secrets, so pull requests from forks have nothing to leak.
 
-CI (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs three jobs: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL from the project image and Redis) and `images` (`make smoke`: builds the four images for `linux/amd64`, starts `docker-compose.yml`, migrates and requires `/ready` to report 4 × `ok`). Run the same locally before pushing.
+CI (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs three jobs: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL from the project image and Redis) and `images` (`make smoke`: builds the four images for `linux/amd64`, starts `docker-compose.yml`, migrates, requires `/ready` to report 4 × `ok`, then creates a break-glass admin and checks through the proxy: wrong password 401, login, admin panel and audit log 200, logout). Run the same locally before pushing.
 
 ## Updating
 
@@ -213,7 +219,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
-| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, removes everything. Expected end: `==> Smoke test passed: /ready reports 4 x ok` (about 1 minute with cached layers) |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (about 1 minute with cached layers) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
@@ -227,11 +233,12 @@ If `make` is not available, run the same tools through `uv run`, for example `uv
 
 Known warnings (harmless, tracked for the monthly dependency review):
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 announces a change of the HTTP client used by FastAPI's `TestClient`. Tests are not affected; revisit when FastAPI/Starlette document the replacement.
+- `pytest`: `DeprecationWarning: tagMap is deprecated` / `typeMap is deprecated` from `ldap3/utils/asn1.py`: ldap3 2.9.1 uses old names of `pyasn1`. Harmless; revisit when ldap3 publishes a fix.
 - `make up`: Caddy logs `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (for the port-80 redirect server) and `stapling OCSP` (internal certificate). All expected.
 
 Dependencies: versions are pinned in `uv.lock` and only releases older than `exclude-newer` (in `pyproject.toml`) are resolved. Upgrades happen in the monthly dependency review or, for security fixes, as an exception; the procedure is in ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) opens monthly pull requests for GitHub Actions SHAs, Dockerfile base images and the images in `docker-compose.yml` (only releases older than 14 days), and security pull requests for Python packages.
 
-Local stack: `cp .env.example .env` once (the defaults are fine for development), then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. On a machine with little memory (for example WSL2, which by default gets half of the host RAM) lower the limits in your development `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; check the memory available to Docker with `docker info --format '{{.MemTotal}}'`. The defaults are sized for the server. After the first `make up` run `make migrate`; then `curl -k https://localhost/ready` returns `"status":"ok"` with all four checks `ok`. In development `app` and `worker` give up after 3 failed starts (`restart: on-failure:3`) instead of restarting forever; `make logs` shows why. The web server reloads on code changes; the worker does not: after changing task code run `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
+Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated value (the application refuses the placeholder); the other defaults are fine for development. Then `make build` and `make up`. `make up` builds the images locally (`docker-compose.dev.yml`), mounts `src/` into `app` and `worker` and reloads the web server on change. Open `https://localhost`: the certificate comes from Caddy's internal CA, so the **browser shows a certificate warning**; accept it for `localhost` (or import the root certificate: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). From the command line use `curl -k https://localhost/`. `http://localhost` answers `301` to `https://localhost/`. On a machine with little memory (for example WSL2, which by default gets half of the host RAM) lower the limits in your development `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; check the memory available to Docker with `docker info --format '{{.MemTotal}}'`. The defaults are sized for the server. After the first `make up` run `make migrate`; then `curl -k https://localhost/ready` returns `"status":"ok"` with all four checks `ok`. Create a local admin with `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` and log in at `https://localhost/login`. In development `app` and `worker` give up after 3 failed starts (`restart: on-failure:3`) instead of restarting forever; `make logs` shows why. The web server reloads on code changes; the worker does not: after changing task code run `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
 
 ## Troubleshooting
 
@@ -239,11 +246,17 @@ Local stack: `cp .env.example .env` once (the defaults are fine for development)
 |---|---|---|
 | Uploaded files stay `pending` | Worker or Redis down | `docker compose ps`, `docker compose logs worker redis` |
 | `failed` with timeout on a scan | Very large or poor-quality scan | Increase `OCR_TIMEOUT_SECONDS`, rescan, reprocess |
-| AD login fails for everyone | LDAPS certificate, bind account, DNS | `docker compose logs app`, check `LDAP_CA_FILE`, test with `ldapsearch` |
+| AD users see "Logowanie kontem firmowym jest chwilowo niedostępne" | Domain controllers unreachable, certificate problem or service account refused (audit `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; for `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` and the host name in `LDAP_URI`. The break-glass admin still works |
+| `app` exits with `Active Directory configuration: ...` | `LDAP_ENABLED=true` with an incomplete configuration (missing CA file, `ldap://` URI, empty bind DN) | Fix the variable named in the message, or set `LDAP_ENABLED=false` |
+| One AD user cannot log in, others can | Wrong password, account disabled or expired in AD, name taken by a local account, name outside `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <name> --password`; audit `auth.login_failed` `reason`; `docker compose logs app` for `AD login refused` |
 | Inflected words are not found | Dictionary not loaded or index not rebuilt | `SELECT ts_lexize('pl_hunspell','faktury');`, run `reindex-search` |
 | `/ready` fails after update | Migration not applied | `docker compose run --rm app baza-wiedzy migrate`, then see `update.log` |
 | Disk full | Backups or derived files | Check `backups/`, retention settings |
 | `could not open dictionary file ".../pl_pl.dict"` | The database runs a plain `postgres` image instead of the project's `db` image | `docker compose images db`; rebuild or pull the `db` image |
+| `app` exits with `SECRET_KEY is missing or too weak` | `SECRET_KEY` shorter than 32 characters or a placeholder | Generate a key (see Configuration), put it in `.env`, `docker compose up -d app` |
+| "Zbyt wiele nieudanych prób" (HTTP 429) on login | Failed-login lock for the name and/or address | Wait `LOGIN_LOCKOUT_MINUTES`, or `docker compose exec app baza-wiedzy unlock-login --user <name>` / `--ip <address>` |
+| `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` collides with another Docker network or route | Choose another `DOCKER_SUBNET` and `PROXY_IP` (Configuration) |
+| 403 "Żądanie odrzucone (brak lub błędny token CSRF)" | Page open for a long time across a `SECRET_KEY` change or a new session, or a blocked cross-site request | Reload the page and repeat the action |
 | Application refuses to start: `module ... requires ...` | `ENABLED_MODULES` lists a module without one it depends on | Add the required module to `ENABLED_MODULES` in `.env`, or remove the dependent one |
 
 ## Security notes for operators

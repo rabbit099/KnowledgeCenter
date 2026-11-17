@@ -1,6 +1,6 @@
 # Decisions, assumptions and open questions
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.2.0 · Last reviewed: 2026-11-17
 
 Decision log (ADR). New decisions are appended; an old decision is never rewritten, only superseded by a new entry.
 
@@ -70,6 +70,9 @@ Status: accepted. Nothing outside the stack in `CLAUDE.md` section 3 without an 
 - Phase 0, stage B6: `dramatiq[redis]` (job queue from the stack; the `redis` extra pulls the Redis client already listed).
 - Phase 0, stage B7 (CI, not Python packages): GitHub Actions `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.2, `docker/setup-buildx-action` v4.4.1, `docker/login-action` v4.7.0, `docker/build-push-action` v7.4.0, each pinned to its commit SHA (older than `exclude-newer`); workflows were checked with `actionlint` and the shell scripts with `shellcheck` (both run from their Docker images, not installed in the project).
 - Dependabot (`.github/dependabot.yml`), consistent with the rules above: `github-actions` (updates the pinned commit SHAs together with the version comment), `docker` (base images in `docker/*/Dockerfile`) and `docker-compose` (`redis`, `clamav` tag and digest), all monthly, grouped, with a 14-day `cooldown` that mirrors `exclude-newer`. For Python (`uv`) routine version pull requests are switched off (`open-pull-requests-limit: 0`): `exclude-newer` would block them and versions move in the monthly review; Dependabot security updates (enable "Dependabot alerts" and "Dependabot security updates" in the repository settings) still open pull requests, handled with the security-fix exception (`exclude-newer-package`). Every Dependabot pull request runs the full CI; none is merged without it. The monthly review starts by merging or closing the open Dependabot pull requests. Dependabot does not track the Debian package `hunspell-pl`; the review checks it by hand.
+- Phase 1: `argon2-cffi` (Argon2id hashing of the local break-glass password, required by `CLAUDE.md` section 3; maintained reference binding of the winner of the Password Hashing Competition).
+- Phase 1: `python-multipart` (parsing of HTML form posts by Starlette/FastAPI, needed for the login form; earlier postponed to Phase 2).
+- Phase 1: `ldap3` (Active Directory over LDAPS, from the stack in `CLAUDE.md` section 3; pure Python, includes the `MOCK_SYNC` strategy used by the tests). It has no type information: mypy ignores its imports, and its use is confined to `core/auth/ldap.py`.
 
 Each version is pinned by `uv.lock`. Later phases add their own entries (for example `argon2-cffi`, `ldap3`, `pypdfium2`, `python-docx`, `extract-msg`, `charset-normalizer`, `lingua-language-detector`, `python-magic`) as they are introduced.
 
@@ -82,17 +85,24 @@ Modifications: ISO-8859-2 → UTF-8, `SET UTF-8`, renamed to `pl_pl.affix` / `pl
 ### ADR-017 — Four images: app, worker, db, proxy (supersedes ADR-010)
 Status: accepted. The proxy needs its own image: the official Caddy image cannot run as a non-root user with writable certificate storage (`/data` belongs to root) and its binary carries a file capability that `cap_drop: ALL` refuses to execute. `docker/caddy/Dockerfile` adds a `caddy` user, owns `/data` and `/config`, drops the file capability and listens on 8080/8443. Building it on the server (first approach in Phase 0 B3) would need Docker Hub access and break the offline procedure, so the release workflow publishes it like the others: `baza-wiedzy-{app,worker,db,proxy}:X.Y.Z` in GHCR, `linux/amd64`, labelled with version and commit SHA. Third-party images that are not rebuilt (`redis`, optional `clamav`) are pinned by tag and digest in `docker-compose.yml`. Consequences: the server needs no build tooling and no source; the offline bundle (`scripts/offline_bundle.sh`) is generated from `docker-compose.yml` and contains all six images; every base-image update of Caddy goes through a release.
 
+### ADR-018 — Sessions, CSRF and login limits
+Status: accepted. Implements ADR-007 for Phase 1. (1) Session token: 256 random bits in the cookie `__Host-bw_session`, only its SHA-256 in `sessions`; a new session at every login (fixation). (2) CSRF: stateless synchronizer token `HMAC-SHA256(SECRET_KEY, session or pre-session cookie)`, checked by an ASGI middleware for every unsafe method, from the header `X-CSRF-Token` (HTMX) or the form field; plus an `Origin`/`Sec-Fetch-Site` check. No extra table and no extra dependency; uploads must use the header because the middleware reads form bodies only up to 64 KB. (3) Failed-login limits in Redis (fixed window, self-expiring locks) for name, name + address and address, with a high per-name threshold so nobody can lock out a colleague from another address; fail-open when Redis is down, so the break-glass admin is never locked out by an outage. (4) Client address from `X-Forwarded-For` only from the proxy's fixed address in a fixed Docker subnet (`DOCKER_SUBNET`, `PROXY_IP`). (5) CSP and other security headers are set by the application (testable, also correct without the proxy); Caddy adds HSTS. Alternatives: double-submit cookie CSRF (weaker binding), per-session token column (extra writes), limits in PostgreSQL (extra writes on every failure), trusting all addresses on the internal network (spoofable by any container).
+
+### ADR-019 — Active Directory login details
+Status: accepted. Implements ADR-008. LDAPS only (`ldap://` and StartTLS are refused) with certificate verification always on against `LDAP_CA_FILE` and host-name check, TLS 1.2+, no referrals, explicit connect/receive timeouts, several domain controllers tried in order. Blank passwords are refused before any bind (anonymous-bind risk). Identity is `objectGUID`; names are normalized per `LDAP_LOGIN_ATTRIBUTE` so that `FIRMA\jan`, `jan@firma.local` and `jan` are one account and share login limits. Groups come from a paged search on group objects (`member=` or `LDAP_MATCHING_RULE_IN_CHAIN` when `LDAP_NESTED_GROUPS=true`), not from `memberOf`, so large and nested memberships work. A local account name is never taken over by AD. When AD cannot be asked, AD users get "temporarily unavailable" (no lockout counting) and the local break-glass admin keeps working. Tests use ldap3 `MOCK_SYNC`; nested groups and real certificates are covered by a documented manual test (`auth-and-permissions.md`) supported by `baza-wiedzy ad-check`. Assumption (confirmed 2026-11-13): **the company has one AD domain**. The domain part of `FIRMA\jan` is therefore removed and not checked, and users of other (trusted) domains are not supported; a second domain would need a new decision (per-domain base DN and service account). Alternatives: `memberOf` attribute (no nesting, range retrieval for big groups), Kerberos/SSO (out of scope), a containerised test directory such as Samba AD (heavy, still not the company's AD).
+
 ## Assumptions
 
 - "On start about 200" (answer to the question about expected size) is read as roughly 200 documents. Design target is 20,000 documents and 100 users until confirmed.
 - Server sizing is not known; resource limits are configurable.
 - UI is Polish only; strings go through gettext catalogs.
 - Only Polish and English documents are expected.
+- One Active Directory domain (confirmed 2026-11-13; ADR-019).
 
 ## Open questions
 
 1. ~~Can a Publisher publish documents uploaded by others?~~ Decided 2026-11-12: no. The Publisher role publishes only its own documents; `documents.publish_any` is not part of Publisher (an admin can grant it through a custom role).
-2. Retention: how long are archived documents and audit entries kept (GDPR/RODO)?
+2. Retention (GDPR/RODO): how long are archived documents and audit entries kept? Proposal to confirm with the legal department / data protection officer (IOD): audit log **24 months**, deleted afterwards by a maintenance command in Phase 6; sessions and login counters already expire (hours/minutes). Personal data processed so far and who can access it: [auth-and-permissions.md](auth-and-permissions.md#gdprrodo). Retention of archived documents: to be decided with the document phases.
 3. TLS certificate: internal CA or Let's Encrypt? Working assumption (2026-11-12): internal company CA (`TLS_MODE=files`, or `internal` for tests); Let's Encrypt (`acme`) stays a supported variant. To be confirmed with the domain administrator.
 4. Backup destination (NAS, second server, object storage) and monitoring integration.
 5. ~~Should Readers also see archived documents?~~ Decided 2026-11-12: no. Readers see only published documents.

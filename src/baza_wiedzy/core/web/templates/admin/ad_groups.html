@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import role_label, error_box, done_box, csrf %}
+{% block admin %}
+<h1>{{ _("AD groups") }}</h1>
+<p>{{ _("Members of a mapped Active Directory group get the role at every login. Roles from groups are recalculated at each login; roles given in the application are kept.") }}</p>
+{{ error_box(error) }}{{ done_box(done) }}
+<form method="post" action="/admin/ad-groups" class="stack">
+  {{ csrf() }}
+  <label>{{ _("Group DN") }} <input type="text" name="dn" value="{{ values.dn or '' }}" required maxlength="1024" placeholder="CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"></label>
+  <label>{{ _("Role") }}
+    <select name="role_id" required>
+      {% for role in all_roles %}
+      <option value="{{ role.id }}"{% if values.role_id == role.id|string %} selected{% endif %}>{{ role_label(role) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if ad_enabled %}
+  <label class="check"><input type="checkbox" name="verify" value="yes"{% if values.verify == "yes" %} checked{% endif %}> {{ _("Check that the group exists in Active Directory") }}</label>
+  {% endif %}
+  {% if needs_admin_confirmation %}
+  <p class="fail">{{ _("Warning: every member of this group will become an administrator with all permissions.") }}</p>
+  <label class="check"><input type="checkbox" name="confirm_admin" value="yes" required> {{ _("I confirm: members of this group get the Admin role.") }}</label>
+  {% endif %}
+  <button type="submit">{{ _("Add the mapping") }}</button>
+</form>
+<h2>{{ _("Mappings") }}</h2>
+<form method="get" action="/admin/ad-groups" class="filters" hx-get="/admin/ad-groups" hx-target="#groups-table" hx-push-url="true" hx-trigger="input changed delay:300ms from:input[name=q], submit">
+  <label>{{ _("Search") }} <input type="search" name="q" value="{{ filters.q }}" maxlength="100"></label>
+  <button type="submit">{{ _("Filter") }}</button>
+</form>
+<div id="groups-table">{% include "admin/_ad_groups_table.html" %}</div>
+{% endblock %}

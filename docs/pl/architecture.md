@@ -1,6 +1,6 @@
 # Architektura
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 ## Przegląd
 
@@ -49,7 +49,7 @@ Zasady (egzekwowane w CI przez import-linter, zobacz ADR-014):
 - Moduł nigdy nie importuje wnętrza innego modułu. Może importować `baza_wiedzy.core` oraz `services/api.py` modułu, którego wymaga. Wszystko inne idzie przez zdarzenia.
 - Zdarzenia są synchroniczne i działają w obrębie procesu: handler wykonuje się w procesie, który publikuje zdarzenie. Dlatego `worker` ładuje także `search` i indeksuje wyciągnięty tekst wewnątrz workera; w `app` handler `ingestion` tylko kolejkuje zadanie.
 - Przy starcie rejestr sprawdza `requires` i zatrzymuje się z czytelnym komunikatem, gdy wymagany moduł nie jest włączony.
-- Uprawnienia, pozycje menu, routery, zadania w tle, polecenia CLI i gałęzie migracji są zbierane z manifestów modułów (`module.py`).
+- Uprawnienia, pozycje menu, routery, zadania w tle, polecenia CLI i gałęzie migracji są zbierane z manifestów modułów (`module.py`). `MenuItem` ma `section` (`main` albo `admin`, nawigacja panelu admina), uprawnienie, które go pokazuje, oraz `available` (false, dopóki jego strony nie istnieją); etykiety i opisy uprawnień są oznaczone `N_()`, żeby `make messages` wyciągnęło je do tłumaczenia.
 - Nie ma wtyczek spoza repozytorium.
 
 Dokumentacja poszczególnych modułów: [documents](modules/documents.md), [ingestion](modules/ingestion.md), [search](modules/search.md).

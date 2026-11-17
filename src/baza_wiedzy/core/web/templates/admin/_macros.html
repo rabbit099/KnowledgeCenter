@@ -1,0 +1,33 @@
+{% macro role_label(role) -%}
+{{ _(role.name) if role.system_key else role.name }}
+{%- endmacro %}
+
+{% macro pagination(result, filters, target) -%}
+{% if result.pages > 1 %}
+<nav class="pagination" aria-label="{{ _('Pages') }}">
+  {% if result.has_prev %}<a href="?{{ dict(filters, page=result.page - 1)|urlencode }}" hx-get="?{{ dict(filters, page=result.page - 1)|urlencode }}" hx-target="{{ target }}" hx-push-url="true">{{ _("Previous") }}</a>{% endif %}
+  <span>{{ _("Page %(page)s of %(pages)s", page=result.page, pages=result.pages) }}</span>
+  {% if result.has_next %}<a href="?{{ dict(filters, page=result.page + 1)|urlencode }}" hx-get="?{{ dict(filters, page=result.page + 1)|urlencode }}" hx-target="{{ target }}" hx-push-url="true">{{ _("Next") }}</a>{% endif %}
+</nav>
+{% endif %}
+<p class="muted">{{ _("Results: %(total)s", total=result.total) }}</p>
+{%- endmacro %}
+
+{% macro error_box(error) -%}
+{% if error %}<p class="fail" role="alert">{{ _(error.message) }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro done_box(done) -%}
+{% set messages = {
+  "created": _("Created."), "saved": _("Saved."), "deleted": _("Deleted."),
+  "activated": _("The account was activated."),
+  "deactivated": _("The account was deactivated and its sessions were revoked."),
+  "sessions": _("All sessions of the user were revoked."),
+  "mapped_found": _("Mapping saved; the group exists in Active Directory."),
+  "mapped_not_checked": _("Mapping saved without checking Active Directory."),
+  "mapped_unavailable": _("Mapping saved; Active Directory could not be asked, the group was not checked."),
+} %}
+{% if done in messages %}<p class="ok" role="status">{{ messages[done] }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro csrf() -%}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{%- endmacro %}

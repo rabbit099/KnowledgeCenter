@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import role_label, error_box, done_box, csrf %}
+{% block admin %}
+<h1>{% if role %}{{ _("Role") }}: {{ role_label(role) }}{% else %}{{ _("New role") }}{% endif %}</h1>
+{{ error_box(error) }}{{ done_box(done) }}
+<form method="post" action="{{ '/admin/roles/' ~ role.id if role else '/admin/roles' }}" class="stack">
+  {{ csrf() }}
+  {% if role and role.system_key %}
+  <p class="muted">{{ _("System role: it cannot be renamed or deleted.") }}</p>
+  <input type="hidden" name="name" value="{{ role.name }}">
+  {% else %}
+  <label>{{ _("Name") }} <input type="text" name="name" value="{{ values.name }}" required maxlength="64"></label>
+  {% endif %}
+  <label>{{ _("Description") }} <input type="text" name="description" value="{{ values.description }}" maxlength="1000"></label>
+  <fieldset>
+    <legend>{{ _("Permissions") }}</legend>
+    {% if is_admin_role %}
+    <p>{{ _("The Admin role always has all permissions, including those of modules added later. It cannot be changed.") }}</p>
+    {% endif %}
+    <table class="grid matrix">
+      <thead><tr><th>{{ _("Module") }}</th><th>{{ _("Permission") }}</th><th>{{ _("Allowed") }}</th></tr></thead>
+      <tbody>
+      {% for module, permissions in catalog %}
+        {% for p in permissions %}
+        <tr>
+          <td>{{ module }}</td>
+          <td><code>{{ p.code }}</code> {{ _(p.description) }}</td>
+          <td><input type="checkbox" name="codes" value="{{ p.code }}" aria-label="{{ p.code }}"{% if is_admin_role or p.code in codes %} checked{% endif %}{% if is_admin_role %} disabled{% endif %}></td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+  <button type="submit">{{ _("Save") }}</button>
+</form>
+{% if role and not role.system_key %}
+<p><a href="/admin/roles/{{ role.id }}/delete">{{ _("Delete this role") }}</a></p>
+{% endif %}
+<p><a href="/admin/roles">{{ _("Back to the list") }}</a></p>
+{% endblock %}

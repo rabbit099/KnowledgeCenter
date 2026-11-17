@@ -1,0 +1,19 @@
+{% from "admin/_macros.html" import role_label, pagination %}
+<table class="grid">
+  <thead><tr><th>{{ _("User name") }}</th><th>{{ _("Name") }}</th><th>{{ _("Source") }}</th><th>{{ _("Status") }}</th><th>{{ _("Roles") }}</th><th>{{ _("Last login") }}</th></tr></thead>
+  <tbody>
+  {% for u in result.items %}
+    <tr>
+      <td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a></td>
+      <td>{{ u.display_name or "" }}</td>
+      <td>{{ "Active Directory" if u.source == "ad" else _("local") }}</td>
+      <td>{{ _("active") if u.is_active else _("inactive") }}</td>
+      <td>{% for role, source in roles_of.get(u.id, []) %}{{ role_label(role) }}{% if source == "ad" %} (AD){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td>{{ u.last_login_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") if u.last_login_at else "–" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">{{ _("No users match the filter.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(result, filters, "#users-table") }}

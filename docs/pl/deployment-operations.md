@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.2.0 · Ostatnia aktualizacja: 2026-11-17
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -20,6 +20,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 ├── .env                 # konfiguracja i sekrety (chmod 600)
 ├── scripts/             # update.sh, rollback.sh, backup.sh, restore.sh
 ├── secrets/tls/         # cert.pem i key.pem, tylko przy TLS_MODE=files
+├── secrets/ldap/        # ca.pem i bind_password dla Active Directory (właściciel 10001, tryb 400)
 ├── logs/                # update.log, backup.log
 └── backups/             # tworzone przez backup.sh
 ```
@@ -33,12 +34,15 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | Zmienna | Znaczenie |
 |---|---|
 | `APP_NAME` | Wyświetlana nazwa (domyślnie „Baza Wiedzy”) |
-| `APP_VERSION` | Tag obrazu do uruchomienia, na przykład `1.0.0` |
+| `APP_VERSION` | Tag obrazów projektu do uruchomienia, na przykład `0.1.0` (wymagany przez `docker-compose.yml`). Wybiera wyłącznie obrazy: aplikacja podaje własną wersję z zainstalowanego pakietu (`version` w `pyproject.toml`), widoczną w `/health`, `/ready` i w stopce strony |
 | `LOG_LEVEL` | `DEBUG`, `INFO` (domyślnie), `WARNING`, `ERROR`; logi to linie JSON (zob. Monitoring) |
 | `ENABLED_MODULES` | Opcjonalne moduły do uruchomienia, oddzielone przecinkami (domyślnie `documents,ingestion,search`); rdzeń jest zawsze włączony |
 | `PUBLIC_HOSTNAME` | Nazwa DNS używana przez Caddy |
 | `TLS_MODE` | `internal`, `files` lub `acme` |
-| `SECRET_KEY` | Klucz podpisujący sesje/CSRF |
+| `SECRET_KEY` | Podpisuje tokeny CSRF; co najmniej 32 znaki, inaczej aplikacja odmawia startu. Generowanie: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SESSION_IDLE_MINUTES`, `SESSION_ABSOLUTE_HOURS` | Limit bezczynności sesji (120) i bezwzględny czas życia (12) |
+| `LOGIN_WINDOW_MINUTES`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_FAILURES_ACCOUNT`, `LOGIN_MAX_FAILURES_ACCOUNT_IP`, `LOGIN_MAX_FAILURES_IP` | Limity nieudanych logowań ([auth-and-permissions.md](auth-and-permissions.md)) |
+| `DOCKER_SUBNET`, `PROXY_IP` | Stała sieć Dockera stosu (domyślnie `172.30.70.0/24`) i adres proxy w niej (`172.30.70.10`); aplikacja ufa `X-Forwarded-For` tylko od `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy |
@@ -49,11 +53,13 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU) |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
-| `LDAP_*` | Zobacz [auth-and-permissions.md](auth-and-permissions.md) |
+| `LDAP_*` | Logowanie przez Active Directory, domyślnie wyłączone (`LDAP_ENABLED=false`). `./secrets/ldap/` jest montowany tylko do odczytu w `/run/secrets/ldap/` w `app` dla certyfikatu CA i pliku z hasłem konta serwisowego. Szczegóły, normalizacja nazw i procedura testu na prawdziwym AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-przez-tls) |
 
 `ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
 Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach. Przy pierwszym starcie z pustym wolumenem `pgdata` obraz `db` tworzy tego użytkownika i bazę z `APP_DB_USER`, `APP_DB_PASSWORD` i `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Późniejsza zmiana tych zmiennych **nie** zmienia istniejącej bazy; hasło zmień przez `ALTER ROLE` jako `postgres` i jednocześnie zaktualizuj `.env`.
+
+**Kolizje sieci:** stos używa stałej podsieci `DOCKER_SUBNET` (domyślnie `172.30.70.0/24`). Jeśli sieć firmowa albo trasa VPN używa tego samego zakresu, hosty z niej staną się nieosiągalne z serwera (ruch trafi do mostka Dockera), a `docker compose up` może zakończyć się błędem `Pool overlaps with other one on this address space`. Przed pierwszą instalacją sprawdź to z administratorem sieci i porównaj z `ip route` na serwerze. Aby zmienić, ustaw w `.env` zarówno `DOCKER_SUBNET`, jak i `PROXY_IP` (w nowej podsieci), potem `docker compose down && docker compose up -d` (sieć jest tworzona od nowa; wolumeny zostają).
 
 ### Połączenia z bazą i pamięć
 
@@ -70,20 +76,20 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 2. Zaloguj się do rejestru. Pakiety GHCR są **domyślnie prywatne**, więc serwer potrzebuje tokenu: utwórz osobisty token dostępu GitHub (classic) wyłącznie z zakresem `read:packages`, najlepiej dla osobnego konta z prawem odczytu repozytorium, a potem na serwerze: `echo "<token>" | docker login ghcr.io -u <użytkownik-github> --password-stdin` (oczekiwane: `Login Succeeded`; dane logowania trafiają do `~/.docker/config.json` użytkownika uruchamiającego Dockera, chroń ten plik). Bez tego `docker compose pull` kończy się błędem `denied` albo `unauthorized`. Odnów token przed wygaśnięciem; to samo dotyczy maszyny budującej pakiet offline.
 3. Ustaw `APP_VERSION` i `IMAGE_PREFIX`, potem uruchom: `docker compose pull && docker compose up -d`. Wszystkie cztery obrazy projektu (`app`, `worker`, `db`, `proxy`) pochodzą z GHCR; nic nie jest budowane na serwerze.
 4. Uruchom migracje: `docker compose run --rm app baza-wiedzy migrate`.
-5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin <username>`.
+5. Utwórz pierwszego admina: `docker compose exec app baza-wiedzy create-admin bw-admin` (dwa razy pyta o hasło; 14–256 znaków), potem zaloguj się na `https://<PUBLIC_HOSTNAME>/login`.
 6. Sprawdź, czy `https://<PUBLIC_HOSTNAME>/ready` zwraca OK.
 7. Zaloguj się jako admin, skonfiguruj mapowanie grup AD, przetestuj logowanie z AD.
 8. Zaplanuj backupy (patrz niżej).
 
 ## Wydania
 
-- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia `.github/workflows/release.yml`.
+- Wersjonowanie: SemVer. Tag Gita `vX.Y.Z` na `main` uruchamia `.github/workflows/release.yml`. Pierwsze wydanie: `v0.1.0` (2026-11-12).
 - Przed otagowaniem: ustaw `version = "X.Y.Z"` w `pyproject.toml` (aplikacja czyta stamtąd swoją wersję), przenieś `[Unreleased]` w obu dziennikach zmian pod `## [X.Y.Z] - RRRR-MM-DD`, dodaj nową pustą sekcję `[Unreleased]`, zatwierdź, potem `git tag vX.Y.Z && git push origin vX.Y.Z`. Najpierw sprawdź lokalnie: `uv run python scripts/check_release.py vX.Y.Z` musi wypisać `Release vX.Y.Z matches pyproject.toml and both changelogs.`
-- Workflow (1) odmawia wydania, jeśli tag różni się od `pyproject.toml` albo dziennik zmian nie ma sekcji `## [X.Y.Z]`, (2) uruchamia pełne CI (łącznie z testem dymnym), (3) buduje i wypycha cztery obrazy dla `linux/amd64`: `ghcr.io/<właściciel>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, wszystkie z tagiem `X.Y.Z` (bez `latest`). Każdy obraz ma etykiety `org.opencontainers.image.version`, `.revision` (SHA commita), `.source` i `.created`. Podsumowanie przebiegu wypisuje każdy obraz z digestem; zapisz je w informacji o wydaniu.
+- Workflow (1) odmawia wydania, jeśli otagowany commit nie należy do `main` (`git merge-base --is-ancestor`; taguj commit `main` po scaleniu PR wydania, a nie commit gałęzi roboczej), jeśli tag różni się od `pyproject.toml` albo jeśli dziennik zmian nie ma sekcji `## [X.Y.Z]`, (2) uruchamia pełne CI (łącznie z testem dymnym), (3) buduje i wypycha cztery obrazy dla `linux/amd64`: `ghcr.io/<właściciel>/baza-wiedzy-app`, `-worker`, `-db`, `-proxy`, wszystkie z tagiem `X.Y.Z` (bez `latest`). Każdy obraz ma etykiety `org.opencontainers.image.version`, `.revision` (SHA commita), `.source` i `.created`. Podsumowanie przebiegu wypisuje każdy obraz z digestem; zapisz je w informacji o wydaniu.
 - Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
 - Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
 
-CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje i wymaga, żeby `/ready` zwrócił 4 × `ok`). Przed pushem uruchom to samo lokalnie.
+CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 4 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
 
 ## Aktualizacja
 
@@ -213,7 +219,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint` | `ruff`, `mypy` i kontrola granic modułów (`lint-imports`) |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready reports 4 x ok` (około minuty przy zbuforowanych warstwach) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (około minuty przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Oczekiwany koniec: `17 passed, 2 skipped` (Faza 0). Pierwsze uruchomienie pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
@@ -227,11 +233,12 @@ Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na p
 
 Znane ostrzeżenia (nieszkodliwe, sprawdzane przy miesięcznym przeglądzie zależności):
 - `pytest`: `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.` Starlette 1.10 zapowiada zmianę klienta HTTP używanego przez `TestClient` FastAPI. Testy nie są dotknięte; wrócimy do tego, gdy FastAPI/Starlette opiszą zamiennik.
+- `pytest`: `DeprecationWarning: tagMap is deprecated` / `typeMap is deprecated` z `ldap3/utils/asn1.py`: ldap3 2.9.1 używa starych nazw z `pyasn1`. Nieszkodliwe; wrócimy do tego, gdy ldap3 wyda poprawkę.
 - `make up`: Caddy loguje `admin endpoint disabled`, `HTTP/2 skipped because it requires TLS` (dla serwera przekierowania na porcie 80) i `stapling OCSP` (certyfikat wewnętrzny). Wszystko oczekiwane.
 
 Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydania starsze niż `exclude-newer` (w `pyproject.toml`). Aktualizacje odbywają się w miesięcznym przeglądzie zależności albo, dla poprawek bezpieczeństwa, jako wyjątek; procedura jest w ADR-015 ([decisions.md](decisions.md)). Dependabot (`.github/dependabot.yml`) co miesiąc otwiera pull requesty dla SHA akcji GitHub, obrazów bazowych w Dockerfile'ach i obrazów w `docker-compose.yml` (tylko wydania starsze niż 14 dni) oraz pull requesty bezpieczeństwa dla paczek Pythona.
 
-Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozwoju), potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
+Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną wartość (aplikacja odrzuca wartość zastępczą); pozostałe wartości domyślne wystarczą do rozwoju. Potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. Utwórz lokalnego admina poleceniem `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` i zaloguj się na `https://localhost/login`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
 
 ## Rozwiązywanie problemów
 
@@ -239,11 +246,17 @@ Lokalny stos: raz `cp .env.example .env` (wartości domyślne wystarczą do rozw
 |---|---|---|
 | Wgrane pliki zostają w `pending` | Worker lub Redis nie działa | `docker compose ps`, `docker compose logs worker redis` |
 | `failed` z timeoutem na skanie | Bardzo duży lub słabej jakości skan | Zwiększ `OCR_TIMEOUT_SECONDS`, zeskanuj ponownie, przetwórz ponownie |
-| Logowanie AD nie działa u nikogo | Certyfikat LDAPS, konto bind, DNS | `docker compose logs app`, sprawdź `LDAP_CA_FILE`, przetestuj `ldapsearch` |
+| Użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne” | Kontrolery domeny nieosiągalne, problem z certyfikatem albo odrzucone konto serwisowe (audyt `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; przy `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` i nazwa hosta w `LDAP_URI`. Admin awaryjny dalej działa |
+| `app` kończy się komunikatem `Active Directory configuration: ...` | `LDAP_ENABLED=true` przy niepełnej konfiguracji (brak pliku CA, adres `ldap://`, pusty bind DN) | Popraw zmienną wskazaną w komunikacie albo ustaw `LDAP_ENABLED=false` |
+| Jeden użytkownik AD nie może się zalogować, inni mogą | Złe hasło, konto wyłączone lub wygasłe w AD, nazwa zajęta przez konto lokalne, nazwa poza `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <nazwa> --password`; audyt `auth.login_failed` `reason`; `docker compose logs app` pod kątem `AD login refused` |
 | Odmienione słowa nie są znajdowane | Słownik niezaładowany lub indeks nieprzebudowany | `SELECT ts_lexize('pl_hunspell','faktury');`, uruchom `reindex-search` |
 | `/ready` nie działa po aktualizacji | Migracja nie została zastosowana | `docker compose run --rm app baza-wiedzy migrate`, potem sprawdź `update.log` |
 | Pełny dysk | Backupy lub pliki pochodne | Sprawdź `backups/`, ustawienia retencji |
 | `could not open dictionary file ".../pl_pl.dict"` | Baza działa na zwykłym obrazie `postgres` zamiast obrazu `db` projektu | `docker compose images db`; przebuduj lub pobierz obraz `db` |
+| `app` kończy się komunikatem `SECRET_KEY is missing or too weak` | `SECRET_KEY` krótszy niż 32 znaki albo wartość zastępcza | Wygeneruj klucz (zob. Konfiguracja), wpisz do `.env`, `docker compose up -d app` |
+| „Zbyt wiele nieudanych prób” (HTTP 429) przy logowaniu | Blokada po nieudanych logowaniach dla nazwy i/lub adresu | Odczekaj `LOGIN_LOCKOUT_MINUTES` albo `docker compose exec app baza-wiedzy unlock-login --user <nazwa>` / `--ip <adres>` |
+| `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` koliduje z inną siecią Dockera albo trasą | Wybierz inne `DOCKER_SUBNET` i `PROXY_IP` (Konfiguracja) |
+| 403 „Żądanie odrzucone (brak lub błędny token CSRF)” | Strona otwarta długo, w międzyczasie zmiana `SECRET_KEY` albo nowa sesja, albo zablokowane żądanie z innej witryny | Odśwież stronę i powtórz czynność |
 | Aplikacja nie startuje: `module ... requires ...` | `ENABLED_MODULES` zawiera moduł bez modułu, od którego zależy | Dodaj wymagany moduł do `ENABLED_MODULES` w `.env` albo usuń moduł zależny |
 
 ## Uwagi bezpieczeństwa dla operatorów

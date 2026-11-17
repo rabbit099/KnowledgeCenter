@@ -139,6 +139,7 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Validate uploads by content (libmagic), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
 - Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
 - Never render the HTML body of an e-mail as HTML. Convert to text.
+- Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
 - Containers run as non-root. Postgres and Redis are not published on host ports.
 - Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
@@ -185,7 +186,7 @@ Code works and is typed; tests pass; `make lint` and `make docs-check` pass; doc
 ## 14. Open questions (mirror of `docs/en/decisions.md`)
 
 1. Decided 2026-11-12: a Publisher publishes only their own documents; `documents.publish_any` is not part of the Publisher role.
-2. Retention policy for archived documents and audit log (GDPR/RODO).
+2. Retention policy for archived documents and audit log (GDPR/RODO). Proposal: audit log 24 months, to be confirmed with the legal department / IOD.
 3. TLS: working assumption internal CA (`TLS_MODE=files`), Let's Encrypt (`acme`) as a variant; to be confirmed with the domain administrator.
 4. Backup destination and monitoring integration (`/ready` exists; backup scripts come in Phase 6; destination decided later).
 5. Decided 2026-11-12: Readers do not see archived documents.

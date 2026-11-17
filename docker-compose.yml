@@ -18,9 +18,34 @@ x-hardening: &hardening
 
 x-app-env: &app-env
   APP_NAME: ${APP_NAME:-Baza Wiedzy}
-  APP_VERSION: ${APP_VERSION:?set APP_VERSION in .env}
   ENABLED_MODULES: ${ENABLED_MODULES:-documents,ingestion,search}
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-120}
+  SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-12}
+  LOGIN_WINDOW_MINUTES: ${LOGIN_WINDOW_MINUTES:-15}
+  LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+  LOGIN_MAX_FAILURES_ACCOUNT: ${LOGIN_MAX_FAILURES_ACCOUNT:-30}
+  LOGIN_MAX_FAILURES_ACCOUNT_IP: ${LOGIN_MAX_FAILURES_ACCOUNT_IP:-5}
+  LOGIN_MAX_FAILURES_IP: ${LOGIN_MAX_FAILURES_IP:-20}
+  LOCAL_PASSWORD_MIN_LENGTH: ${LOCAL_PASSWORD_MIN_LENGTH:-14}
+  LOCAL_PASSWORD_MAX_LENGTH: ${LOCAL_PASSWORD_MAX_LENGTH:-256}
+  ARGON2_MAX_CONCURRENT: ${ARGON2_MAX_CONCURRENT:-3}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  AUDIT_EXPORT_MAX_ROWS: ${AUDIT_EXPORT_MAX_ROWS:-10000}
+  LDAP_ENABLED: ${LDAP_ENABLED:-false}
+  LDAP_URI: ${LDAP_URI:-}
+  LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+  LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+  LDAP_BIND_PASSWORD_FILE: ${LDAP_BIND_PASSWORD_FILE:-}
+  LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+  LDAP_LOGIN_ATTRIBUTE: ${LDAP_LOGIN_ATTRIBUTE:-sAMAccountName}
+  LDAP_UPN_SUFFIX: ${LDAP_UPN_SUFFIX:-}
+  LDAP_USER_FILTER: ${LDAP_USER_FILTER:-(objectClass=user)}
+  LDAP_CA_FILE: ${LDAP_CA_FILE:-/run/secrets/ldap/ca.pem}
+  LDAP_NESTED_GROUPS: ${LDAP_NESTED_GROUPS:-false}
+  LDAP_CONNECT_TIMEOUT_SECONDS: ${LDAP_CONNECT_TIMEOUT_SECONDS:-5}
+  LDAP_RECEIVE_TIMEOUT_SECONDS: ${LDAP_RECEIVE_TIMEOUT_SECONDS:-10}
+  LDAP_PAGE_SIZE: ${LDAP_PAGE_SIZE:-500}
   DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-baza_wiedzy}:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@db:5432/${APP_DB_NAME:-baza_wiedzy}
   REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
   DATA_DIR: /data
@@ -42,6 +67,10 @@ services:
       - caddy-data:/data
       - caddy-config:/config
       - ./secrets/tls:/certs:ro
+    networks:
+      default:
+        # Fixed address: the app trusts X-Forwarded-For only from here (FORWARDED_ALLOW_IPS).
+        ipv4_address: ${PROXY_IP:-172.30.70.10}
     depends_on:
       - app
     logging: *logging
@@ -50,9 +79,14 @@ services:
     image: ${IMAGE_PREFIX:-ghcr.io/change-me/baza-wiedzy}-app:${APP_VERSION:?set APP_VERSION in .env}
     restart: unless-stopped
     <<: *hardening
-    environment: *app-env
+    environment:
+      <<: *app-env
+      # uvicorn takes the client address from X-Forwarded-For only for requests from the proxy.
+      FORWARDED_ALLOW_IPS: ${PROXY_IP:-172.30.70.10}
     volumes:
       - storage:/data/storage
+      # CA certificate and service-account password for Active Directory (read-only).
+      - ./secrets/ldap:/run/secrets/ldap:ro
     depends_on:
       db:
         condition: service_healthy
@@ -157,6 +191,14 @@ services:
         limits:
           memory: ${CLAMAV_MEMORY_LIMIT:-3g}
     logging: *logging
+
+networks:
+  default:
+    ipam:
+      config:
+        # Fixed so that the proxy can have a fixed address. Change it if it collides with a
+        # company network or VPN route (docs: deployment-operations.md, Configuration).
+        - subnet: ${DOCKER_SUBNET:-172.30.70.0/24}
 
 volumes:
   pgdata:
