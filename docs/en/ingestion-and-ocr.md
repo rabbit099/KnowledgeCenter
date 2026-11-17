@@ -8,15 +8,15 @@ How an uploaded file becomes searchable text. Upload validation and storage belo
 
 | Format | Extractor | Status |
 |---|---|---|
-| TXT | own encoding rule: UTF-8, Windows-1250, ISO-8859-2 ([Text encodings](#text-encodings), ADR-022) | Phase 2 stage B |
-| EML | stdlib `email` (policy=default): headers, text body (HTML body converted to text), attachments | Phase 2 stage B |
-| DOCX | python-docx (paragraphs and tables in order, headers, footers) + hardened raw-XML fallback | Phase 2 stage B |
-| PDF with text | pypdfium2, one part per page | Phase 2 stage C |
-| DOC | LibreOffice headless conversion to text (isolated profile, timeout) | Phase 2 stage C |
-| MSG | `extract-msg` | Phase 2 stage C |
-| PDF scanned | OCRmyPDF + Tesseract (`pol+eng`); pages without text are only marked "needs OCR" until then | Phase 4 |
+| TXT | own encoding rule: UTF-8, Windows-1250, ISO-8859-2 ([Text encodings](#text-encodings), ADR-022) | Phase 2 |
+| EML | stdlib `email` (policy=default): headers, text body (HTML body converted to text), attachments | Phase 2 |
+| DOCX | python-docx (paragraphs and tables in order, headers, footers) + hardened raw-XML fallback | Phase 2 |
+| PDF with text | pypdfium2 in a child process, one part per page | Phase 2 |
+| DOC | LibreOffice headless converts to DOCX in a child process, then the DOCX extractor | Phase 2 |
+| MSG | `extract-msg`: headers, plain / HTML / RTF body, attachments, attached messages | Phase 2 |
+| PDF scanned | pages without a text layer are marked "wymaga OCR" now; OCRmyPDF + Tesseract (`pol+eng`) | Phase 4 |
 
-Attachments of EML/MSG that are themselves supported files are extracted recursively (depth ≤ `INGEST_MAX_DEPTH`, default 3) and stored as parts of type `attachment` in `ing_parts`. Other attachments (images, archives) are skipped with a note on the document page. OCR of standalone images is out of scope for the MVP.
+Attachments of EML/MSG that are themselves supported files are extracted recursively (depth ≤ `INGEST_MAX_DEPTH`, default 3) and stored as parts of type `attachment` (or `page` for PDF pages) in `ing_parts`; attached Outlook messages count as one level each. Other attachments (images, archives) and password-protected ones are skipped with a note on the document page. OCR of standalone images is out of scope for the MVP.
 
 ## Upload validation (in `app`)
 
@@ -102,6 +102,13 @@ If the check fails (for example the DOS code page CP852, or binary data), the ve
 - **Headers** of the top-level message (subject, from, to, cc, date, Message-ID) go to `doc_email_metadata` through `documents.services.api` and are shown on the document page; they are never logged. A damaged header or date leaves that value empty; processing continues.
 - **Attachments**: every other part, and attached messages (`message/rfc822`) as nested `.eml` files. Names are sanitised like upload file names; the type is checked by content like an upload (the extension must match). Each one is extracted with the origin "załącznik: nazwa › …". Nesting deeper than `INGEST_MAX_DEPTH` (3), unsupported types (images, archives) and kinds not processed yet are skipped with a note. Text parts without a file name are alternative bodies, not attachments.
 
+### PDF, DOC and MSG
+
+- **PDF**: one part per page with the origin "strona N" (inside an e-mail "załącznik: raport.pdf › strona 2"); the page count is stored on the version. A page with text becomes a part; a page with fewer than `OCR_MIN_CHARS` (25) non-space characters that contains an image is a scanned page: kept as a part marked `needs_ocr` (with its little text); a blank page (no text, no image) is skipped.
+- **Status of scans** (proposal for Phase 4, no migration needed): a version with at least one marked page ends as `needs_ocr` ("wymaga OCR") instead of `done`; its text pages are already stored and will be searchable. Phase 4 takes the `needs_ocr` versions, runs OCR only on the marked pages (`--skip-text`), replaces those parts, sets `ocr_applied` and moves the version to `done`. "Przetwórz ponownie" works for them like for any other version.
+- **DOC**: LibreOffice converts to DOCX, then the DOCX extractor reads it (tables "A | B", headers, footers).
+- **MSG**: like EML. Body: plain text, else HTML converted to text, else RTF (HTML encapsulated in RTF through extract-msg, plain RTF with `rtf_text.py`). Attachments stored by value go through the same registry (type by content, origin "załącznik: nazwa"); attached Outlook messages are processed as nested messages (one depth level each); other kinds (OLE objects, links) are skipped with a note. The libraries' own loggers are silenced so that nothing from a message reaches the log. Without a typed title the subject becomes the title.
+
 ### Language
 
 Each chunk gets `pl`, `en` or `unknown` from lingua, restricted to Polish and English and judged on its first 20,000 characters. A chunk with fewer than `LANGUAGE_MIN_LETTERS` (default 40) letters is `unknown` instead of a guess. The result is informational and a filter; it never selects the search index.
@@ -131,6 +138,8 @@ Decision per PDF:
 - Re-extract text from the OCR'd pages, set `ocr_applied = true` on those parts and on the version.
 - Store the resulting PDF as the derived file (searchable copy). The original stays untouched and is what "download" returns.
 
+Implemented in Phase 2: the extraction per page and the marking of pages that need OCR (see [PDF, DOC and MSG](#pdf-doc-and-msg)); the OCR run itself comes in Phase 4.
+
 Known limits to mention to users: OCR quality depends on scan quality; handwriting is not supported; very large scans can take minutes; password-protected PDFs fail with the message "PDF is password protected".
 
 ## Safety limits
@@ -138,18 +147,34 @@ Known limits to mention to users: OCR quality depends on scan quality; handwriti
 | Limit | Default | Setting |
 |---|---|---|
 | Max upload size | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
-| Max e-mail attachment depth | 3 | `INGEST_MAX_DEPTH` |
+| Max e-mail attachment depth (EML, MSG, attached messages) | 3 | `INGEST_MAX_DEPTH` |
 | Max parts (chunks) per version | 2000 | `INGEST_MAX_PARTS` |
 | Max extracted text per version | 50 MB (characters) | `INGEST_MAX_TEXT_MB` |
-| ZIP (DOCX): entries, total unpacked size, ratio of entries above 1 MB | 5000, 200 MB, 100× (checked before unpacking) | fixed in `extractors/docx.py` |
-| XML (DOCX) | no DTDs, no entities, no network | fixed |
+| Max PDF pages | 2000 | `INGEST_MAX_PAGES` |
+| ZIP (DOCX): entries, total unpacked size, ratio of entries above 1 MB | 5000, 200 MB, 100× (checked from the central directory, before anything is unpacked; LibreOffice's own DOCX output of a DOC: entries and size only) | fixed in `extractors/docx.py` |
+| XML (DOCX) | no DTD loading, no entity expansion (internal "billion laughs" and external XXE), no network, depth limit of libxml2 (`huge_tree` off) | fixed |
+| PDF child process: memory (address space), time | 1024 MB, 300 s | `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS` |
+| LibreOffice: memory (address space), time, parallel conversions | 1024 MB, 120 s, one per worker container | `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` |
 | Time limit of one attempt | 900 s | `INGEST_TIME_LIMIT_SECONDS` |
 | Attempts (transient errors only) | 3, delay 30 s doubling up to 600 s | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS` |
-| LibreOffice timeout | 120 s | Phase 2 stage C |
 | OCR timeout | 1800 s | Phase 4 |
-| Worker processes (one job each) | 2 | `WORKER_PROCESSES` |
+| Worker processes (one job each), worker memory | 2, 2 GB | `WORKER_PROCESSES`, `WORKER_MEMORY_LIMIT` |
 
-Each attempt runs in its own temporary directory under `/data/storage/.work`, removed afterwards. The worker container has a memory limit (`WORKER_MEMORY_LIMIT`).
+Password-protected files fail with "…zabezpieczony hasłem. Wgraj kopię bez hasła.": a PDF when pdfium asks for a password, a DOC by its encryption flag (before LibreOffice starts), a DOCX already at upload (an encrypted Office file is an OLE2 container with `EncryptionInfo`). As attachments they are skipped with a note.
+
+Each attempt runs in its own temporary directory under `/data/storage/.work`, removed afterwards.
+
+### Native code in child processes
+
+pdfium (PDF) and LibreOffice (DOC) are native code that may crash, hang or allocate without bound on a malicious or broken file. They run in a child process (`ingestion/sandbox.py`), never inside the worker process:
+- own session and process group; on timeout the whole group gets SIGKILL (LibreOffice's helper processes included), and the group is killed after a normal end as well;
+- address-space limit (`RLIMIT_AS`) and no core dumps; tested: LibreOffice 25.2 converts normally with 1 GB, pdfium's child fails cleanly (`MemoryError` → "Przetworzenie pliku wymaga więcej pamięci…");
+- a minimal environment (no proxy or database variables), `HOME` and `TMPDIR` inside the attempt's directory, a fresh LibreOffice profile (`-env:UserInstallation`) per conversion, output only to files in that directory (stdout and stderr go to files, never to the log);
+- one LibreOffice conversion at a time per worker container (a file lock in `/data/storage/.work`); a second worker process waits up to `LIBREOFFICE_TIMEOUT_SECONDS`, then retries later;
+- no network: the worker joins only the internal Docker network (stage D);
+- a crash (signal) is a permanent "damaged file" error, a timeout a transient one: retried, and after the last attempt "Przetwarzanie trwało dłużej niż limit czasu".
+
+The worker container's memory limit applies on top. Measured on 2026-11-17 with the production Compose file and the defaults (2 worker processes): idle 173 MiB; while processing 26 files at once (among them a 300-page PDF, a 1.5 MB DOC with 3000 paragraphs, a 10 MB TXT and an e-mail with ten PDF attachments) at most 457 MiB (cgroup peak including page cache 495 MiB), all done in 18 s; 339 MiB afterwards (Python keeps freed memory). `WORKER_MEMORY_LIMIT=2g` therefore leaves room for one LibreOffice conversion (≤ 1 GB) and very large texts; raise it by about 0.6 GB per extra worker process.
 
 ## Operations
 
@@ -161,9 +186,10 @@ Each attempt runs in its own temporary directory under `/data/storage/.work`, re
 
 ## Testing
 
-All test files are synthetic and generated in the tests (`tests/fixtures/samples.py`, `tests/fixtures/ole2.py`); nothing binary is committed.
+All test files are synthetic and generated in the tests (`tests/fixtures/samples.py`, `tests/fixtures/msg.py` on top of `tests/fixtures/ole2.py`); nothing binary is committed. DOC files are made by LibreOffice from HTML in the test image.
 
-- Unit (`tests/unit/test_ingestion_extractors.py`): TXT in UTF-8, UTF-8 with BOM, UTF-16, Windows-1250 and ISO-8859-2 (also two-letter texts), refused CP852 and binary data; text limit; chunking of 800,000 characters and of text without spaces; language (pl, en, short → unknown, configurable threshold); HTML to text (scripts, styles, tracking image, links); EML with HTML alternative, DOCX/TXT/PNG attachments, sanitised attachment names, damaged headers and dates, nested messages beyond depth 3, damaged attachment; DOCX with table and header, zip bomb, external entity (XXE), damaged file.
-- Integration (`tests/integration/test_ingestion.py`, `make test-db`, real worker on Redis): TXT and EML with a DOCX attachment from upload to "gotowe" with parts, language, e-mail headers, notes and the delivered event; long TXT in three chunks; processing twice without duplicates; permanent error without retry; transient errors with backoff and giving up; unexpected errors without the exception message in the log; logs without text, names or headers; stuck recovery; superseded attempts; outbox with `SKIP LOCKED`, failing handlers and pruning; worker start (temporary files, pending versions, one recovery per start); "Przetwórz ponownie" permissions (404/403/allowed, busy) and the CLI.
-- `make smoke` uploads a small TXT file through the proxy and waits for "gotowe".
-- Still to come (stage C): text PDF, PDF without text, encrypted PDF, DOC, MSG with an attachment.
+- Test image: target `test` of `docker/worker/Dockerfile` (the release stage plus uv; never published: release and smoke builds take the default, last stage `runtime`). `make test-db` runs the markers `integration` and `tools` (needs LibreOffice) there; `make test` on the host skips both. Building it reuses the worker's system layers: about 1 minute extra for the first build in CI, seconds with a cache; the worker image itself builds in 138 s without any cache.
+- Unit: `tests/unit/test_ingestion_extractors.py` (TXT, chunks, language, HTML, EML, DOCX) and `tests/unit/test_ingestion_formats.py`: BOM for UTF-8 and UTF-16 LE/BE, long Windows-1250 vs ISO-8859-2 text; PDF per page, scanned and mixed pages, blank pages, password-protected, damaged and truncated PDFs, page limit; isolation (timeout kills the process group, memory limit, minimal environment); DOC through LibreOffice (private profile, no leftover processes), encrypted DOC refused before LibreOffice, damaged DOC, LibreOffice timeout, a large repetitive DOC; MSG headers, plain/HTML/RTF bodies, DOCX/PDF/PNG attachments, attached messages with their own attachments, depth limit, MSG inside EML, damaged MSG; RTF to text; billion laughs, deep XML nesting, too many ZIP entries; encrypted DOCX at upload and as attachments.
+- Integration (`tests/integration/test_ingestion.py`, real worker on Redis): TXT and EML with DOCX; EML with PDF and MSG attachments; MSG with subject as title and e-mail metadata; DOC; scanned PDF → "wymaga OCR"; encrypted PDF → readable error without retry; child timeouts retried and reported; logs of PDF, MSG and damaged files without content; plus everything from stage B.
+- `make smoke` uploads a small TXT and a small text PDF through the proxy and waits for "gotowe".
+- `make probki DIR=<directory>` writes one sample of each case for a manual test, with the expected results in `OCZEKIWANE.txt`.

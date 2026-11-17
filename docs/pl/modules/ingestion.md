@@ -4,11 +4,11 @@
 
 ## Zakres
 
-Zamienia zapisany plik na części tekstu w `worker`: uruchamia ekstraktor dla typu wersji (teraz TXT, EML, DOCX; PDF, DOC, MSG w etapie C; OCR w Fazie 4), przetwarza załączniki maili, dzieli długi tekst, wykrywa język każdej części, pilnuje limitów bezpieczeństwa, prowadzi status przetwarzania (ponawianie, odzyskiwanie zawieszonych) i publikuje `document.version.extracted` przez swój outbox. Szczegóły: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
+Zamienia zapisany plik na części tekstu w `worker`: uruchamia ekstraktor dla typu wersji (TXT, EML, DOCX, PDF, DOC, MSG; kod natywny w procesach potomnych; OCR w Fazie 4), przetwarza załączniki maili, dzieli długi tekst, wykrywa język każdej części, pilnuje limitów bezpieczeństwa, prowadzi status przetwarzania (ponawianie, odzyskiwanie zawieszonych) i publikuje `document.version.extracted` przez swój outbox. Szczegóły: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
 
 ## Zależności
 
-Wymaga [documents](documents.md) (status, metadane maila, widoczność, nazwy plików i sprawdzanie typu przez `documents.services.api`). Biblioteki parserów (`python-docx`, `lingua-language-detector`, później `extract-msg`, OCRmyPDF) należą do dodatku `worker` i są tylko w obrazie workera; aplikacja webowa importuje wyłącznie lekkie części (trasy, `tasks.enqueue`, `services/api.py`), co sprawdza test jednostkowy.
+Wymaga [documents](documents.md) (status, metadane maila, widoczność, nazwy plików i sprawdzanie typu przez `documents.services.api`). Biblioteki parserów (`python-docx`, `pypdfium2`, `extract-msg`, `lingua-language-detector`, OCRmyPDF) i LibreOffice należą do dodatku `worker` i są tylko w obrazie workera; aplikacja webowa importuje wyłącznie lekkie części (trasy, `tasks.enqueue`, `services/api.py`), co sprawdza test jednostkowy.
 
 ## Uprawnienia
 
@@ -44,4 +44,4 @@ Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (plik
 
 ## Status
 
-Faza 2, etap B: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML i DOCX, strona części i „Przetwórz ponownie” (UI i CLI). Etap C: PDF, DOC, MSG i pozostałe limity; Faza 4: OCR.
+Faza 2, etapy B i C: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML, DOCX, PDF (proces potomny, zeskanowane strony oznaczane „wymaga OCR”), DOC (LibreOffice w procesie potomnym) i MSG, limity przeciw bombom ZIP i XML, strona części i „Przetwórz ponownie” (UI i CLI), temat maila jako domyślny tytuł. Etap D: worker bez dostępu do internetu; Faza 4: OCR.

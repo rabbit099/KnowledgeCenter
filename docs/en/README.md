@@ -41,7 +41,7 @@ Tick items when they are finished and documented.
 
 ### Phase 2 — Upload and ingestion
 - [x] Upload with validation, storage, SHA-256, duplicate warning
-- [ ] Extractors: PDF (text), DOCX, DOC, TXT, EML, MSG (+ attachments)
+- [x] Extractors: PDF (text), DOCX, DOC, TXT, EML, MSG (+ attachments)
 - [x] Worker pipeline, statuses, retries, reprocess action
 - [x] Language detection per part
 

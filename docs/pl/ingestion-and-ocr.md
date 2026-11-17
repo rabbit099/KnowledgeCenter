@@ -8,15 +8,15 @@ Jak wgrany plik staje się przeszukiwalnym tekstem. Walidacja uploadu i zapis pl
 
 | Format | Ekstraktor | Stan |
 |---|---|---|
-| TXT | własna reguła kodowania: UTF-8, Windows-1250, ISO-8859-2 ([Kodowanie tekstu](#kodowanie-tekstu), ADR-022) | Faza 2, etap B |
-| EML | `email` ze standardowej biblioteki (policy=default): nagłówki, treść tekstowa (treść HTML zamieniana na tekst), załączniki | Faza 2, etap B |
-| DOCX | python-docx (akapity i tabele w kolejności, nagłówki, stopki) + zapasowo utwardzony odczyt surowego XML | Faza 2, etap B |
-| PDF z tekstem | pypdfium2, jedna część na stronę | Faza 2, etap C |
-| DOC | konwersja LibreOffice headless do tekstu (izolowany profil, limit czasu) | Faza 2, etap C |
-| MSG | `extract-msg` | Faza 2, etap C |
-| PDF skan | OCRmyPDF + Tesseract (`pol+eng`); do tego czasu strony bez tekstu są tylko oznaczane „wymaga OCR” | Faza 4 |
+| TXT | własna reguła kodowania: UTF-8, Windows-1250, ISO-8859-2 ([Kodowanie tekstu](#kodowanie-tekstu), ADR-022) | Faza 2 |
+| EML | `email` ze standardowej biblioteki (policy=default): nagłówki, treść tekstowa (treść HTML zamieniana na tekst), załączniki | Faza 2 |
+| DOCX | python-docx (akapity i tabele w kolejności, nagłówki, stopki) + zapasowo utwardzony odczyt surowego XML | Faza 2 |
+| PDF z tekstem | pypdfium2 w procesie potomnym, jedna część na stronę | Faza 2 |
+| DOC | LibreOffice headless konwertuje do DOCX w procesie potomnym, potem ekstraktor DOCX | Faza 2 |
+| MSG | `extract-msg`: nagłówki, treść tekstowa / HTML / RTF, załączniki, załączone wiadomości | Faza 2 |
+| PDF skan | strony bez warstwy tekstu są teraz oznaczane „wymaga OCR”; OCRmyPDF + Tesseract (`pol+eng`) | Faza 4 |
 
-Załączniki EML/MSG, które same są obsługiwanymi plikami, są wyciągane rekurencyjnie (głębokość ≤ `INGEST_MAX_DEPTH`, domyślnie 3) i zapisywane jako części typu `attachment` w `ing_parts`. Pozostałe załączniki (obrazy, archiwa) są pomijane z adnotacją na stronie dokumentu. OCR samodzielnych obrazów jest poza zakresem MVP.
+Załączniki EML/MSG, które same są obsługiwanymi plikami, są wyciągane rekurencyjnie (głębokość ≤ `INGEST_MAX_DEPTH`, domyślnie 3) i zapisywane jako części typu `attachment` (albo `page` dla stron PDF) w `ing_parts`; każda załączona wiadomość Outlooka to jeden poziom. Pozostałe załączniki (obrazy, archiwa) oraz zabezpieczone hasłem są pomijane z adnotacją na stronie dokumentu. OCR samodzielnych obrazów jest poza zakresem MVP.
 
 ## Walidacja uploadu (w `app`)
 
@@ -102,6 +102,13 @@ Jeśli sprawdzenie nie przejdzie (na przykład strona kodowa DOS CP852 albo dane
 - **Nagłówki** wiadomości głównej (temat, nadawca, odbiorcy, DW, data, Message-ID) trafiają do `doc_email_metadata` przez `documents.services.api` i są widoczne na stronie dokumentu; nigdy nie trafiają do logów. Uszkodzony nagłówek albo data dają pustą wartość; przetwarzanie trwa dalej.
 - **Załączniki**: każda pozostała część oraz załączone wiadomości (`message/rfc822`) jako zagnieżdżone pliki `.eml`. Nazwy są oczyszczane jak nazwy wgrywanych plików; typ jest sprawdzany po zawartości jak przy wgrywaniu (rozszerzenie musi pasować). Każdy jest wyciągany z pochodzeniem „załącznik: nazwa › …”. Zagnieżdżenie głębsze niż `INGEST_MAX_DEPTH` (3), nieobsługiwane typy (obrazy, archiwa) i typy jeszcze nieprzetwarzane są pomijane z adnotacją. Części tekstowe bez nazwy pliku to alternatywne wersje treści, nie załączniki.
 
+### PDF, DOC i MSG
+
+- **PDF**: jedna część na stronę z pochodzeniem „strona N” (w mailu „załącznik: raport.pdf › strona 2”); liczba stron jest zapisywana w wersji. Strona z tekstem staje się częścią; strona z mniej niż `OCR_MIN_CHARS` (25) znakami innymi niż spacje, zawierająca obraz, to strona zeskanowana: zostaje jako część oznaczona `needs_ocr` (z tym niewielkim tekstem); pusta strona (bez tekstu i obrazu) jest pomijana.
+- **Status skanów** (propozycja dla Fazy 4, bez migracji): wersja z co najmniej jedną oznaczoną stroną kończy się stanem `needs_ocr` („wymaga OCR”) zamiast `done`; jej strony z tekstem są już zapisane i będą wyszukiwalne. Faza 4 bierze wersje `needs_ocr`, uruchamia OCR tylko dla oznaczonych stron (`--skip-text`), zastępuje te części, ustawia `ocr_applied` i przenosi wersję do `done`. „Przetwórz ponownie” działa dla nich jak dla każdej innej wersji.
+- **DOC**: LibreOffice konwertuje do DOCX, potem czyta go ekstraktor DOCX (tabele „A | B”, nagłówki, stopki).
+- **MSG**: jak EML. Treść: tekstowa, w przeciwnym razie HTML zamieniany na tekst, w przeciwnym razie RTF (HTML osadzony w RTF przez extract-msg, zwykły RTF przez `rtf_text.py`). Załączniki zapisane w pliku przechodzą przez ten sam rejestr (typ po zawartości, pochodzenie „załącznik: nazwa”); załączone wiadomości Outlooka są przetwarzane jako wiadomości zagnieżdżone (każda to jeden poziom głębokości); inne rodzaje (obiekty OLE, odnośniki) są pomijane z adnotacją. Własne loggery bibliotek są wyciszone, więc nic z wiadomości nie trafia do logu. Bez wpisanego tytułu tytułem zostaje temat.
+
 ### Język
 
 Każdy kawałek dostaje `pl`, `en` albo `unknown` z lingua, ograniczonej do polskiego i angielskiego i oceniającej pierwsze 20 000 znaków. Kawałek z mniej niż `LANGUAGE_MIN_LETTERS` (domyślnie 40) literami dostaje `unknown` zamiast zgadywania. Wynik jest informacyjny i służy jako filtr; nigdy nie wybiera indeksu wyszukiwania.
@@ -131,6 +138,8 @@ Decyzja dla każdego PDF:
 - Wyciągnij tekst ponownie ze stron po OCR, ustaw `ocr_applied = true` na tych częściach i na wersji.
 - Zapisz powstały PDF jako plik pochodny (kopia z warstwą tekstu). Oryginał zostaje nietknięty i to jego zwraca „pobierz”.
 
+Zaimplementowane w Fazie 2: wyciąganie tekstu strona po stronie i oznaczanie stron wymagających OCR (zobacz [PDF, DOC i MSG](#pdf-doc-i-msg)); sam OCR dojdzie w Fazie 4.
+
 Znane ograniczenia, o których warto powiedzieć użytkownikom: jakość OCR zależy od jakości skanu; pismo odręczne nie jest obsługiwane; bardzo duże skany mogą trwać minuty; PDF-y zabezpieczone hasłem kończą się komunikatem „PDF jest zabezpieczony hasłem”.
 
 ## Limity bezpieczeństwa
@@ -138,18 +147,34 @@ Znane ograniczenia, o których warto powiedzieć użytkownikom: jakość OCR zal
 | Limit | Domyślnie | Ustawienie |
 |---|---|---|
 | Maksymalny rozmiar uploadu | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
-| Maksymalna głębokość załączników maila | 3 | `INGEST_MAX_DEPTH` |
+| Maksymalna głębokość załączników maila (EML, MSG, załączone wiadomości) | 3 | `INGEST_MAX_DEPTH` |
 | Maksymalna liczba części (kawałków) na wersję | 2000 | `INGEST_MAX_PARTS` |
 | Maksymalna ilość wyciągniętego tekstu na wersję | 50 MB (znaków) | `INGEST_MAX_TEXT_MB` |
-| ZIP (DOCX): liczba wpisów, łączny rozmiar po rozpakowaniu, współczynnik wpisów powyżej 1 MB | 5000, 200 MB, 100× (sprawdzane przed rozpakowaniem) | stałe w `extractors/docx.py` |
-| XML (DOCX) | bez DTD, bez encji, bez sieci | stałe |
+| Maksymalna liczba stron PDF | 2000 | `INGEST_MAX_PAGES` |
+| ZIP (DOCX): liczba wpisów, łączny rozmiar po rozpakowaniu, współczynnik wpisów powyżej 1 MB | 5000, 200 MB, 100× (sprawdzane z katalogu centralnego, zanim cokolwiek zostanie rozpakowane; dla DOCX wytworzonego przez LibreOffice z DOC tylko liczba wpisów i rozmiar) | stałe w `extractors/docx.py` |
+| XML (DOCX) | bez wczytywania DTD, bez rozwijania encji (wewnętrzne „billion laughs” i zewnętrzne XXE), bez sieci, limit głębokości libxml2 (`huge_tree` wyłączone) | stałe |
+| Proces potomny PDF: pamięć (przestrzeń adresowa), czas | 1024 MB, 300 s | `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS` |
+| LibreOffice: pamięć (przestrzeń adresowa), czas, równoległe konwersje | 1024 MB, 120 s, jedna na kontener workera | `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` |
 | Limit czasu jednej próby | 900 s | `INGEST_TIME_LIMIT_SECONDS` |
 | Próby (tylko błędy przejściowe) | 3, opóźnienie od 30 s, podwajane do 600 s | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS` |
-| Limit czasu LibreOffice | 120 s | Faza 2, etap C |
 | Limit czasu OCR | 1800 s | Faza 4 |
-| Procesy workera (po jednym zadaniu) | 2 | `WORKER_PROCESSES` |
+| Procesy workera (po jednym zadaniu), pamięć workera | 2, 2 GB | `WORKER_PROCESSES`, `WORKER_MEMORY_LIMIT` |
 
-Każda próba działa we własnym katalogu tymczasowym w `/data/storage/.work`, usuwanym po zakończeniu. Kontener workera ma limit pamięci (`WORKER_MEMORY_LIMIT`).
+Pliki zabezpieczone hasłem kończą się komunikatem „…zabezpieczony hasłem. Wgraj kopię bez hasła.”: PDF, gdy pdfium żąda hasła, DOC po fladze szyfrowania (zanim wystartuje LibreOffice), DOCX już przy wgrywaniu (zaszyfrowany plik Office to kontener OLE2 z `EncryptionInfo`). Jako załączniki są pomijane z adnotacją.
+
+Każda próba działa we własnym katalogu tymczasowym w `/data/storage/.work`, usuwanym po zakończeniu.
+
+### Kod natywny w procesach potomnych
+
+pdfium (PDF) i LibreOffice (DOC) to kod natywny, który na złośliwym lub uszkodzonym pliku może się wywrócić, zawiesić albo zajmować pamięć bez końca. Działają w procesie potomnym (`ingestion/sandbox.py`), nigdy w procesie workera:
+- własna sesja i grupa procesów; po przekroczeniu czasu cała grupa dostaje SIGKILL (razem z procesami pomocniczymi LibreOffice), a grupa jest zabijana także po normalnym zakończeniu;
+- limit przestrzeni adresowej (`RLIMIT_AS`) i brak zrzutów pamięci; sprawdzone: LibreOffice 25.2 konwertuje normalnie przy 1 GB, proces potomny pdfium kończy się czysto (`MemoryError` → „Przetworzenie pliku wymaga więcej pamięci…”);
+- minimalne środowisko (bez zmiennych proxy i bazy), `HOME` i `TMPDIR` w katalogu próby, świeży profil LibreOffice (`-env:UserInstallation`) dla każdej konwersji, wynik tylko w plikach w tym katalogu (stdout i stderr idą do plików, nigdy do logu);
+- jedna konwersja LibreOffice naraz na kontener workera (blokada pliku w `/data/storage/.work`); drugi proces workera czeka do `LIBREOFFICE_TIMEOUT_SECONDS`, potem ponawia później;
+- brak sieci: worker należy tylko do wewnętrznej sieci Dockera (etap D);
+- awaria (sygnał) to trwały błąd „uszkodzony plik”, przekroczenie czasu to błąd przejściowy: ponawiany, a po ostatniej próbie „Przetwarzanie trwało dłużej niż limit czasu”.
+
+Dodatkowo obowiązuje limit pamięci kontenera workera. Zmierzone 2026-11-17 na produkcyjnym pliku Compose z ustawieniami domyślnymi (2 procesy workera): w spoczynku 173 MiB; podczas przetwarzania 26 plików naraz (m.in. PDF 300 stron, DOC 1,5 MB z 3000 akapitów, TXT 10 MB i mail z dziesięcioma załącznikami PDF) najwyżej 457 MiB (szczyt cgroup z pamięcią podręczną stron 495 MiB), wszystko w 18 s; potem 339 MiB (Python zatrzymuje zwolnioną pamięć). `WORKER_MEMORY_LIMIT=2g` zostawia więc miejsce na jedną konwersję LibreOffice (≤ 1 GB) i bardzo duże teksty; przy każdym dodatkowym procesie workera zwiększ go o około 0,6 GB.
 
 ## Utrzymanie
 
@@ -161,9 +186,10 @@ Każda próba działa we własnym katalogu tymczasowym w `/data/storage/.work`, 
 
 ## Testy
 
-Wszystkie pliki testowe są syntetyczne i generowane w testach (`tests/fixtures/samples.py`, `tests/fixtures/ole2.py`); w repozytorium nie ma żadnych binariów.
+Wszystkie pliki testowe są syntetyczne i generowane w testach (`tests/fixtures/samples.py`, `tests/fixtures/msg.py` na bazie `tests/fixtures/ole2.py`); w repozytorium nie ma żadnych binariów. Pliki DOC tworzy LibreOffice z HTML w obrazie testowym.
 
-- Jednostkowe (`tests/unit/test_ingestion_extractors.py`): TXT w UTF-8, UTF-8 z BOM, UTF-16, Windows-1250 i ISO-8859-2 (także dwuliterowe teksty), odrzucone CP852 i dane binarne; limit tekstu; podział 800 000 znaków i tekstu bez spacji; język (pl, en, krótki → unknown, konfigurowalny próg); HTML na tekst (skrypty, style, obrazek śledzący, odnośniki); EML z alternatywą HTML, załącznikami DOCX/TXT/PNG, oczyszczonymi nazwami załączników, uszkodzonymi nagłówkami i datami, wiadomościami zagnieżdżonymi głębiej niż 3, uszkodzonym załącznikiem; DOCX z tabelą i nagłówkiem, bomba ZIP, encja zewnętrzna (XXE), uszkodzony plik.
-- Integracyjne (`tests/integration/test_ingestion.py`, `make test-db`, prawdziwy worker na Redis): TXT i EML z załącznikiem DOCX od wgrania do „gotowe” z częściami, językiem, nagłówkami maila, adnotacjami i dostarczonym zdarzeniem; długi TXT w trzech kawałkach; dwukrotne przetworzenie bez duplikatów; błąd trwały bez ponawiania; błędy przejściowe z narastającym opóźnieniem i rezygnacją; błędy nieoczekiwane bez treści wyjątku w logu; logi bez tekstu, nazw i nagłówków; odzyskiwanie zawieszonych; odrzucanie wyniku zastąpionej próby; outbox ze `SKIP LOCKED`, nieudanymi handlerami i czyszczeniem; start workera (pliki tymczasowe, oczekujące wersje, jedno odzyskiwanie na start); uprawnienia „Przetwórz ponownie” (404/403/dozwolone, w trakcie) i CLI.
-- `make smoke` wgrywa przez proxy mały plik TXT i czeka na „gotowe”.
-- Jeszcze do zrobienia (etap C): PDF z tekstem, PDF bez tekstu, PDF zaszyfrowany, DOC, MSG z załącznikiem.
+- Obraz testowy: etap `test` w `docker/worker/Dockerfile` (etap wydawany plus uv; nigdy nie jest publikowany: budowanie wydania i smoke biorą domyślny, ostatni etap `runtime`). `make test-db` uruchamia w nim znaczniki `integration` i `tools` (wymaga LibreOffice); `make test` na hoście pomija oba. Budowa korzysta z warstw systemowych workera: około minuty więcej przy pierwszej budowie w CI, sekundy z pamięcią podręczną; sam obraz workera buduje się w 138 s bez żadnej pamięci podręcznej.
+- Jednostkowe: `tests/unit/test_ingestion_extractors.py` (TXT, podział, język, HTML, EML, DOCX) i `tests/unit/test_ingestion_formats.py`: BOM dla UTF-8 i UTF-16 LE/BE, długi tekst Windows-1250 kontra ISO-8859-2; PDF strona po stronie, strony skanowane i mieszane, puste strony, PDF zabezpieczony hasłem, uszkodzony i obcięty, limit stron; izolacja (przekroczenie czasu zabija grupę procesów, limit pamięci, minimalne środowisko); DOC przez LibreOffice (prywatny profil, brak pozostawionych procesów), zaszyfrowany DOC odrzucony przed LibreOffice, uszkodzony DOC, przekroczenie czasu LibreOffice, duży powtarzalny DOC; nagłówki MSG, treść tekstowa/HTML/RTF, załączniki DOCX/PDF/PNG, załączone wiadomości z własnymi załącznikami, limit głębokości, MSG w EML, uszkodzony MSG; RTF na tekst; billion laughs, głębokie zagnieżdżenie XML, zbyt wiele wpisów ZIP; zaszyfrowany DOCX przy wgrywaniu i jako załącznik.
+- Integracyjne (`tests/integration/test_ingestion.py`, prawdziwy worker na Redis): TXT i EML z DOCX; EML z załącznikami PDF i MSG; MSG z tematem jako tytułem i metadanymi maila; DOC; zeskanowany PDF → „wymaga OCR”; zaszyfrowany PDF → czytelny błąd bez ponawiania; przekroczenia czasu procesów potomnych ponawiane i zgłaszane; logi PDF, MSG i uszkodzonych plików bez treści; plus wszystko z etapu B.
+- `make smoke` wgrywa przez proxy mały plik TXT i mały PDF z tekstem i czeka na „gotowe”.
+- `make probki DIR=<katalog>` zapisuje po jednej próbce każdego przypadku do ręcznego testu, z oczekiwanymi wynikami w `OCZEKIWANE.txt`.

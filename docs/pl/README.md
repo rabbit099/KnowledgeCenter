@@ -41,7 +41,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 
 ### Faza 2 — Upload i przetwarzanie
 - [x] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
-- [ ] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
+- [x] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
 - [x] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
 - [x] Wykrywanie języka dla każdej części
 

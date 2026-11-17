@@ -39,7 +39,7 @@ Out of scope unless explicitly requested: SSO/Kerberos, per-category access cont
 | OCR | OCRmyPDF + Tesseract (`pol` + `eng`) |
 | DOCX | python-docx with a raw-XML fallback |
 | DOC | LibreOffice headless conversion (isolated profile, timeout) |
-| EML / MSG | stdlib `email` (policy=default) / `extract-msg` |
+| EML / MSG | stdlib `email` (policy=default) / `extract-msg` (GPL-3.0: internal use only, ADR-015) |
 | Encoding | Own fixed rule for TXT: UTF-8, Windows-1250, ISO-8859-2, fail instead of guessing (ADR-022) |
 | Language detection | lingua-language-detector restricted to Polish and English |
 | Auth | Server-side sessions in a cookie (not JWT), argon2id for local passwords, `ldap3` for AD |
@@ -64,7 +64,7 @@ baza-wiedzy/
 ├── alembic/                   # migrations
 ├── docker/
 │   ├── app/Dockerfile
-│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice
+│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice; target `test` (never released, ADR-023)
 │   ├── db/                    # Dockerfile, dictionary/ (Hunspell pl + licence, polish.stop), initdb/ (app role only), spike.sql
 │   └── caddy/                 # Dockerfile (non-root) + Caddyfile
 ├── src/baza_wiedzy/
@@ -81,8 +81,8 @@ baza-wiedzy/
 │       ├── documents/     # module.py, routes, models, services/api.py, storage
 │       ├── ingestion/     # module.py, extractors/, ocr.py, language.py, tasks.py, services/api.py
 │       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
-├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic only)
-├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh; later update.sh, rollback.sh, backup.sh, restore.sh
+├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py)
+├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
 │   └── pl/
@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 

@@ -4,11 +4,11 @@
 
 ## Scope
 
-Turns a stored file into text parts in the `worker`: runs the extractor for the version's kind (TXT, EML, DOCX now; PDF, DOC, MSG in stage C; OCR in Phase 4), processes e-mail attachments, chunks long text, detects the language per part, enforces the safety limits, keeps the processing status moving (retries, stuck recovery) and publishes `document.version.extracted` through its outbox. Details: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
+Turns a stored file into text parts in the `worker`: runs the extractor for the version's kind (TXT, EML, DOCX, PDF, DOC, MSG; native code in child processes; OCR in Phase 4), processes e-mail attachments, chunks long text, detects the language per part, enforces the safety limits, keeps the processing status moving (retries, stuck recovery) and publishes `document.version.extracted` through its outbox. Details: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
 
 ## Dependencies
 
-Requires [documents](documents.md) (status, e-mail metadata, visibility, file names and type checks through `documents.services.api`). Parser libraries (`python-docx`, `lingua-language-detector`, later `extract-msg`, OCRmyPDF) come with the `worker` extra and exist only in the worker image; the web application imports only the light parts (routes, `tasks.enqueue`, `services/api.py`), which a unit test checks.
+Requires [documents](documents.md) (status, e-mail metadata, visibility, file names and type checks through `documents.services.api`). Parser libraries (`python-docx`, `pypdfium2`, `extract-msg`, `lingua-language-detector`, OCRmyPDF) and LibreOffice come with the `worker` extra and exist only in the worker image; the web application imports only the light parts (routes, `tasks.enqueue`, `services/api.py`), which a unit test checks.
 
 ## Permissions
 
@@ -44,4 +44,4 @@ Worker start hook (manifest `worker_startup`): `startup.on_worker_start` (tempor
 
 ## Status
 
-Phase 2, stage B: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, TXT, EML and DOCX extractors, parts page and "Przetwórz ponownie" (UI and CLI). Stage C: PDF, DOC, MSG and the remaining limits; Phase 4: OCR.
+Phase 2, stages B and C: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, extractors for TXT, EML, DOCX, PDF (child process, scanned pages marked "wymaga OCR"), DOC (LibreOffice in a child process) and MSG, limits against archive and XML bombs, parts page and "Przetwórz ponownie" (UI and CLI), the e-mail subject as default title. Stage D: worker without internet access; Phase 4: OCR.
