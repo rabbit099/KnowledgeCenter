@@ -167,5 +167,6 @@ def document_status(request: Request, db: Db, user: AnyUser, document_id: str) -
         "document": document,
         "version": latest,
         "busy": latest.processing_status in (PENDING, PROCESSING),
+        "polled": request.headers.get("hx-request") == "true",
     }
     return _render(request, "documents/_status.html", context)

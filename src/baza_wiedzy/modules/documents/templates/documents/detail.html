@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ document.title }} · {{ app_name }}{% endblock %}
 {% block content %}
-<h1>{{ document.title }}</h1>
+<h1 id="document-title">{{ document.title }}</h1>
 {% if done == "uploaded" %}<p class="ok" role="status">{{ _("The file was uploaded. Processing runs in the background.") }}</p>{% endif %}
 {% if done == "reprocess" %}<p class="ok" role="status">{{ _("The document was queued for processing again.") }}</p>{% endif %}
 {% if done == "busy" %}<p class="fail" role="alert">{{ _("The document is being processed right now; try again when it has finished.") }}</p>{% endif %}

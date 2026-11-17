@@ -717,3 +717,52 @@ def test_child_timeout_is_retried_then_reported_as_too_long(
     assert version_of(rt, uploaded).processing_error == pipeline.RETRYING
     assert pipeline.process(rt, uploaded) == pipeline.Outcome.FAILED
     assert version_of(rt, uploaded).processing_error == pipeline.TIMEOUT
+
+
+@pytest.mark.parametrize(
+    ("name", "data", "typed", "expected"),
+    [
+        (
+            "08-mail.eml",
+            eml_bytes(subject="Przegląd urządzeń – materiały"),
+            "",
+            "Przegląd urządzeń – materiały",
+        ),
+        (
+            "09-outlook.msg",
+            msg_bytes(Msg(subject="Zebranie zarządu – protokół")),
+            "",
+            "Zebranie zarządu – protokół",
+        ),
+        ("10-mail.eml", eml_bytes(subject="Temat maila"), "Mój Własny Tytuł", "Mój Własny Tytuł"),
+    ],
+)
+def test_title_shown_after_processing_is_the_subject(
+    app: FastAPI,
+    rt: runtime.Runtime,
+    worker: dramatiq.Worker,
+    name: str,
+    data: bytes,
+    typed: str,
+    expected: str,
+) -> None:
+    """What the user sees: the page opened right after the upload gets the new title through
+    the status polling, the page and the list show it after a reload."""
+    c = login(app, make_user(app, "publisher"))
+    response = c.post(
+        "/documents/upload",
+        files={"file": (name, data, "application/octet-stream")},
+        data={"title": typed},
+        headers={"HX-Request": "true", "X-CSRF-Token": csrf(c, "/documents/upload")},
+        follow_redirects=False,
+    )
+    doc_id = uuid.UUID(response.headers["hx-redirect"].split("/")[2].split("?")[0])
+    with rt.session_factory() as db:
+        document = db.get(Document, doc_id)
+        assert document is not None and document.latest_version_id is not None
+        version_id = document.latest_version_id
+    assert wait_final(rt, version_id).processing_status == "done"
+    polled = c.get(f"/documents/{doc_id}/status", headers={"HX-Request": "true"}).text
+    assert f'<h1 id="document-title" hx-swap-oob="true">{expected}</h1>' in polled
+    assert f'<h1 id="document-title">{expected}</h1>' in c.get(f"/documents/{doc_id}").text
+    assert f">{expected}</a>" in c.get("/documents").text

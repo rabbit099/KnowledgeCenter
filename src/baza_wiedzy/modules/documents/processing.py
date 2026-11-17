@@ -214,6 +214,7 @@ def apply_subject_title(db: Session, version_id: uuid.UUID, subject: str | None)
         return False
     document.title = clean
     document.title_source = "subject"
+    document.updated_at = _now()
     return True
 
 
