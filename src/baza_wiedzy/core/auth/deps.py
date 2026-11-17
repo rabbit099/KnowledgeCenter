@@ -52,10 +52,18 @@ def optional_user(request: Request, db: Db) -> CurrentUser | None:
     return found
 
 
+# Every dependency that enforces access carries this attribute; the route inventory test
+# (tests/unit/test_route_inventory.py) fails for any route that has none of them.
+ACCESS_MARKER = "__bw_access__"
+
+
 def require_user(user: Annotated[CurrentUser | None, Depends(optional_user)]) -> CurrentUser:
     if user is None:
         raise NotAuthenticated()
     return user
+
+
+setattr(require_user, ACCESS_MARKER, "user")
 
 
 def require_permission(code: str) -> Callable[..., CurrentUser]:
@@ -65,4 +73,16 @@ def require_permission(code: str) -> Callable[..., CurrentUser]:
         return user
 
     dependency.__name__ = f"require_permission_{code.replace('.', '_')}"
+    setattr(dependency, ACCESS_MARKER, f"permission:{code}")
+    return dependency
+
+
+def require_any_permission(*codes: str) -> Callable[..., CurrentUser]:
+    def dependency(user: Annotated[CurrentUser, Depends(require_user)]) -> CurrentUser:
+        if not any(user.can(code) for code in codes):
+            raise PermissionDenied(codes[0])
+        return user
+
+    dependency.__name__ = "require_any_permission"
+    setattr(dependency, ACCESS_MARKER, f"any:{','.join(codes)}")
     return dependency

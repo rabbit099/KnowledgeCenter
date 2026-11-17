@@ -1,0 +1,21 @@
+{% from "admin/_macros.html" import role_label, pagination, csrf %}
+<table class="grid">
+  <thead><tr><th>{{ _("Group DN") }}</th><th>{{ _("Role") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for m in result.items %}
+    <tr>
+      <td><code>{{ m.ad_group_dn }}</code></td>
+      <td>{{ role_label(roles_by_id[m.role_id]) }}</td>
+      <td>
+        <form method="post" action="/admin/ad-groups/{{ m.id }}/delete" class="inline">
+          {{ csrf() }}
+          <button type="submit">{{ _("Remove") }}</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="3">{{ _("No mappings.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(result, filters, "#groups-table") }}

@@ -1,12 +1,13 @@
 # Changelog
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-17
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
 ### Added
+- Admin panel `/admin` (Polish UI, works without JavaScript): users (search, filters, pages; AD users created in advance; activate/deactivate with immediate session revocation; manual roles; revoke sessions), roles with a permission matrix (Admin always full and read-only; system roles cannot be deleted; deleting a role in use shows the affected users and needs confirmation), AD group → role mapping (DN validation, confirmation for Admin, optional lookup in AD), system view. An admin cannot deactivate themselves or drop their own Admin role, and the last active admin is protected (also in the new command `baza-wiedzy user-active`). Every change is audited with before/after. Navigation built from module manifests. A test fails for any route without a login or permission check.
 - Login with Active Directory (`LDAP_ENABLED=true`, off by default): LDAPS with mandatory certificate verification, users created at first login and identified by `objectGUID`, accounts created in advance linked by name, AD groups mapped to roles at every login (optionally nested groups), one account for `FIRMA\jan`, `jan@firma.local` and `jan`, same error message and limits as local logins, "temporarily unavailable" message and audit `auth.ad_unavailable` when AD cannot be reached (the local admin keeps working). New command `baza-wiedzy ad-check` and a documented test procedure for a real AD. New `LDAP_*` variables; `./secrets/ldap/` is mounted in `app`.
 - Login with a local account (`/login`, `/logout`): server-side sessions with rotation at login, idle (120 min) and absolute (12 h) limits, CSRF protection for every state-changing request, failed-login limits per name, name + address and address (`baza-wiedzy unlock-login`), one generic error message, security headers (CSP), client address only from the proxy's fixed address (`DOCKER_SUBNET`, `PROXY_IP`). All pages except `/login`, `/health`, `/ready` and static files need a session. The application refuses to start with a `SECRET_KEY` shorter than 32 characters.
 - `baza-wiedzy create-admin <name>` creates the local break-glass admin or resets its password (asked twice, or `--password-stdin`); Argon2id with a limit of concurrent hashes; 14-256 characters; audited as `cli.create_admin` / `cli.reset_password`. New variables `LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`, `ARGON2_MAX_CONCURRENT`.

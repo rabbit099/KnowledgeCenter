@@ -49,10 +49,12 @@ class Permission:
 
 @dataclass(frozen=True)
 class MenuItem:
-    label: str  # gettext message id, translated in the UI
+    label: str  # gettext message id (mark it with N_() so that `make messages` finds it)
     path: str
     permission: str | None = None  # permission code needed to see the item
     order: int = 100
+    section: str = "main"  # "main" (top navigation) or "admin" (admin panel)
+    available: bool = True  # False hides an item whose pages do not exist yet
 
 
 @dataclass(frozen=True)
@@ -140,8 +142,13 @@ class ModuleRegistry:
                 catalog.append(permission)
         return tuple(sorted(catalog, key=lambda p: p.code))
 
-    def menu(self) -> tuple[MenuItem, ...]:
-        items = [item for m in self.modules for item in m.menu]
+    def menu(self, section: str | None = None) -> tuple[MenuItem, ...]:
+        items = [
+            item
+            for m in self.modules
+            for item in m.menu
+            if item.available and (section is None or item.section == section)
+        ]
         return tuple(sorted(items, key=lambda i: (i.order, i.label)))
 
     def register_events(self, bus: EventBus) -> None:

@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-13
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
 
 ## Uwierzytelnianie
 
@@ -117,11 +117,43 @@ Katalog jest składany z manifestów włączonych modułów: rdzeń dostarcza `u
 
 | Rola | Uprawnienia |
 |---|---|
-| Reader | `documents.read` |
-| Publisher | `documents.read`, `documents.upload`, `documents.publish` |
-| Admin | wszystkie uprawnienia (niezmienna rola systemowa) |
+| Reader (w UI: Czytelnik) | `documents.read` |
+| Publisher (w UI: Publikujący) | `documents.read`, `documents.upload`, `documents.publish` |
+| Admin (w UI: Administrator) | wszystkie uprawnienia (niezmienna rola systemowa) |
 
-Reader i Publisher to role systemowe: nie można ich usunąć, a ich uprawnienia admin może dostosować. Roli Admin nie można pomniejszyć, a ostatniego aktywnego Admina nie można dezaktywować ani usunąć.
+Wszystkie trzy to role systemowe: nie można ich usunąć ani zmienić ich nazwy (UI pokazuje nazwy przetłumaczone). Uprawnienia ról Reader i Publisher admin może dostosować. Admin zawsze ma pełny katalog, także kody modułów dodanych później, i jest tylko do odczytu w macierzy uprawnień.
+
+Zasady wymuszane na serwerze (tak samo w panelu admina i w CLI), każda z czytelnym komunikatem:
+- admin nie może dezaktywować własnego konta ani odebrać mu roli Admin;
+- ostatniego aktywnego użytkownika z rolą Admin (z dowolnego źródła) nie można dezaktywować ani pozbawić roli Admin;
+- usunięcie roli własnej, którą mają użytkownicy, pokazuje listę dotkniętych użytkowników i wymaga jawnego potwierdzenia;
+- dezaktywacja użytkownika od razu unieważnia wszystkie jego sesje; zmiany ról i uprawnień działają od następnego żądania użytkownika (uprawnienia są czytane z bazy przy każdym żądaniu).
+
+### Panel admina
+
+`/admin` (link „Administracja” w nagłówku, widoczny tylko dla użytkowników z co najmniej jednym uprawnieniem administracyjnym; serwer i tak sprawdza uprawnienie na każdej trasie). Nawigacja jest budowana z manifestów modułów (`MenuItem` z `section="admin"`), więc moduły mogą dodawać strony; pozycja jest widoczna tylko dla użytkowników z jej uprawnieniem.
+
+| Strona | Uprawnienie | Co robi |
+|---|---|---|
+| Użytkownicy `/admin/users` | `users.manage` | Lista z wyszukiwaniem (nazwa, nazwa wyświetlana, e-mail), filtrami (źródło, aktywność) i stronami po 25. **Dodaj z wyprzedzeniem użytkownika AD**: nazwa i role; nazwa jest normalizowana jak login AD (`FIRMA\Nowak` → `nowak`) i łączona z kontem AD przy jego pierwszym logowaniu; konta lokalne tworzy wyłącznie `create-admin`. Strona użytkownika: role nadane w aplikacji (role z grup AD widoczne tylko do odczytu), aktywacja/dezaktywacja, unieważnienie wszystkich sesji. Dane z AD (nazwa, e-mail, DN) są tylko do odczytu |
+| Role `/admin/roles` | `roles.manage` | Lista z liczbą użytkowników; nowa rola; edycja nazwy, opisu i macierzy uprawnień (kody pogrupowane według modułów); usunięcie z listą dotkniętych użytkowników |
+| Grupy AD `/admin/ad-groups` | `roles.manage` | Mapowanie DN grupy na rolę. DN musi być poprawny (`CN=…` albo `OU=…` z częściami `DC=`). Mapowanie na Admin wymaga zaznaczenia potwierdzenia po ostrzeżeniu. Przy włączonym AD pole „Sprawdź, czy grupa istnieje w Active Directory” najpierw szuka grupy: nie znaleziono → odmowa; AD nieosiągalne → zapis bez sprawdzenia, o czym strona informuje |
+| System `/admin/system` | `system.view` | Wersja, moduły, liczba użytkowników i sesji, sprawdzenia `/ready`, ustawienia AD (bez sekretów) |
+
+Formularze to zwykłe formularze HTML wysyłane z polem CSRF, więc każda czynność działa bez JavaScriptu; HTMX tylko odświeża tabele podczas wpisywania w filtr. Wartości z AD (nazwy, DN) są zawsze escapowane w HTML. Czas jest pokazywany w strefie Europe/Warsaw.
+
+Akcje audytu zapisywane w tej samej transakcji co zmiana: `user.create` (`source: ad_planned`), `user.activate`, `user.deactivate` (`revoked_sessions`), `user.roles_change` (nazwy ról `before`/`after`), `session.revoke`, `role.create`, `role.update` (nazwa i opis `before`/`after`), `role.permissions_change` (kody `before`, `after`, `added`, `removed`), `role.delete` (uprawnienia i `affected_users`), `ad_map.create` (DN, rola, `verification`: `found`/`not_checked`/`unavailable`), `ad_map.delete`.
+
+Wiersz poleceń (`docker compose exec app baza-wiedzy …`):
+
+| Polecenie | Cel |
+|---|---|
+| `create-admin <nazwa> [--password-stdin]` | Utworzenie lokalnego admina awaryjnego albo reset jego hasła |
+| `user-active <nazwa> on\|off` | Aktywacja albo dezaktywacja użytkownika (te same zasady co w panelu; `off` unieważnia sesje). Przykład: `User 'jan' is now inactive, 2 session(s) revoked.` |
+| `unlock-login [--user <nazwa>] [--ip <adres>]` | Usunięcie blokad po nieudanych logowaniach |
+| `ad-check [--user <nazwa>] [--password]` | Test konfiguracji AD tylko do odczytu |
+
+Jeśli żadne konto admina nie nadaje się do użycia, `create-admin` przywraca dostęp (aktywuje konto lokalne i nadaje mu rolę Admin).
 
 ### Widoczność dokumentów
 
@@ -141,7 +173,7 @@ Każdy wpis zawiera czas, użytkownika, akcję, obiekt, IP i mały obiekt `detai
 
 ## Lista kontrolna bezpieczeństwa dla nowych funkcji
 
-- Jakiego uprawnienia wymaga? Czy jest w katalogu i w testach?
+- Jakiego uprawnienia wymaga? Czy jest w katalogu i w testach? Każda trasa ma `require_user` albo `require_permission` (także fragmenty HTMX); `tests/unit/test_route_inventory.py` nie przejdzie dla trasy spoza jawnej listy publicznych (`/health`, `/ready`, `/login`, `/static`).
 - Czy reguła widoczności jest w SQL?
 - Czy zapisuje wpis audytowy?
 - Czy każde żądanie zmieniające stan jest chronione CSRF?

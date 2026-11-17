@@ -30,3 +30,8 @@ def get_translations(locale: str = DEFAULT_LOCALE) -> NullTranslations:
     write_mo(buffer, catalog)
     buffer.seek(0)
     return Translations(buffer, domain=DOMAIN)
+
+
+def N_(message: str) -> str:
+    """Mark a string for extraction without translating it here (e.g. labels in manifests)."""
+    return message

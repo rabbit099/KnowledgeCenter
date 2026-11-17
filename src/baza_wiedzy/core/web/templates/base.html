@@ -13,6 +13,9 @@
     <a class="brand" href="{{ url_for('home').path }}">{{ app_name }}</a>
     {% if current_user %}
     <nav class="usermenu">
+      {% if has_perm("users.manage") or has_perm("roles.manage") or has_perm("audit.view") or has_perm("system.view") %}
+      <a href="/admin">{{ _("Administration") }}</a>
+      {% endif %}
       <span class="username">{{ current_user.display_name }}</span>
       <form method="post" action="{{ url_for('logout').path }}" class="inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

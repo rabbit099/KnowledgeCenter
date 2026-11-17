@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-13
+> Applies to: v0.1.0 · Last reviewed: 2026-11-17
 
 ## Authentication
 
@@ -117,11 +117,43 @@ The catalog is assembled from the manifests of the enabled modules: the core pro
 
 | Role | Permissions |
 |---|---|
-| Reader | `documents.read` |
-| Publisher | `documents.read`, `documents.upload`, `documents.publish` |
-| Admin | all permissions (immutable system role) |
+| Reader (UI: Czytelnik) | `documents.read` |
+| Publisher (UI: Publikujący) | `documents.read`, `documents.upload`, `documents.publish` |
+| Admin (UI: Administrator) | all permissions (immutable system role) |
 
-Reader and Publisher are system roles: they cannot be deleted, and their permissions can be adjusted by an admin. Admin cannot be reduced and the last active Admin cannot be deactivated or removed.
+All three are system roles: they cannot be deleted or renamed (the UI shows their names translated). The permissions of Reader and Publisher can be adjusted by an admin. Admin always holds the full catalog, including codes of modules added later, and is read-only in the permission matrix.
+
+Rules enforced on the server (admin panel and CLI alike), each with a readable message:
+- an admin cannot deactivate their own account or remove the Admin role from it;
+- the last active user with the Admin role (from any source) cannot be deactivated and cannot lose the Admin role;
+- deleting a custom role that users hold shows the affected users and needs an explicit confirmation;
+- deactivating a user revokes all their sessions at once; changes of roles and permissions apply from the user's next request (permissions are read from the database on every request).
+
+### Admin panel
+
+`/admin` (link "Administracja" in the header, shown only to users with at least one admin permission; the server checks the permission on every route anyway). The navigation is built from the module manifests (`MenuItem` with `section="admin"`), so modules can add pages; an item is shown only to users who hold its permission.
+
+| Page | Permission | What it does |
+|---|---|---|
+| Users `/admin/users` | `users.manage` | List with search (name, display name, e-mail), filters (source, active) and pages of 25. **Add an AD user in advance**: name and roles; the name is normalized like an AD login (`FIRMA\Nowak` → `nowak`) and linked to the AD account at its first login; local accounts are created only by `create-admin`. User page: roles given in the application (roles from AD groups are shown read-only), activate/deactivate, revoke all sessions. Data from AD (name, e-mail, DN) is read-only |
+| Roles `/admin/roles` | `roles.manage` | List with user counts; new role; edit name, description and the permission matrix (codes grouped by module); delete with the list of affected users |
+| AD groups `/admin/ad-groups` | `roles.manage` | Map a group DN to a role. The DN must be valid (`CN=…` or `OU=…` with `DC=` parts). Mapping to Admin requires ticking a confirmation after a warning. With AD enabled, the box "Check that the group exists in Active Directory" looks the group up first: not found → refused; AD unreachable → saved without the check, and the page says so |
+| System `/admin/system` | `system.view` | Version, modules, user and session counts, `/ready` checks, AD settings (no secrets) |
+
+Forms are plain HTML forms posted with the CSRF field, so every action works without JavaScript; HTMX only refreshes the tables while typing in a filter. Values from AD (names, DNs) are always HTML-escaped. Times are shown in Europe/Warsaw.
+
+Audit actions written in the same transaction as the change: `user.create` (`source: ad_planned`), `user.activate`, `user.deactivate` (`revoked_sessions`), `user.roles_change` (`before`/`after` role names), `session.revoke`, `role.create`, `role.update` (`before`/`after` name and description), `role.permissions_change` (`before`, `after`, `added`, `removed` codes), `role.delete` (permissions and `affected_users`), `ad_map.create` (DN, role, `verification`: `found`/`not_checked`/`unavailable`), `ad_map.delete`.
+
+Command line (`docker compose exec app baza-wiedzy …`):
+
+| Command | Purpose |
+|---|---|
+| `create-admin <name> [--password-stdin]` | Create the local break-glass admin or reset its password |
+| `user-active <name> on\|off` | Activate or deactivate a user (same rules as the panel; `off` revokes sessions). Example: `User 'jan' is now inactive, 2 session(s) revoked.` |
+| `unlock-login [--user <name>] [--ip <address>]` | Clear failed-login locks |
+| `ad-check [--user <name>] [--password]` | Read-only test of the AD configuration |
+
+If every admin account is unusable, `create-admin` restores access (it reactivates the local account and gives it the Admin role).
 
 ### Document visibility
 
@@ -141,7 +173,7 @@ Each entry stores time, user, action, entity, IP and a small `details` object. I
 
 ## Security checklist for new features
 
-- Which permission does it need? Is it in the catalog and in the tests?
+- Which permission does it need? Is it in the catalog and in the tests? Every route has `require_user` or `require_permission` (also HTMX fragments); `tests/unit/test_route_inventory.py` fails for any route that is not on its explicit public list (`/health`, `/ready`, `/login`, `/static`).
 - Is the visibility rule in the SQL?
 - Does it write an audit entry?
 - Is every state-changing request CSRF-protected?

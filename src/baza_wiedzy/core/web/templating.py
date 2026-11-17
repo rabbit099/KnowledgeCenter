@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
@@ -40,4 +41,6 @@ def make_templates(settings: Settings) -> Jinja2Templates:
     env.globals["app_name"] = settings.app_name
     env.globals["app_version"] = __version__
     env.globals["lang"] = DEFAULT_LOCALE
+    # The database stores UTC; the UI shows Europe/Warsaw (CLAUDE.md section 6).
+    env.globals["tz"] = ZoneInfo("Europe/Warsaw")
     return Jinja2Templates(env=env, context_processors=[_request_context])

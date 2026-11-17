@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import role_label, error_box, csrf %}
+{% block admin %}
+<h1>{{ _("Delete the role") }} {{ role_label(role) }}</h1>
+{{ error_box(error) }}
+{% if role.system_key %}
+<p>{{ _("System roles cannot be deleted.") }}</p>
+{% else %}
+{% if affected %}
+<p>{{ _("These users hold the role and will lose its permissions:") }}</p>
+<ul>{% for u in affected %}<li>{{ u.username }}{% if u.display_name %} ({{ u.display_name }}){% endif %}</li>{% endfor %}</ul>
+{% else %}
+<p>{{ _("No user holds this role.") }}</p>
+{% endif %}
+<form method="post" action="/admin/roles/{{ role.id }}/delete" class="stack">
+  {{ csrf() }}
+  {% if affected %}
+  <label class="check"><input type="checkbox" name="confirm" value="yes" required> {{ _("I understand that %(count)s user(s) will lose this role.", count=affected|length) }}</label>
+  {% else %}
+  <input type="hidden" name="confirm" value="yes">
+  {% endif %}
+  <button type="submit">{{ _("Delete") }}</button>
+</form>
+{% endif %}
+<p><a href="/admin/roles/{{ role.id }}">{{ _("Cancel") }}</a></p>
+{% endblock %}

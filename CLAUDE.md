@@ -139,6 +139,7 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Validate uploads by content (libmagic), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
 - Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
 - Never render the HTML body of an e-mail as HTML. Convert to text.
+- Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
 - Containers run as non-root. Postgres and Redis are not published on host ports.
 - Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.

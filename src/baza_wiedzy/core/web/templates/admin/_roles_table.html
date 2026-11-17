@@ -1,0 +1,17 @@
+{% from "admin/_macros.html" import role_label, pagination %}
+<table class="grid">
+  <thead><tr><th>{{ _("Role") }}</th><th>{{ _("Description") }}</th><th>{{ _("Users") }}</th><th>{{ _("Type") }}</th></tr></thead>
+  <tbody>
+  {% for role in result.items %}
+    <tr>
+      <td><a href="/admin/roles/{{ role.id }}">{{ role_label(role) }}</a></td>
+      <td>{{ role.description or "" }}</td>
+      <td>{{ counts.get(role.id, 0) }}</td>
+      <td>{{ _("system") if role.system_key else _("custom") }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">{{ _("No roles match the filter.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{{ pagination(result, filters, "#roles-table") }}

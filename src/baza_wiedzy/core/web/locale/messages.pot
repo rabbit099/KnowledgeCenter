@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-13 10:28+0100\n"
+"POT-Creation-Date: 2026-11-13 10:46+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,16 +17,79 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
+msgid "A role with this name already exists."
+msgstr ""
+
+msgid "A user with this name already exists."
+msgstr ""
+
+msgid "AD groups"
+msgstr ""
+
+msgid "AD user name"
+msgstr ""
+
 msgid "Access denied"
+msgstr ""
+
+msgid "Account"
+msgstr ""
+
+msgid "Activate"
+msgstr ""
+
+msgid "Active Directory login is disabled (LDAP_ENABLED=false): only local accounts can log in."
+msgstr ""
+
+msgid "Add an AD user in advance"
+msgstr ""
+
+msgid "Add the mapping"
+msgstr ""
+
+msgid "Admin"
+msgstr ""
+
+msgid "Administration"
+msgstr ""
+
+msgid "All sessions of the user were revoked."
 msgstr ""
 
 msgid "All systems are working."
 msgstr ""
 
+msgid "Allowed"
+msgstr ""
+
+msgid "Back to the list"
+msgstr ""
+
 msgid "Background worker"
 msgstr ""
 
+msgid "Cancel"
+msgstr ""
+
+msgid "Change application settings"
+msgstr ""
+
+msgid "Check that the group exists in Active Directory"
+msgstr ""
+
 msgid "Checking system status..."
+msgstr ""
+
+msgid "Create"
+msgstr ""
+
+msgid "Create and edit roles, map AD groups to roles"
+msgstr ""
+
+msgid "Create, rename, delete categories"
+msgstr ""
+
+msgid "Created."
 msgstr ""
 
 msgid "Database"
@@ -35,10 +98,68 @@ msgstr ""
 msgid "Database schema"
 msgstr ""
 
+msgid "Deactivate (revokes all sessions)"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Delete the role"
+msgstr ""
+
+msgid "Delete this role"
+msgstr ""
+
+msgid "Deleted."
+msgstr ""
+
+msgid "Description"
+msgstr ""
+
+msgid "Display name (optional)"
+msgstr ""
+
+msgid "Documents"
+msgstr ""
+
+msgid "E-mail"
+msgstr ""
+
+msgid "Edit metadata, archive and restore documents of others"
+msgstr ""
+
+msgid "Filter"
+msgstr ""
+
+msgid "From AD groups (change them in AD or in the group mapping):"
+msgstr ""
+
+msgid "Group DN"
+msgstr ""
+
+msgid "Hard-delete documents (GDPR/RODO erasure)"
+msgstr ""
+
+msgid "I confirm: members of this group get the Admin role."
+msgstr ""
+
+#, python-format
+msgid "I understand that %(count)s user(s) will lose this role."
+msgstr ""
+
 msgid "Invalid user name or password."
 msgstr ""
 
+msgid "Invalid user name: use letters, digits and '.', '_', '@', '-' (up to 128)."
+msgstr ""
+
 msgid "Job queue"
+msgstr ""
+
+msgid "Last login"
+msgstr ""
+
+msgid "Linked to AD"
 msgstr ""
 
 msgid "Log in"
@@ -52,34 +173,282 @@ msgid ""
 "administrator."
 msgstr ""
 
+msgid "Login attribute"
+msgstr ""
+
+msgid "Manage users, assign roles, revoke sessions"
+msgstr ""
+
+msgid "Mapping saved without checking Active Directory."
+msgstr ""
+
+msgid "Mapping saved; Active Directory could not be asked, the group was not checked."
+msgstr ""
+
+msgid "Mapping saved; the group exists in Active Directory."
+msgstr ""
+
+msgid "Mappings"
+msgstr ""
+
+msgid ""
+"Members of a mapped Active Directory group get the role at every login. Roles from groups are "
+"recalculated at each login; roles given in the application are kept."
+msgstr ""
+
+msgid "Members of this group will get the Admin role with all permissions. Tick the confirmation to save."
+msgstr ""
+
+msgid "Module"
+msgstr ""
+
+msgid "Modules"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "Name, e-mail and DN come from Active Directory and are updated at every login."
+msgstr ""
+
+msgid "Nested groups"
+msgstr ""
+
+msgid "New role"
+msgstr ""
+
+msgid "Next"
+msgstr ""
+
+msgid "No mappings."
+msgstr ""
+
+msgid "No roles match the filter."
+msgstr ""
+
+msgid "No user holds this role."
+msgstr ""
+
+msgid "No users match the filter."
+msgstr ""
+
+msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
+msgstr ""
+
 msgid "OK"
+msgstr ""
+
+msgid "One of the selected roles does not exist any more."
+msgstr ""
+
+msgid "Open sessions"
+msgstr ""
+
+#, python-format
+msgid "Page %(page)s of %(pages)s"
+msgstr ""
+
+msgid "Pages"
 msgstr ""
 
 msgid "Password"
 msgstr ""
 
+msgid "Permission"
+msgstr ""
+
+msgid "Permissions"
+msgstr ""
+
+msgid "Previous"
+msgstr ""
+
+msgid "Publish and unpublish documents uploaded by others"
+msgstr ""
+
+msgid "Publish and unpublish own documents"
+msgstr ""
+
+msgid "Publisher"
+msgstr ""
+
+msgid "Reader"
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
+#, python-format
+msgid "Results: %(total)s"
+msgstr ""
+
+msgid "Revoke all sessions"
+msgstr ""
+
+msgid "Role"
+msgstr ""
+
+msgid "Roles"
+msgstr ""
+
+msgid "Roles given in the application"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Save roles"
+msgstr ""
+
+msgid "Saved."
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Search, view and download published documents"
+msgstr ""
+
+msgid "See and find all drafts"
+msgstr ""
+
+msgid "See version, queue and health status"
+msgstr ""
+
 msgid "Some systems are not working."
+msgstr ""
+
+msgid "Source"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "System"
+msgstr ""
+
+msgid "System role: it cannot be renamed or deleted."
+msgstr ""
+
+msgid "System roles cannot be deleted."
 msgstr ""
 
 msgid "System status"
 msgstr ""
 
+msgid ""
+"The Admin role always has all permissions, including those of modules added later. It cannot be "
+"changed."
+msgstr ""
+
+msgid "The Admin role is missing; run the migrations."
+msgstr ""
+
+msgid ""
+"The account is linked to the Active Directory user with this name at their first login. Local "
+"accounts are created only with the command baza-wiedzy create-admin."
+msgstr ""
+
+msgid "The account was activated."
+msgstr ""
+
+msgid "The account was deactivated and its sessions were revoked."
+msgstr ""
+
 msgid "The company knowledge base is being prepared. Document search will be available here soon."
+msgstr ""
+
+msgid "The group was not found in Active Directory."
+msgstr ""
+
+msgid "The role name must have 1 to 64 characters."
+msgstr ""
+
+msgid "These users hold the role and will lose its permissions:"
+msgstr ""
+
+msgid "This group is already mapped to this role."
+msgstr ""
+
+msgid "This is the last active administrator; activate or create another first."
+msgstr ""
+
+msgid "This is the last active administrator; the Admin role must stay."
+msgstr ""
+
+msgid "This role is assigned to users; confirm to delete it."
 msgstr ""
 
 msgid "Too many failed attempts. Try again in a few minutes."
 msgstr ""
 
+msgid "Type"
+msgstr ""
+
+msgid "Unknown permission code."
+msgstr ""
+
+msgid "Upload documents and new versions (they start as drafts)"
+msgstr ""
+
 msgid "User name"
+msgstr ""
+
+msgid "Users"
+msgstr ""
+
+msgid "Version"
 msgstr ""
 
 #, python-format
 msgid "Version %(version)s"
 msgstr ""
 
+msgid "View the audit log"
+msgstr ""
+
+msgid "Warning: every member of this group will become an administrator with all permissions."
+msgstr ""
+
+msgid "You cannot deactivate your own account."
+msgstr ""
+
+msgid "You cannot remove the Admin role from your own account."
+msgstr ""
+
 msgid "You do not have permission to open this page. Contact an administrator if you need access."
 msgstr ""
 
 msgid "Your account has no permissions yet. Contact an administrator to get access."
+msgstr ""
+
+msgid "active"
+msgstr ""
+
+msgid "all"
+msgstr ""
+
+msgid "custom"
+msgstr ""
+
+msgid "inactive"
+msgstr ""
+
+msgid "local"
+msgstr ""
+
+msgid "local (break-glass)"
+msgstr ""
+
+msgid "no"
+msgstr ""
+
+msgid "not yet (first login pending)"
+msgstr ""
+
+msgid "system"
+msgstr ""
+
+msgid "yes"
 msgstr ""
 

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ldap3 import NONE, SIMPLE, SUBTREE, Connection, Server, Tls
+from ldap3 import BASE, NONE, SIMPLE, SUBTREE, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPCommunicationError, LDAPException, LDAPSocketOpenError
 from ldap3.utils.conv import escape_filter_chars
 
@@ -269,6 +269,30 @@ class AdDirectory:
             return entry, self._groups(service, entry["dn"])
         finally:
             service.unbind()
+
+    def group_exists(self, group_dn: str) -> bool:
+        """Admin panel: does a group object with this DN exist? Raises AdUnavailable."""
+        try:
+            service = self._bind(self.config.bind_dn, self.config.bind_password)
+            if service is None:
+                raise AdUnavailable("service_bind")
+            try:
+                service.search(
+                    group_dn,
+                    "(objectClass=group)",
+                    BASE,
+                    attributes=["objectClass"],
+                    size_limit=1,
+                    time_limit=self.config.receive_timeout,
+                )
+                return any(r.get("type") == "searchResEntry" for r in service.response or [])
+            finally:
+                service.unbind()
+        except AdUnavailable:
+            raise
+        except LDAPException:
+            log.exception("Active Directory: unexpected LDAP error")
+            raise AdUnavailable("error") from None
 
     def _find_user(self, conn: Connection, login: str) -> dict[str, Any] | None:
         value = escape_filter_chars(login)

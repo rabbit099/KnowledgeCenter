@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -34,9 +34,9 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] `scripts/check_docs.py`
 
 ### Faza 1 — Użytkownicy i uprawnienia
-- [ ] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania
-- [ ] Logowanie przez Active Directory, mapowanie grup na role
-- [ ] Role i katalog uprawnień, panel admina dla użytkowników i ról
+- [x] Lokalny administrator awaryjny (CLI), sesje, CSRF, limit prób logowania
+- [x] Logowanie przez Active Directory, mapowanie grup na role
+- [x] Role i katalog uprawnień, panel admina dla użytkowników i ról
 - [ ] Log audytowy i jego przeglądarka
 
 ### Faza 2 — Upload i przetwarzanie

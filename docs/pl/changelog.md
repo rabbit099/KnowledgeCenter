@@ -1,12 +1,13 @@
 # Dziennik zmian
 
-> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-12
+> Dotyczy: v0.1.0 · Ostatnia aktualizacja: 2026-11-17
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
 
 ### Added
+- Panel admina `/admin` (UI po polsku, działa bez JavaScriptu): użytkownicy (wyszukiwanie, filtry, strony; użytkownicy AD tworzeni z wyprzedzeniem; aktywacja/dezaktywacja z natychmiastowym unieważnieniem sesji; role ręczne; unieważnianie sesji), role z macierzą uprawnień (Admin zawsze pełny i tylko do odczytu; ról systemowych nie można usuwać; usunięcie używanej roli pokazuje dotkniętych użytkowników i wymaga potwierdzenia), mapowanie grup AD na role (walidacja DN, potwierdzenie dla Admin, opcjonalne sprawdzenie w AD), widok systemu. Admin nie może dezaktywować siebie ani odebrać sobie roli Admin, a ostatni aktywny admin jest chroniony (także w nowym poleceniu `baza-wiedzy user-active`). Każda zmiana trafia do audytu z różnicą przed/po. Nawigacja budowana z manifestów modułów. Test nie przejdzie dla żadnej trasy bez kontroli logowania lub uprawnienia.
 - Logowanie przez Active Directory (`LDAP_ENABLED=true`, domyślnie wyłączone): LDAPS z obowiązkową weryfikacją certyfikatu, użytkownicy tworzeni przy pierwszym logowaniu i rozpoznawani po `objectGUID`, konta utworzone wcześniej łączone po nazwie, grupy AD mapowane na role przy każdym logowaniu (opcjonalnie grupy zagnieżdżone), jedno konto dla `FIRMA\jan`, `jan@firma.local` i `jan`, ten sam komunikat błędu i limity co przy logowaniu lokalnym, komunikat „chwilowo niedostępne” i audyt `auth.ad_unavailable`, gdy AD jest nieosiągalne (admin lokalny działa dalej). Nowe polecenie `baza-wiedzy ad-check` i opisana procedura testu na prawdziwym AD. Nowe zmienne `LDAP_*`; `./secrets/ldap/` jest montowany w `app`.
 - Logowanie kontem lokalnym (`/login`, `/logout`): sesje po stronie serwera z rotacją przy logowaniu, limitem bezczynności (120 min) i bezwzględnym (12 h), ochrona CSRF każdego żądania zmieniającego stan, limity nieudanych logowań dla nazwy, pary nazwa + adres i adresu (`baza-wiedzy unlock-login`), jeden ogólny komunikat błędu, nagłówki bezpieczeństwa (CSP), adres klienta tylko od stałego adresu proxy (`DOCKER_SUBNET`, `PROXY_IP`). Wszystkie strony poza `/login`, `/health`, `/ready` i plikami statycznymi wymagają sesji. Aplikacja odmawia startu przy `SECRET_KEY` krótszym niż 32 znaki.
 - `baza-wiedzy create-admin <nazwa>` tworzy lokalnego admina awaryjnego albo resetuje jego hasło (pytanie dwa razy albo `--password-stdin`); Argon2id z limitem równoczesnych hashy; 14–256 znaków; audytowane jako `cli.create_admin` / `cli.reset_password`. Nowe zmienne `LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`, `ARGON2_MAX_CONCURRENT`.

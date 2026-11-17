@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from baza_wiedzy import __version__
 from baza_wiedzy.core import health
+from baza_wiedzy.core.admin import routes as admin_routes
 from baza_wiedzy.core.auth import routes as auth_routes
 from baza_wiedzy.core.auth.csrf import CSRFMiddleware, cookie_names
 from baza_wiedzy.core.auth.ldap import AdDirectory, LdapConfig
@@ -136,6 +137,7 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
     app.include_router(health.router)
     app.include_router(auth_routes.router)
     app.include_router(core_routes.router)
+    app.include_router(admin_routes.router)
     for manifest in registry.modules:
         for ref in manifest.routers:
             router = load_ref(ref)

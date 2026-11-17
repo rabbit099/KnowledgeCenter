@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+{% block admin %}
+<h1>{{ _("Users") }}</h1>
+<p><a class="button" href="/admin/users/new">{{ _("Add an AD user in advance") }}</a></p>
+<form method="get" action="/admin/users" class="filters" hx-get="/admin/users" hx-target="#users-table" hx-push-url="true" hx-trigger="input changed delay:300ms from:input[name=q], change, submit">
+  <label>{{ _("Search") }} <input type="search" name="q" value="{{ filters.q }}" maxlength="100"></label>
+  <label>{{ _("Source") }}
+    <select name="source">
+      <option value="">{{ _("all") }}</option>
+      <option value="ad"{% if filters.source == "ad" %} selected{% endif %}>Active Directory</option>
+      <option value="local"{% if filters.source == "local" %} selected{% endif %}>{{ _("local") }}</option>
+    </select>
+  </label>
+  <label>{{ _("Status") }}
+    <select name="active">
+      <option value="">{{ _("all") }}</option>
+      <option value="yes"{% if filters.active == "yes" %} selected{% endif %}>{{ _("active") }}</option>
+      <option value="no"{% if filters.active == "no" %} selected{% endif %}>{{ _("inactive") }}</option>
+    </select>
+  </label>
+  <button type="submit">{{ _("Filter") }}</button>
+</form>
+<div id="users-table">{% include "admin/_users_table.html" %}</div>
+{% endblock %}

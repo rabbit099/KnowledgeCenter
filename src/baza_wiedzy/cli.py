@@ -202,6 +202,32 @@ def _ad_check(args: argparse.Namespace) -> int:
         return 2
 
 
+def _user_active(args: argparse.Namespace) -> int:
+    from baza_wiedzy.core.admin.errors import AdminError
+    from baza_wiedzy.core.admin.users import set_active
+    from baza_wiedzy.core.audit.service import CLI_ACTOR
+    from baza_wiedzy.core.auth.accounts import find_user
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    engine = make_engine(Settings())
+    try:
+        with make_session_factory(engine).begin() as db:
+            user = find_user(db, args.username)
+            if user is None:
+                raise _CliError(f"No user named {args.username!r}.")
+            try:
+                revoked = set_active(db, CLI_ACTOR, user, args.state == "on", ip=None)
+            except AdminError as exc:
+                raise _CliError(exc.message) from exc
+            name = user.username
+    finally:
+        engine.dispose()
+    state = "active" if args.state == "on" else f"inactive, {revoked} session(s) revoked"
+    print(f"User {name!r} is now {state}.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -246,6 +272,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--password", action="store_true", help="also test the user's password (asked)"
     )
     ad_check.set_defaults(handler=_ad_check)
+
+    user_active = commands.add_parser(
+        "user-active", help="activate or deactivate a user (the last active admin is protected)"
+    )
+    user_active.add_argument("username")
+    user_active.add_argument("state", choices=["on", "off"])
+    user_active.set_defaults(handler=_user_active)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"

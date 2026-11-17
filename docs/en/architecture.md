@@ -1,6 +1,6 @@
 # Architecture
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-17
 
 ## Overview
 
@@ -49,7 +49,7 @@ Rules (enforced in CI by import-linter, see ADR-014):
 - A module never imports the internals of another module. It may import `baza_wiedzy.core` and the `services/api.py` of a module it requires. Everything else goes through events.
 - Events are synchronous and in-process: a handler runs in the process that publishes the event. The `worker` therefore also loads `search` and indexes extracted text inside the worker; in `app` the `ingestion` handler only enqueues the job.
 - At startup the registry checks `requires` and stops with a readable message when a required module is not enabled.
-- Permissions, menu items, routers, background tasks, CLI commands and migration branches are collected from the module manifests (`module.py`).
+- Permissions, menu items, routers, background tasks, CLI commands and migration branches are collected from the module manifests (`module.py`). A `MenuItem` has a `section` (`main` or `admin`, the admin panel navigation), the permission that shows it and `available` (false until its pages exist); labels and permission descriptions are marked with `N_()` so that `make messages` extracts them for translation.
 - There are no plugins from outside the repository.
 
 Per-module documentation: [documents](modules/documents.md), [ingestion](modules/ingestion.md), [search](modules/search.md).

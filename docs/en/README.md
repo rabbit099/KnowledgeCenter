@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.1.0 · Last reviewed: 2026-11-12
+> Applies to: v0.1.0 · Last reviewed: 2026-11-17
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -34,9 +34,9 @@ Tick items when they are finished and documented.
 - [x] `scripts/check_docs.py`
 
 ### Phase 1 — Users and permissions
-- [ ] Local break-glass admin (CLI), sessions, CSRF, login rate limit
-- [ ] Active Directory login, group → role mapping
-- [ ] Roles and permission catalog, admin UI for users and roles
+- [x] Local break-glass admin (CLI), sessions, CSRF, login rate limit
+- [x] Active Directory login, group → role mapping
+- [x] Roles and permission catalog, admin UI for users and roles
 - [ ] Audit log and its viewer
 
 ### Phase 2 — Upload and ingestion

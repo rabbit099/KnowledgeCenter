@@ -19,3 +19,19 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .stack label { display: flex; flex-direction: column; gap: 0.25rem; }
 .stack input { padding: 0.4rem; font: inherit; }
 .stack button { padding: 0.5rem; font: inherit; cursor: pointer; }
+.admin { display: flex; gap: 2rem; align-items: flex-start; }
+.admin-nav ul { list-style: none; padding: 0; margin: 0; min-width: 10rem; }
+.admin-nav li { margin-bottom: 0.4rem; }
+.admin-nav a[aria-current="page"] { font-weight: 600; }
+.admin-main { flex: 1; min-width: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1rem; }
+.grid { border-collapse: collapse; width: 100%; }
+.grid th, .grid td { border-bottom: 1px solid #dde2ea; padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.check { display: flex; flex-direction: row; gap: 0.5rem; align-items: center; }
+.actions { display: flex; gap: 1rem; }
+.pagination { display: flex; gap: 1rem; margin-top: 0.75rem; }
+.button { display: inline-block; padding: 0.35rem 0.75rem; border: 1px solid var(--accent); border-radius: 4px; text-decoration: none; }
+.usermenu a { color: #fff; }
