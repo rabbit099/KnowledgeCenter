@@ -17,6 +17,8 @@ updates:
       prefix: "chore(deps)"
 
   # Base images of the four project images (FROM lines, pinned tags).
+  # Only patch releases within PostgreSQL 16.x and Python 3.12.x: a new PostgreSQL major or
+  # Python minor version is a planned migration with its own ADR (ADR-015), not a routine PR.
   - package-ecosystem: docker
     directories:
       - /docker/app
@@ -25,8 +27,15 @@ updates:
       - /docker/caddy
     schedule:
       interval: monthly
+    # Has no effect for Docker images (the registry gives no publication dates); the monthly
+    # review checks these PRs by hand.
     cooldown:
       default-days: 14
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       base-images:
         patterns: ["*"]

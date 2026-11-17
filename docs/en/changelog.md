@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Changed
+- Dependabot proposes only patch releases of the PostgreSQL 16.x and Python 3.12.x base images; a new PostgreSQL major or Python minor version is a planned migration with its own ADR (ADR-015). Docker PRs are checked by hand in the monthly review (no cooldown for Docker images).
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
