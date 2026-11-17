@@ -1,10 +1,12 @@
 # Changelog
 
-> Applies to: v0.2.0 · Last reviewed: 2026-11-17
+> Applies to: v0.2.1 · Last reviewed: 2026-11-17
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.1] - 2026-11-17
 
 ### Security
 - `opentelemetry-api` 1.45.1 → 1.45.2 (Dependabot alert #1, moderate: denial of service through quadratic parsing of the `traceparent` header), pulled in by FastAPI. Not exploitable here: FastAPI parses `traceparent` only when an OpenTelemetry provider is configured, and the application configures none (a test keeps it that way). Upgraded anyway through a per-package exception to `exclude-newer` (ADR-015); only this package changed in `uv.lock`.
