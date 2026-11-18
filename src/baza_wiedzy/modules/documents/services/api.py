@@ -46,12 +46,21 @@ from baza_wiedzy.modules.documents.processing import (
     retry_later,
     save_email_metadata,
 )
+from baza_wiedzy.modules.documents.scope import (
+    KIND_GROUPS,
+    IndexMetadata,
+    ScopeFilters,
+    index_metadata,
+    search_scope,
+    visible_owners,
+)
 from baza_wiedzy.modules.documents.storage import LocalStorage
 from baza_wiedzy.modules.documents.visibility import visibility_clause
 
 __all__ = [
     "DONE",
     "FAILED",
+    "KIND_GROUPS",
     "NEEDS_OCR",
     "PENDING",
     "PROCESSING",
@@ -61,7 +70,9 @@ __all__ = [
     "Claim",
     "Document",
     "EmailMetadata",
+    "IndexMetadata",
     "ProcessingBusy",
+    "ScopeFilters",
     "UnsupportedFile",
     "Version",
     "apply_subject_title",
@@ -74,6 +85,7 @@ __all__ = [
     "get_visible_document",
     "get_visible_version",
     "ids_with_status",
+    "index_metadata",
     "list_documents",
     "original_path",
     "recover_stuck",
@@ -81,9 +93,11 @@ __all__ = [
     "retry_later",
     "sanitize_filename",
     "save_email_metadata",
+    "search_scope",
     "versions_of",
     "visibility_clause",
     "visible_duplicates",
+    "visible_owners",
 ]
 
 

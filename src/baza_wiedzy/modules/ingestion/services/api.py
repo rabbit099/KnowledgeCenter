@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baza_wiedzy.core.audit.service import Actor, record
@@ -25,6 +25,7 @@ __all__ = [
     "notes_of",
     "parts_of",
     "request_reprocess",
+    "text_part_counts",
 ]
 
 ReprocessBusy = documents.ProcessingBusy
@@ -68,6 +69,22 @@ def notes_of(db: Session, version_id: uuid.UUID) -> list[dict[str, Any]]:
 
 def extracted_version_ids(db: Session) -> list[uuid.UUID]:
     return list(db.scalars(select(Result.version_id).order_by(Result.finished_at)))
+
+
+def text_part_counts(
+    db: Session, version_ids: list[uuid.UUID] | None = None
+) -> dict[uuid.UUID, int]:
+    """Extracted versions -> number of parts with text (what search indexes; a page without
+    any text, e.g. a scan waiting for OCR, is not counted). For search consistency checks."""
+    has_text = func.length(func.btrim(Part.text)) > 0
+    query = (
+        select(Result.version_id, func.count(Part.id).filter(has_text))
+        .outerjoin(Part, Part.version_id == Result.version_id)
+        .group_by(Result.version_id)
+    )
+    if version_ids is not None:
+        query = query.where(Result.version_id.in_(version_ids))
+    return {row[0]: int(row[1]) for row in db.execute(query)}
 
 
 def request_reprocess(
