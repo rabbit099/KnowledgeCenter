@@ -55,3 +55,8 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .part summary { cursor: pointer; }
 .part-text { white-space: pre-wrap; word-break: break-word; max-height: 30rem; overflow: auto; background: #f6f8fb; padding: 0.5rem; font-size: 0.9rem; }
 .notes { padding-left: 1.2rem; }
+.warn { background: #fff1cc; border-left: 4px solid #8a6100; padding: 0.4rem 0.75rem; }
+.badge-state-published { background: #d9f2e1; color: var(--ok); }
+.badge-state-archived { background: #e3e3e3; color: #3d3d3d; }
+.document-actions { flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+.document-actions button.button { background: var(--bg); color: var(--accent); font: inherit; cursor: pointer; }

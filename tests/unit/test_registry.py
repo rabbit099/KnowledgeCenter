@@ -185,3 +185,21 @@ def test_modules_subscribe_through_on_register() -> None:
     registry.register_events(bus, Settings(_env_file=None))  # type: ignore[call-arg]
     bus.publish("ping", {"x": "ok"})
     assert received == ["ok"]
+
+
+def test_permission_requirements_come_from_manifests() -> None:
+    registry = load_registry(Settings().enabled_modules)
+    requirements = registry.permission_requirements()
+    # Publishing or archiving other people's documents is useless without seeing their drafts
+    # (ADR-025): the role editor enforces these.
+    assert requirements["documents.publish_any"] == frozenset({"documents.read_drafts"})
+    assert requirements["documents.edit_any"] == frozenset({"documents.read_drafts"})
+    assert "documents.publish" not in requirements
+
+
+def test_permission_requiring_an_unknown_code_is_a_manifest_error() -> None:
+    perm = Permission("x.do", "d", requires=("x.missing",))
+    with pytest.raises(ModuleError, match=r"x\.missing"):
+        build_registry(
+            ["a"], available(manifest("a", permissions=(perm,)))
+        ).permission_requirements()

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 13:54+0100\n"
+"POT-Creation-Date: 2026-11-18 13:48+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -111,6 +111,9 @@ msgstr "Wszystkie usługi działają."
 msgid "Allowed"
 msgstr "Dozwolone"
 
+msgid "Archive"
+msgstr "Archiwizuj"
+
 msgid "Audit log"
 msgstr "Dziennik audytu"
 
@@ -188,6 +191,9 @@ msgstr "Szczegóły"
 
 msgid "Display name (optional)"
 msgstr "Nazwa wyświetlana (opcjonalnie)"
+
+msgid "Download the original"
+msgstr "Pobierz oryginał"
 
 msgid "E-mail"
 msgstr "E-mail"
@@ -410,6 +416,13 @@ msgstr "Przetwarzanie"
 msgid "Processing failed several times because of a temporary problem. Try again later."
 msgstr "Przetwarzanie kilka razy nie powiodło się z powodu chwilowego problemu. Spróbuj ponownie później."
 
+msgid ""
+"Processing has not finished with all text read: after publication the content cannot be found by "
+"search, or only partly. The document can be published anyway."
+msgstr ""
+"Przetwarzanie nie zakończyło się odczytaniem całego tekstu: po publikacji treści nie będzie można"
+" wyszukać albo tylko częściowo. Dokument można mimo to opublikować."
+
 msgid "Processing took longer than the time limit."
 msgstr "Przetwarzanie trwało dłużej niż limit czasu."
 
@@ -417,6 +430,9 @@ msgid "Processing was interrupted too many times. Use “Process again” to ret
 msgstr ""
 "Przetwarzanie zostało przerwane zbyt wiele razy. Użyj „Przetwórz ponownie”, aby spróbować jeszcze"
 " raz."
+
+msgid "Publish"
+msgstr "Publikuj"
 
 msgid "Publish and unpublish documents uploaded by others"
 msgstr "Publikowanie i wycofywanie dokumentów wgranych przez innych"
@@ -435,6 +451,9 @@ msgstr "Usuń"
 
 msgid "Request refused"
 msgstr "Żądanie odrzucone"
+
+msgid "Restore"
+msgstr "Przywróć"
 
 #, python-format
 msgid "Results: %(total)s"
@@ -544,14 +563,36 @@ msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne 
 msgid "The content of the file does not match its extension, or the file is damaged."
 msgstr "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony."
 
+msgid ""
+"The content of this document cannot be found by search, or only partly: see the processing status"
+" below."
+msgstr ""
+"Treści tego dokumentu nie można wyszukać albo tylko częściowo: zobacz status przetwarzania "
+"poniżej."
+
+msgid "The document does not exist or you cannot see it."
+msgstr "Dokument nie istnieje albo nie masz do niego dostępu."
+
 msgid "The document is being processed right now; try again when it has finished."
 msgstr "Dokument jest właśnie przetwarzany; spróbuj ponownie, gdy przetwarzanie się zakończy."
 
 msgid "The document is password protected. Upload a copy without a password."
 msgstr "Dokument jest zabezpieczony hasłem. Wgraj kopię bez hasła."
 
+msgid "The document was archived."
+msgstr "Dokument został zarchiwizowany."
+
+msgid "The document was published."
+msgstr "Dokument został opublikowany."
+
 msgid "The document was queued for processing again."
 msgstr "Dokument został ponownie skierowany do przetwarzania."
+
+msgid "The document was restored as a draft."
+msgstr "Dokument został przywrócony jako szkic."
+
+msgid "The document was unpublished; it is a draft again."
+msgstr "Publikacja została cofnięta; dokument jest znowu szkicem."
 
 #, python-format
 msgid ""
@@ -598,8 +639,15 @@ msgstr ""
 msgid "The group was not found in Active Directory."
 msgstr "Nie znaleziono tej grupy w Active Directory."
 
+#, python-format
+msgid "The permission %(code)s also requires %(required)s."
+msgstr "Uprawnienie %(code)s wymaga też %(required)s."
+
 msgid "The role name must have 1 to 64 characters."
 msgstr "Nazwa roli musi mieć od 1 do 64 znaków."
+
+msgid "The status of the document has changed in the meantime. Check it and try again."
+msgstr "Stan dokumentu zmienił się w międzyczasie. Sprawdź go i spróbuj ponownie."
 
 msgid ""
 "The text encoding could not be recognised (supported: UTF-8, Windows-1250, ISO-8859-2). Save the "
@@ -629,6 +677,15 @@ msgstr "To ostatni aktywny administrator; rola Administrator musi zostać."
 msgid "This role is assigned to users; confirm to delete it."
 msgstr "Ta rola jest przypisana użytkownikom; potwierdź, aby ją usunąć."
 
+msgid ""
+"This role is inconsistent: it was saved before the permission requirements existed. Holders do "
+"not get the missing permissions automatically. Add them or remove the permission that needs them,"
+" then save."
+msgstr ""
+"Ta rola jest niespójna: zapisano ją, zanim wprowadzono wymagania uprawnień. Jej posiadacze nie "
+"dostają brakujących uprawnień automatycznie. Dodaj je albo usuń uprawnienie, które ich wymaga, i "
+"zapisz."
+
 msgid "Time"
 msgstr "Czas"
 
@@ -654,8 +711,14 @@ msgstr "Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut."
 msgid "Type"
 msgstr "Typ"
 
+msgid "Unknown action."
+msgstr "Nieznana akcja."
+
 msgid "Unknown permission code."
 msgstr "Nieznany kod uprawnienia."
+
+msgid "Unpublish"
+msgstr "Cofnij publikację"
 
 msgid "Upload"
 msgstr "Wgraj"
@@ -694,6 +757,9 @@ msgstr "Przeglądanie dziennika audytu"
 msgid "Warning: every member of this group will become an administrator with all permissions."
 msgstr "Uwaga: każdy członek tej grupy zostanie administratorem ze wszystkimi uprawnieniami."
 
+msgid "You are not allowed to do this with this document."
+msgstr "Nie masz uprawnień do tej akcji na tym dokumencie."
+
 msgid "You cannot deactivate your own account."
 msgstr "Nie możesz dezaktywować własnego konta."
 
@@ -716,6 +782,9 @@ msgstr "wszystkie"
 
 msgid "all documents I can see"
 msgstr "wszystkie dokumenty, które widzę"
+
+msgid "archived"
+msgstr "zarchiwizowany"
 
 #, python-format
 msgid "attachment: %(name)s"
@@ -743,6 +812,9 @@ msgstr "fragment %(n)s"
 
 msgid "inactive"
 msgstr "nieaktywne"
+
+msgid "inconsistent"
+msgstr "niespójna"
 
 msgid "language unknown"
 msgstr "język nieznany"
@@ -775,8 +847,19 @@ msgstr "strona %(n)s"
 msgid "processing"
 msgstr "przetwarzanie"
 
+msgid "published"
+msgstr "opublikowany"
+
 msgid "ready"
 msgstr "gotowe"
+
+#, python-format
+msgid "requires: %(codes)s"
+msgstr "wymaga: %(codes)s"
+
+#, python-format
+msgid "since %(when)s"
+msgstr "od %(when)s"
 
 msgid "system"
 msgstr "systemowa"
@@ -786,4 +869,18 @@ msgstr "oczekuje"
 
 msgid "yes"
 msgstr "tak"
+
+#~ msgid ""
+#~ "Processing has not finished with all text read: "
+#~ "after publication the content will not be "
+#~ "searchable, or only partly. It can be published "
+#~ "anyway."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "The text of this document is not searchable, "
+#~ "or only partly: see the processing status below. "
+#~ "Readers can still find it by its title and "
+#~ "download it."
+#~ msgstr ""
 

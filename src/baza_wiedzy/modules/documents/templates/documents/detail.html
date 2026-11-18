@@ -1,21 +1,48 @@
 {% extends "base.html" %}
+{% from "documents/_macros.html" import state_badge %}
+{% from "admin/_macros.html" import csrf with context %}
 {% block title %}{{ document.title }} · {{ app_name }}{% endblock %}
 {% block content %}
 <h1 id="document-title">{{ document.title }}</h1>
-{% if done == "uploaded" %}<p class="ok" role="status">{{ _("The file was uploaded. Processing runs in the background.") }}</p>{% endif %}
-{% if done == "reprocess" %}<p class="ok" role="status">{{ _("The document was queued for processing again.") }}</p>{% endif %}
+{% set done_messages = {
+  "uploaded": _("The file was uploaded. Processing runs in the background."),
+  "reprocess": _("The document was queued for processing again."),
+  "publish": _("The document was published."),
+  "unpublish": _("The document was unpublished; it is a draft again."),
+  "archive": _("The document was archived."),
+  "restore": _("The document was restored as a draft."),
+} %}
+{% if done in done_messages %}<p class="ok" role="status">{{ done_messages[done] }}</p>{% endif %}
 {% if done == "busy" %}<p class="fail" role="alert">{{ _("The document is being processed right now; try again when it has finished.") }}</p>{% endif %}
+{% if error %}<p class="fail" role="alert">{{ _(error) }}</p>{% endif %}
 {% if duplicates %}
 <p class="fail" role="alert">{{ _("Possible duplicate: a file with identical content already exists in:") }}
   {% for d in duplicates %}<a href="/documents/{{ d.id }}">{{ d.title }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
 </p>
 {% endif %}
+{% if not_searchable and document.status == "published" %}
+<p class="warn" role="note">{{ _("The content of this document cannot be found by search, or only partly: see the processing status below.") }}</p>
+{% elif not_searchable and "publish" in actions %}
+<p class="warn" role="note">{{ _("Processing has not finished with all text read: after publication the content cannot be found by search, or only partly. The document can be published anyway.") }}</p>
+{% endif %}
 <dl class="facts">
-  <dt>{{ _("Status") }}</dt><dd>{{ _("draft") if document.status == "draft" else document.status }}</dd>
+  <dt>{{ _("Status") }}</dt><dd>{{ state_badge(document.status) }}{% if document.published_at and document.status == "published" %} <span class="muted">{{ _("since %(when)s", when=document.published_at.astimezone(tz).strftime("%Y-%m-%d %H:%M")) }}</span>{% endif %}{% if document.archived_at and document.status == "archived" %} <span class="muted">{{ _("since %(when)s", when=document.archived_at.astimezone(tz).strftime("%Y-%m-%d %H:%M")) }}</span>{% endif %}</dd>
   <dt>{{ _("File") }}</dt><dd>{{ version.original_filename }} ({{ version.kind|upper }}, {{ version.size_bytes|filesize }})</dd>
   <dt>SHA-256</dt><dd><code>{{ version.sha256 }}</code></dd>
   <dt>{{ _("Uploaded") }}</dt><dd>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</dd>
 </dl>
+<div class="actions document-actions">
+  <a class="button" href="/documents/{{ document.id }}/download" rel="nofollow">{{ _("Download the original") }}</a>
+  {% set action_labels = {"publish": _("Publish"), "unpublish": _("Unpublish"), "archive": _("Archive"), "restore": _("Restore")} %}
+  {% for action in actions %}
+  <form method="post" action="/documents/{{ document.id }}/lifecycle" class="inline">
+    {{ csrf() }}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="expected" value="{{ document.status }}">
+    <button type="submit" class="button">{{ action_labels[action] }}</button>
+  </form>
+  {% endfor %}
+</div>
 <h2>{{ _("Processing") }}</h2>
 <div id="processing">{% include "documents/_status.html" %}</div>
 <p><a href="/documents">{{ _("Back to my documents") }}</a></p>

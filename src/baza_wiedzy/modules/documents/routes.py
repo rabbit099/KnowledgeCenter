@@ -1,4 +1,6 @@
-"""Pages of the documents module: my documents, upload, document details.
+"""Pages of the documents module: my documents, upload, document details, lifecycle actions
+(publish, unpublish, archive, restore; ordinary POST forms, work without JavaScript) and the
+download of the original (ADR-025).
 
 Upload works only with JavaScript (HTMX sends the CSRF token in a header; multipart bodies are
 not read by the CSRF middleware); without JavaScript the page says so in <noscript>.
@@ -10,8 +12,8 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -19,12 +21,12 @@ from starlette.datastructures import UploadFile
 from baza_wiedzy.core.audit.service import Actor
 from baza_wiedzy.core.auth.deps import Db, require_any_permission, require_permission, require_user
 from baza_wiedzy.core.auth.routes import client_ip
-from baza_wiedzy.core.events import DOCUMENT_VERSION_UPLOADED
+from baza_wiedzy.core.events import DOCUMENT_PUBLISHED, DOCUMENT_VERSION_UPLOADED
 from baza_wiedzy.core.permissions.service import CurrentUser
 from baza_wiedzy.core.web.i18n import N_
-from baza_wiedzy.modules.documents import upload
+from baza_wiedzy.modules.documents import download, lifecycle, upload
 from baza_wiedzy.modules.documents.filetypes import UnsupportedFile
-from baza_wiedzy.modules.documents.models import PENDING, PROCESSING
+from baza_wiedzy.modules.documents.models import DONE, PENDING, PROCESSING
 from baza_wiedzy.modules.documents.services import api
 from baza_wiedzy.modules.documents.storage import get_storage
 
@@ -132,11 +134,15 @@ async def upload_file(request: Request, db: Db, user: Uploader) -> Response:
     return RedirectResponse(target, status_code=303)
 
 
-def _visible(db: Db, user: CurrentUser, document_id: str) -> api.Document:
+def _document_key(document_id: str) -> uuid.UUID:
     try:
-        key = uuid.UUID(document_id)
+        return uuid.UUID(document_id)
     except ValueError:
         raise HTTPException(status_code=404) from None
+
+
+def _visible(db: Db, user: CurrentUser, document_id: str) -> api.Document:
+    key = _document_key(document_id)
     document = api.get_visible_document(db, user, key)
     if document is None:
         # 404, not 403: the existence of other people's drafts is not revealed.
@@ -144,9 +150,15 @@ def _visible(db: Db, user: CurrentUser, document_id: str) -> api.Document:
     return document
 
 
-@router.get("/{document_id}", include_in_schema=False)
-def document_detail(request: Request, db: Db, user: AnyUser, document_id: str) -> Response:
-    document = _visible(db, user, document_id)
+def _detail(
+    request: Request,
+    db: Db,
+    user: CurrentUser,
+    document: api.Document,
+    *,
+    error: str | None = None,
+    status: int = 200,
+) -> Response:
     versions = api.versions_of(db, document)
     latest = versions[0]
     context = {
@@ -155,8 +167,68 @@ def document_detail(request: Request, db: Db, user: AnyUser, document_id: str) -
         "duplicates": api.visible_duplicates(db, user, latest.sha256, exclude_version_id=latest.id),
         "done": request.query_params.get("done"),
         "busy": latest.processing_status in (PENDING, PROCESSING),
+        # The text is not (fully) searchable unless processing finished with every page read.
+        "not_searchable": latest.processing_status != DONE,
+        "actions": lifecycle.available_actions(user, document),
+        "error": error,
     }
-    return _render(request, "documents/detail.html", context)
+    return _render(request, "documents/detail.html", context, status)
+
+
+@router.get("/{document_id}", include_in_schema=False)
+def document_detail(request: Request, db: Db, user: AnyUser, document_id: str) -> Response:
+    return _detail(request, db, user, _visible(db, user, document_id))
+
+
+@router.post("/{document_id}/lifecycle", include_in_schema=False)
+def document_lifecycle(
+    request: Request,
+    db: Db,
+    user: AnyUser,
+    document_id: str,
+    action: Annotated[str, Form(max_length=20)] = "",
+    expected: Annotated[str, Form(max_length=20)] = "",
+) -> Response:
+    """Publish, unpublish, archive or restore (lifecycle.py has the permission table)."""
+    key = _document_key(document_id)
+    try:
+        transition = lifecycle.apply(
+            db, user, key, action, expected_status=expected, ip=client_ip(request)
+        )
+        db.commit()
+    except lifecycle.NotVisible:
+        db.rollback()
+        raise HTTPException(status_code=404) from None
+    except lifecycle.LifecycleError as exc:
+        db.rollback()
+        document = _visible(db, user, document_id)
+        return _detail(request, db, user, document, error=exc.message, status=exc.status_code)
+    if transition.action == lifecycle.PUBLISH and transition.version_id is not None:
+        request.app.state.events.publish(
+            DOCUMENT_PUBLISHED,
+            {"document_id": str(transition.document_id), "version_id": str(transition.version_id)},
+        )
+    return RedirectResponse(f"/documents/{key}?done={transition.action}", status_code=303)
+
+
+@router.get("/{document_id}/download", include_in_schema=False)
+def document_download(request: Request, db: Db, user: AnyUser, document_id: str) -> Response:
+    key = _document_key(document_id)
+    try:
+        prepared = download.prepare(
+            db, user, key, storage_dir=request.app.state.settings.storage_dir, ip=client_ip(request)
+        )
+    except download.OriginalMissing:
+        raise HTTPException(status_code=500) from None
+    if prepared is None:
+        raise HTTPException(status_code=404)
+    db.commit()  # the audit entry exists before the first byte is sent
+    headers = dict(prepared.headers, **{"content-length": str(prepared.size)})
+    return StreamingResponse(
+        download.read_chunks(prepared.path),
+        media_type="application/octet-stream",
+        headers=headers,
+    )
 
 
 @router.get("/{document_id}/status", include_in_schema=False)

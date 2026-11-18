@@ -14,7 +14,7 @@
 {%- endmacro %}
 
 {% macro error_box(error) -%}
-{% if error %}<p class="fail" role="alert">{{ _(error.message) }}</p>{% endif %}
+{% if error %}<p class="fail" role="alert">{{ _(error.message, **error.params) }}</p>{% endif %}
 {%- endmacro %}
 
 {% macro done_box(done) -%}

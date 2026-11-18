@@ -46,6 +46,9 @@ class DuplicatePermissionError(ModuleError):
 class Permission:
     code: str
     description: str
+    # Codes a role must also hold when it holds this one (checked by the role editor), e.g.
+    # publishing other people's drafts is useless without seeing them.
+    requires: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -145,6 +148,23 @@ class ModuleRegistry:
                 owners[permission.code] = manifest.name
                 catalog.append(permission)
         return tuple(sorted(catalog, key=lambda p: p.code))
+
+    def permission_requirements(self) -> dict[str, frozenset[str]]:
+        """code -> codes it requires (only codes with requirements). A requirement must be in
+        the catalog of the same configuration, otherwise the manifest is wrong."""
+        catalog = self.permissions()
+        codes = {p.code for p in catalog}
+        result: dict[str, frozenset[str]] = {}
+        for permission in catalog:
+            if not permission.requires:
+                continue
+            unknown = set(permission.requires) - codes
+            if unknown:
+                raise ModuleError(
+                    f"Permission {permission.code!r} requires unknown codes: {sorted(unknown)}"
+                )
+            result[permission.code] = frozenset(permission.requires)
+        return result
 
     def menu(self, section: str | None = None) -> tuple[MenuItem, ...]:
         items = [

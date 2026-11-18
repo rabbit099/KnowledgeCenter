@@ -1,7 +1,9 @@
 """Tables of the documents module (prefix doc_). Created by documents_0002.
 
-Lifecycle columns (published_version_id, status values other than draft) exist from the start
-(expand/contract); the lifecycle itself comes in Phase 5.
+Lifecycle (Phase 3, documents_0004; lifecycle.py): draft -> published -> archived, with
+"unpublish" (published -> draft) and "restore" (archived -> draft). published_version_id is the
+version readers see; it is set while the document is published and kept while it is archived.
+Versions of a document beyond the first come in Phase 5.
 """
 
 from __future__ import annotations
@@ -54,6 +56,9 @@ class Document(Base):
     __table_args__ = (
         CheckConstraint("status IN ('draft', 'published', 'archived')", name="status"),
         CheckConstraint("title_source IN ('user', 'filename', 'subject')", name="title_source"),
+        CheckConstraint(
+            "status <> 'published' OR published_version_id IS NOT NULL", name="published_version"
+        ),
         Index("ix_doc_documents_owner_id", "owner_id"),
         Index("ix_doc_documents_status", "status"),
     )
@@ -73,8 +78,20 @@ class Document(Base):
     published_version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("doc_versions.id", ondelete="SET NULL", use_alter=True)
     )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _now()
+
+    def current_version_id(self) -> uuid.UUID | None:
+        """The version shown, downloaded and (Phase 3) searched: the published one while the
+        document is published or archived after publication, else the latest (drafts)."""
+        if self.status != STATUS_DRAFT and self.published_version_id is not None:
+            return self.published_version_id
+        return self.latest_version_id
 
 
 class Version(Base):

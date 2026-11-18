@@ -7,7 +7,10 @@
 #      check the network isolation: the worker reaches db and redis, nothing outside
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
 #      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
-#      and a small text PDF and wait until the worker has processed both ("ready"), log out
+#      and a small text PDF and wait until the worker has processed both ("ready"), publish
+#      the TXT and download it (content and safe headers), send a unique "search phrase" in
+#      the query string, Referer and HX-Current-URL and require that it appears in no
+#      container log (proxy, app, worker, db; ADR-025), log out
 # Everything (containers, volumes, the temporary env file) is removed at the end.
 # Ports: SMOKE_HTTP_PORT / SMOKE_HTTPS_PORT (default 18080 / 18443), so a running dev stack
 # on 80/443 is not disturbed. SMOKE_KEEP=1 leaves a passing stack running (for measurements)
@@ -182,6 +185,7 @@ upload_and_wait() {  # upload_and_wait <file> <name> <content type>
         rm -f "$JAR"; exit 1
     fi
     echo "    $2: ready"
+    LAST_DOC="$doc_path"
     local version
     version="$(printf '%s' "$fragment" | sed -n 's|.*/ingestion/versions/\([0-9a-f-]*\)/parts.*|\1|p' | head -n 1)"
     expect "extracted parts of $2" 200 "$(status "$BASE/ingestion/versions/$version/parts")"
@@ -213,11 +217,52 @@ out += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
 out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
 open(sys.argv[1], "wb").write(out)
 PY
-upload_and_wait "$SAMPLE_TXT" smoke.txt text/plain
 upload_and_wait "$SAMPLE_PDF" smoke.pdf application/pdf
-rm -f "$SAMPLE_TXT" "$SAMPLE_PDF"
+upload_and_wait "$SAMPLE_TXT" "smoke Łódź.txt" text/plain
+TXT_DOC="$LAST_DOC"
+
+echo "==> Publish the TXT and download it (headers of a safe download)"
+expect "publish" 303 "$(status -X POST "$BASE$TXT_DOC/lifecycle" --data-urlencode action=publish \
+    --data-urlencode expected=draft --data-urlencode "csrf_token=$(token "$TXT_DOC")")"
+DOWNLOAD="$(mktemp)"
+HEADERS="$(mktemp)"
+expect "download" 200 "$(curl -sk -c "$JAR" -b "$JAR" -D "$HEADERS" -o "$DOWNLOAD" \
+    -w '%{http_code}' "$BASE$TXT_DOC/download")"
+cmp -s "$DOWNLOAD" "$SAMPLE_TXT" || { echo "FAILED: the downloaded file differs from the upload"; exit 1; }
+for wanted in "content-type: application/octet-stream" "x-content-type-options: nosniff" \
+    "content-disposition: attachment; filename=\"smoke Lodz.txt\"; filename\*=UTF-8''smoke%20%C5%81%C3%B3d%C5%BA.txt" \
+    "content-security-policy: default-src 'none'; sandbox"; do
+    tr -d '\r' < "$HEADERS" | grep -qi "^$wanted\$" || { echo "FAILED: download header missing: $wanted"; exit 1; }
+done
+echo "    download headers: ok"
+rm -f "$SAMPLE_TXT" "$SAMPLE_PDF" "$DOWNLOAD"
+
+echo "==> Search phrases never reach a log (query string, Referer, HX-Current-URL, redirects)"
+PHRASE="tajnafraza$(python3 -c 'import secrets; print(secrets.token_hex(8))')"
+status -H "Referer: $BASE/search?q=$PHRASE" -H "HX-Current-URL: $BASE/search?q=$PHRASE" \
+    "$BASE/documents?q=$PHRASE&page=1" > /dev/null
+curl -sk -D "$HEADERS" -o /dev/null "$BASE/documents?q=$PHRASE"  # no session: login redirect
+grep -qi "^location: /login?next=.*$PHRASE" "$HEADERS" \
+    || { echo "FAILED: the login redirect does not carry the request (test is not meaningful)"; exit 1; }
+tr -d '\r' < "$HEADERS" | grep -qi "^referrer-policy: same-origin$" \
+    || { echo "FAILED: Referrer-Policy: same-origin missing"; exit 1; }
+rm -f "$HEADERS"
+sleep 2  # let the proxy flush its log
+if compose logs --no-color proxy app worker db 2>&1 | grep -q "$PHRASE"; then
+    echo "FAILED: the search phrase appears in a container log:"
+    compose logs --no-color proxy app worker db 2>&1 | grep -n "$PHRASE" | cut -c1-200
+    exit 1
+fi
+# File names and CSRF tokens stay out of the proxy log as well (Content-Disposition, X-CSRF-Token).
+if compose logs --no-color proxy 2>&1 | grep -qi 'smoke Lodz\|smoke%20\|Content-Disposition\|X-Csrf-Token'; then
+    echo "FAILED: the proxy log contains a file name or a CSRF token"; exit 1
+fi
+compose logs --no-color proxy 2>&1 | grep -q '/documents?\[removed\]' \
+    || { echo "FAILED: the proxy access log does not show the filtered request"; exit 1; }
+echo "    proxy, app, worker, db logs: no search phrase; proxy log: no file name, no CSRF token"
+
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", publish and download, no search phrase in logs, logout"
 exit 0

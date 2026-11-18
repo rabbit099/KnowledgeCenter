@@ -3,6 +3,12 @@
 {% block admin %}
 <h1>{% if role %}{{ _("Role") }}: {{ role_label(role) }}{% else %}{{ _("New role") }}{% endif %}</h1>
 {{ error_box(error) }}{{ done_box(done) }}
+{% if stored_missing %}
+<div class="fail" role="alert">
+  <p>{{ _("This role is inconsistent: it was saved before the permission requirements existed. Holders do not get the missing permissions automatically. Add them or remove the permission that needs them, then save.") }}</p>
+  <ul>{% for code, lacking in stored_missing.items() %}<li>{{ _("The permission %(code)s also requires %(required)s.", code=code, required=lacking|join(", ")) }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 <form method="post" action="{{ '/admin/roles/' ~ role.id if role else '/admin/roles' }}" class="stack">
   {{ csrf() }}
   {% if role and role.system_key %}
@@ -24,7 +30,7 @@
         {% for p in permissions %}
         <tr>
           <td>{{ module }}</td>
-          <td><code>{{ p.code }}</code> {{ _(p.description) }}</td>
+          <td><code>{{ p.code }}</code> {{ _(p.description) }}{% if p.requires %} <span class="muted">({{ _("requires: %(codes)s", codes=p.requires|join(", ")) }})</span>{% endif %}</td>
           <td><input type="checkbox" name="codes" value="{{ p.code }}" aria-label="{{ p.code }}"{% if is_admin_role or p.code in codes %} checked{% endif %}{% if is_admin_role %} disabled{% endif %}></td>
         </tr>
         {% endfor %}

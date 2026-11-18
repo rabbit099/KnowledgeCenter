@@ -16,11 +16,13 @@ manifest = ModuleManifest(
         Permission(
             "documents.publish_any",
             N_("Publish and unpublish documents uploaded by others"),
+            requires=("documents.read_drafts",),
         ),
         Permission("documents.read_drafts", N_("See and find all drafts")),
         Permission(
             "documents.edit_any",
             N_("Edit metadata, archive and restore documents of others"),
+            requires=("documents.read_drafts",),
         ),
         Permission("documents.delete", N_("Hard-delete documents (GDPR/RODO erasure)")),
         Permission("categories.manage", N_("Create, rename, delete categories")),

@@ -4,7 +4,7 @@
   <tbody>
   {% for role in result.items %}
     <tr>
-      <td><a href="/admin/roles/{{ role.id }}">{{ role_label(role) }}</a></td>
+      <td><a href="/admin/roles/{{ role.id }}">{{ role_label(role) }}</a>{% if role.id in inconsistent %} <span class="badge badge-failed">{{ _("inconsistent") }}</span>{% endif %}</td>
       <td>{{ role.description or "" }}</td>
       <td>{{ counts.get(role.id, 0) }}</td>
       <td>{{ _("system") if role.system_key else _("custom") }}</td>

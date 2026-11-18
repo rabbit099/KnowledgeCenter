@@ -1,11 +1,9 @@
 """Public interface of the documents module (the only part other modules may import).
 
-Visibility (CLAUDE.md 6, ADR-013): every query that returns documents or versions applies
-`visibility_clause(user)` in SQL, never a filter on results.
-
-    draft      -> owner, holders of documents.read_drafts (Admin has every permission)
-    published  -> holders of documents.read
-    archived   -> holders of documents.edit_any
+Visibility (CLAUDE.md 6, ADR-013, ADR-025): every query that returns documents or versions
+applies `visibility_clause(user)` in SQL, never a filter on results (rules in visibility.py:
+the owner sees own documents in every state; drafts: documents.read_drafts; published:
+documents.read; archived: documents.edit_any).
 """
 
 from __future__ import annotations
@@ -14,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from baza_wiedzy.core.permissions.service import CurrentUser
@@ -49,6 +47,7 @@ from baza_wiedzy.modules.documents.processing import (
     save_email_metadata,
 )
 from baza_wiedzy.modules.documents.storage import LocalStorage
+from baza_wiedzy.modules.documents.visibility import visibility_clause
 
 __all__ = [
     "DONE",
@@ -56,6 +55,9 @@ __all__ = [
     "NEEDS_OCR",
     "PENDING",
     "PROCESSING",
+    "STATUS_ARCHIVED",
+    "STATUS_DRAFT",
+    "STATUS_PUBLISHED",
     "Claim",
     "Document",
     "EmailMetadata",
@@ -83,20 +85,6 @@ __all__ = [
     "visibility_clause",
     "visible_duplicates",
 ]
-
-
-def visibility_clause(user: CurrentUser) -> ColumnElement[bool]:
-    """SQL condition on doc_documents: which documents this user may see."""
-    rules: list[ColumnElement[bool]] = [
-        and_(Document.status == STATUS_DRAFT, Document.owner_id == user.id)
-    ]
-    if user.can("documents.read_drafts"):
-        rules.append(Document.status == STATUS_DRAFT)
-    if user.can("documents.read"):
-        rules.append(Document.status == STATUS_PUBLISHED)
-    if user.can("documents.edit_any"):
-        rules.append(Document.status == STATUS_ARCHIVED)
-    return or_(*rules) if rules else false()
 
 
 def get_visible_document(db: Session, user: CurrentUser, document_id: uuid.UUID) -> Document | None:

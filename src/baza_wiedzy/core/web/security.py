@@ -42,10 +42,14 @@ class SecurityHeadersMiddleware:
         async def add_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = message.setdefault("headers", [])
-                headers.extend(HEADERS)
+                # A response that sets one of these itself (e.g. a download with a stricter
+                # policy) keeps its own value; no header is sent twice.
+                present = {name.lower() for name, _ in headers}
+                defaults = list(HEADERS)
                 if not is_static:
                     # Pages may show personal data; browsers must not keep them.
-                    headers.append((b"cache-control", b"no-store"))
+                    defaults.append((b"cache-control", b"no-store"))
+                headers.extend((n, v) for n, v in defaults if n not in present)
             await send(message)
 
         await self.app(scope, receive, add_headers)

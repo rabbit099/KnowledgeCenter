@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 13:54+0100\n"
+"POT-Creation-Date: 2026-11-18 13:48+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -109,6 +109,9 @@ msgstr ""
 msgid "Allowed"
 msgstr ""
 
+msgid "Archive"
+msgstr ""
+
 msgid "Audit log"
 msgstr ""
 
@@ -185,6 +188,9 @@ msgid "Details"
 msgstr ""
 
 msgid "Display name (optional)"
+msgstr ""
+
+msgid "Download the original"
 msgstr ""
 
 msgid "E-mail"
@@ -402,10 +408,18 @@ msgstr ""
 msgid "Processing failed several times because of a temporary problem. Try again later."
 msgstr ""
 
+msgid ""
+"Processing has not finished with all text read: after publication the content cannot be found by "
+"search, or only partly. The document can be published anyway."
+msgstr ""
+
 msgid "Processing took longer than the time limit."
 msgstr ""
 
 msgid "Processing was interrupted too many times. Use “Process again” to retry."
+msgstr ""
+
+msgid "Publish"
 msgstr ""
 
 msgid "Publish and unpublish documents uploaded by others"
@@ -424,6 +438,9 @@ msgid "Remove"
 msgstr ""
 
 msgid "Request refused"
+msgstr ""
+
+msgid "Restore"
 msgstr ""
 
 #, python-format
@@ -530,13 +547,33 @@ msgstr ""
 msgid "The content of the file does not match its extension, or the file is damaged."
 msgstr ""
 
+msgid ""
+"The content of this document cannot be found by search, or only partly: see the processing status"
+" below."
+msgstr ""
+
+msgid "The document does not exist or you cannot see it."
+msgstr ""
+
 msgid "The document is being processed right now; try again when it has finished."
 msgstr ""
 
 msgid "The document is password protected. Upload a copy without a password."
 msgstr ""
 
+msgid "The document was archived."
+msgstr ""
+
+msgid "The document was published."
+msgstr ""
+
 msgid "The document was queued for processing again."
+msgstr ""
+
+msgid "The document was restored as a draft."
+msgstr ""
+
+msgid "The document was unpublished; it is a draft again."
 msgstr ""
 
 #, python-format
@@ -580,7 +617,14 @@ msgstr ""
 msgid "The group was not found in Active Directory."
 msgstr ""
 
+#, python-format
+msgid "The permission %(code)s also requires %(required)s."
+msgstr ""
+
 msgid "The role name must have 1 to 64 characters."
+msgstr ""
+
+msgid "The status of the document has changed in the meantime. Check it and try again."
 msgstr ""
 
 msgid ""
@@ -609,6 +653,12 @@ msgstr ""
 msgid "This role is assigned to users; confirm to delete it."
 msgstr ""
 
+msgid ""
+"This role is inconsistent: it was saved before the permission requirements existed. Holders do "
+"not get the missing permissions automatically. Add them or remove the permission that needs them,"
+" then save."
+msgstr ""
+
 msgid "Time"
 msgstr ""
 
@@ -632,7 +682,13 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+msgid "Unknown action."
+msgstr ""
+
 msgid "Unknown permission code."
+msgstr ""
+
+msgid "Unpublish"
 msgstr ""
 
 msgid "Upload"
@@ -672,6 +728,9 @@ msgstr ""
 msgid "Warning: every member of this group will become an administrator with all permissions."
 msgstr ""
 
+msgid "You are not allowed to do this with this document."
+msgstr ""
+
 msgid "You cannot deactivate your own account."
 msgstr ""
 
@@ -691,6 +750,9 @@ msgid "all"
 msgstr ""
 
 msgid "all documents I can see"
+msgstr ""
+
+msgid "archived"
 msgstr ""
 
 #, python-format
@@ -718,6 +780,9 @@ msgid "fragment %(n)s"
 msgstr ""
 
 msgid "inactive"
+msgstr ""
+
+msgid "inconsistent"
 msgstr ""
 
 msgid "language unknown"
@@ -751,7 +816,18 @@ msgstr ""
 msgid "processing"
 msgstr ""
 
+msgid "published"
+msgstr ""
+
 msgid "ready"
+msgstr ""
+
+#, python-format
+msgid "requires: %(codes)s"
+msgstr ""
+
+#, python-format
+msgid "since %(when)s"
 msgstr ""
 
 msgid "system"
