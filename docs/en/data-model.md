@@ -12,10 +12,10 @@ Every module owns its tables, and no module reads or writes the tables of anothe
 |---|---|---|
 | core | none | `users`, `roles`, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions`, `audit_log`, `app_settings` |
 | `documents` | `doc_` | `doc_categories`, `doc_documents`, `doc_versions`, `doc_email_metadata` |
-| `search` | `srch_` | `srch_parts` |
+| `search` | `srch_` | `srch_parts`, `srch_documents` |
 | `ingestion` | `ing_` | `ing_parts`, `ing_results`, `ing_outbox` (the processing status itself lives in `doc_versions` and is updated through `documents.services.api`) |
 
-A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `core_0002` (identity tables and system roles), `core_0003` (audit log), `documents_0001` (default grants of `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads; revisions implied by `depends_on` are not listed. SQLAlchemy models (`core/db/models.py`) must match the migrations; `make test-db` compares them.
+A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `core_0002` (identity tables and system roles), `core_0003` (audit log), `documents_0001` (default grants of `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `documents_0004` (lifecycle columns), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0002` (`srch_parts`, `srch_documents`, `depends_on` `ingestion_0001` and `documents_0004`), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads; revisions implied by `depends_on` are not listed. SQLAlchemy models (`core/db/models.py`) must match the migrations; `make test-db` compares them.
 
 ## Tables
 
@@ -51,7 +51,8 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | Planned (Phase 3). One row per PDF page, per e-mail body, per attachment chunk. `tsv_*` are generated from `text_content`. Copied by `search` from `ing_parts` through `ingestion.services.api` after `document.version.extracted` (ADR-020) |
+| `srch_parts` | `id`, `version_id` → `doc_versions`, `document_id` → `doc_documents`, `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (JSONB path: attachments, pages), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text_content`, `ident_terms` (normalised identifiers), `tsv_pl`, `tsv_en`, `tsv_simple` (generated from `text_content` and `ident_terms`) | `search_0002` (Phase 3). One row per part with text (parts without text, e.g. scans before OCR, are skipped); copied by `search` from `ing_parts` through `ingestion.services.api` after `document.version.extracted` (ADR-020, ADR-026); unique `(version_id, seq)`; rows of every extracted version, the searched one is chosen by `documents.services.api.search_scope` |
+| `srch_documents` | `version_id` (PK) → `doc_versions`, `document_id` → `doc_documents`, `meta_a` (title, e-mail subject), `meta_b` (file name words, sender, recipients), `ident_terms`, `meta_fold` (lower case, no diacritics), `tsv_meta_pl`, `tsv_meta_en`, `tsv_meta_simple` (weights A and B, generated), `indexed_at` | `search_0002`. Metadata matched separately with weights and trigrams; copied through `documents.services.api.index_metadata` |
 
 ### System
 
@@ -67,7 +68,8 @@ users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
 users ─< sessions
 doc_documents ─< doc_versions ─< ing_parts, ing_results (cascade)
-doc_versions ─< srch_parts (Phase 3)
+doc_versions ─< srch_parts
+doc_versions ─  srch_documents (1:1)
 doc_versions ─ 0..1 ─ doc_email_metadata
 doc_documents >─ doc_categories
 ```
@@ -77,7 +79,8 @@ doc_documents >─ doc_categories
 | Index | Purpose |
 |---|---|
 | GIN on `srch_parts.tsv_pl`, `tsv_en`, `tsv_simple` | Full-text search |
-| btree `srch_parts(version_id)` | Joins |
+| btree `srch_parts(version_id, seq)` (unique), `srch_parts(document_id)`, `srch_documents(document_id)` | Joins |
+| GIN on `srch_documents.tsv_meta_pl`, `tsv_meta_en`, `tsv_meta_simple`; GIN `gin_trgm_ops` on `srch_documents.meta_fold` | Metadata search, near matches |
 | GIN (`gin_trgm_ops`) on `doc_documents.title`, `doc_versions.original_filename`, `doc_email_metadata.subject`, `doc_email_metadata.from_addr` | Fuzzy metadata search |
 | btree `doc_versions(sha256)` | Duplicate warning |
 | btree `doc_documents(status, category_id)` | Lists and filters |

@@ -1,6 +1,6 @@
 # Module: ingestion
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 ## Scope
 
@@ -32,7 +32,7 @@ Columns: [data-model.md](../data-model.md#ingestion).
 
 `modules/ingestion/services/api.py`:
 - `parts_of(db, version_id)` → list of `PartView` (seq, part type, origin, page, chunk number, language, text, size, OCR flag) — the source for the search index (Phase 3).
-- `notes_of(db, version_id)`, `extracted_version_ids(db)` (full reindex).
+- `notes_of(db, version_id)`, `extracted_version_ids(db)` (full reindex), `text_part_counts(db, version_ids=None)` (extracted versions → number of parts with text; `search-check`).
 - `request_reprocess(db, settings, version_id, actor=…, ip=…)`: back to pending with a fresh attempt counter and audit; the caller checks permissions, commits and enqueues; raises `ReprocessBusy` while an attempt runs.
 
 Worker start hook (manifest `worker_startup`): `startup.on_worker_start` (temporary files, stuck and pending versions, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).

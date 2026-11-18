@@ -12,10 +12,10 @@ Każdy moduł jest właścicielem swoich tabel i żaden moduł nie czyta ani nie
 |---|---|---|
 | rdzeń | brak | `users`, `roles`, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions`, `audit_log`, `app_settings` |
 | `documents` | `doc_` | `doc_categories`, `doc_documents`, `doc_versions`, `doc_email_metadata` |
-| `search` | `srch_` | `srch_parts` |
+| `search` | `srch_` | `srch_parts`, `srch_documents` |
 | `ingestion` | `ing_` | `ing_parts`, `ing_results`, `ing_outbox` (sam status przetwarzania jest w `doc_versions` i aktualizowany przez `documents.services.api`) |
 
-Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`. Pliki rewizji leżą w pakiecie wskazanym przez `migrations_path` w manifeście (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<nazwa>/migrations/`) i mają nazwy `<gałąź>_<NNNN>_<opis>.py` z identyfikatorem rewizji `<gałąź>_<NNNN>`; `alembic/env.py` i `alembic.ini` są wspólne. Zasada: `baza-wiedzy migrate` aktualizuje **wszystkie** gałęzie (rdzeń i każdy moduł w repozytorium), niezależnie od `ENABLED_MODULES`, więc schemat jest zawsze kompletny: późniejsze włączenie modułu nie wymaga migracji, a tabele modułu zawsze istnieją dla kluczy obcych innych modułów. `/ready` porównuje bazę ze wszystkimi głowami skryptów. Kosztem jest kilka pustych tabel wyłączonych modułów, co jest pomijalne. Nową rewizję tworzy `make revision branch=<gałąź> m="tekst"`. Obecne rewizje: `core_0001` (rozszerzenia), `core_0002` (tabele tożsamości i role systemowe), `core_0003` (dziennik audytu), `documents_0001` (domyślne nadania `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0001` (słownik i konfiguracje wyszukiwania tekstowego, `depends_on` `core_0001`). `alembic_version` przechowuje tylko głowy; rewizje wynikające z `depends_on` nie są wymienione. Modele SQLAlchemy (`core/db/models.py`) muszą być zgodne z migracjami; `make test-db` je porównuje.
+Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`. Pliki rewizji leżą w pakiecie wskazanym przez `migrations_path` w manifeście (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<nazwa>/migrations/`) i mają nazwy `<gałąź>_<NNNN>_<opis>.py` z identyfikatorem rewizji `<gałąź>_<NNNN>`; `alembic/env.py` i `alembic.ini` są wspólne. Zasada: `baza-wiedzy migrate` aktualizuje **wszystkie** gałęzie (rdzeń i każdy moduł w repozytorium), niezależnie od `ENABLED_MODULES`, więc schemat jest zawsze kompletny: późniejsze włączenie modułu nie wymaga migracji, a tabele modułu zawsze istnieją dla kluczy obcych innych modułów. `/ready` porównuje bazę ze wszystkimi głowami skryptów. Kosztem jest kilka pustych tabel wyłączonych modułów, co jest pomijalne. Nową rewizję tworzy `make revision branch=<gałąź> m="tekst"`. Obecne rewizje: `core_0001` (rozszerzenia), `core_0002` (tabele tożsamości i role systemowe), `core_0003` (dziennik audytu), `documents_0001` (domyślne nadania `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `documents_0004` (kolumny cyklu życia), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0002` (`srch_parts`, `srch_documents`, `depends_on` `ingestion_0001` i `documents_0004`), `search_0001` (słownik i konfiguracje wyszukiwania tekstowego, `depends_on` `core_0001`). `alembic_version` przechowuje tylko głowy; rewizje wynikające z `depends_on` nie są wymienione. Modele SQLAlchemy (`core/db/models.py`) muszą być zgodne z migracjami; `make test-db` je porównuje.
 
 ## Tabele
 
@@ -51,7 +51,8 @@ Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (n
 
 | Tabela | Kluczowe kolumny | Uwagi |
 |---|---|---|
-| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | Planowana (Faza 3). Jeden wiersz na stronę PDF, treść maila lub fragment załącznika. Kolumny `tsv_*` są generowane z `text_content`. Kopiowana przez `search` z `ing_parts` przez `ingestion.services.api` po `document.version.extracted` (ADR-020) |
+| `srch_parts` | `id`, `version_id` → `doc_versions`, `document_id` → `doc_documents`, `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (ścieżka JSONB: załączniki, strony), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text_content`, `ident_terms` (znormalizowane identyfikatory), `tsv_pl`, `tsv_en`, `tsv_simple` (generowane z `text_content` i `ident_terms`) | `search_0002` (Faza 3). Jeden wiersz na część z tekstem (części bez tekstu, np. skany przed OCR, są pomijane); kopiowane przez `search` z `ing_parts` przez `ingestion.services.api` po `document.version.extracted` (ADR-020, ADR-026); unikalne `(version_id, seq)`; wiersze każdej wyodrębnionej wersji, przeszukiwaną wybiera `documents.services.api.search_scope` |
+| `srch_documents` | `version_id` (PK) → `doc_versions`, `document_id` → `doc_documents`, `meta_a` (tytuł, temat maila), `meta_b` (słowa nazwy pliku, nadawca, odbiorcy), `ident_terms`, `meta_fold` (małe litery, bez znaków), `tsv_meta_pl`, `tsv_meta_en`, `tsv_meta_simple` (wagi A i B, generowane), `indexed_at` | `search_0002`. Metadane dopasowywane osobno, z wagami i trigramami; kopiowane przez `documents.services.api.index_metadata` |
 
 ### System
 
@@ -67,7 +68,8 @@ users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
 users ─< sessions
 doc_documents ─< doc_versions ─< ing_parts, ing_results (kaskadowo)
-doc_versions ─< srch_parts (Faza 3)
+doc_versions ─< srch_parts
+doc_versions ─  srch_documents (1:1)
 doc_versions ─ 0..1 ─ doc_email_metadata
 doc_documents >─ doc_categories
 ```
@@ -77,7 +79,8 @@ doc_documents >─ doc_categories
 | Indeks | Cel |
 |---|---|
 | GIN na `srch_parts.tsv_pl`, `tsv_en`, `tsv_simple` | Wyszukiwanie pełnotekstowe |
-| btree `srch_parts(version_id)` | Złączenia |
+| btree `srch_parts(version_id, seq)` (unikalny), `srch_parts(document_id)`, `srch_documents(document_id)` | Złączenia |
+| GIN na `srch_documents.tsv_meta_pl`, `tsv_meta_en`, `tsv_meta_simple`; GIN `gin_trgm_ops` na `srch_documents.meta_fold` | Wyszukiwanie po metadanych, dopasowania przybliżone |
 | GIN (`gin_trgm_ops`) na `doc_documents.title`, `doc_versions.original_filename`, `doc_email_metadata.subject`, `doc_email_metadata.from_addr` | Wyszukiwanie przybliżone po metadanych |
 | btree `doc_versions(sha256)` | Ostrzeżenie o duplikacie |
 | btree `doc_documents(status, category_id)` | Listy i filtry |

@@ -71,7 +71,7 @@ Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się 
 
 Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu i trzyma go w pamięci: około 27–30 MB na połączenie (zmierzone w spike'u, zob. [search.md](search.md)). Dlatego limit połączeń jest ustawiony jawnie, a limit pamięci `db` z niego wynika:
 
-- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 1 na proces workera, plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 1 + 6 = 28, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
+- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 6 = 30, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
 - Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
 - Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
 - Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
@@ -157,9 +157,9 @@ Później `update.sh` z `SKIP_PULL=1` (Faza 6). Wymaganie: Docker Engine z magaz
 
 ### Po zmianie konfiguracji wyszukiwania
 
-Uruchom `docker compose exec app baza-wiedzy reindex-search` (zobacz [search.md](search.md)).
+Uruchom `docker compose exec app baza-wiedzy reindex-search --all` (zobacz [search.md](search.md#reindeksacja)); wypisuje `Indexed N version(s); removed 0 orphaned; took T s.`, potem sprawdź `docker compose exec app baza-wiedzy search-check` (`Search index OK.`).
 
-Dotyczy to każdej zmiany polskiego słownika, listy stop words lub konfiguracji wyszukiwania tekstowego, także nowego obrazu `db` z inną wersją `hunspell-pl` albo `polish.stop` (dziennik zmian wtedy o tym informuje). Istniejące wartości `tsv_*` zostały wyliczone starym słownikiem i nie będą pasować do zapytań przetworzonych nowym, dopóki nie przebudujesz indeksu. Restart `db` zrywa też wszystkie połączenia, więc każde połączenie załaduje nowy słownik przy pierwszym użyciu.
+Dotyczy to każdej zmiany polskiego słownika, listy stop words, konfiguracji wyszukiwania tekstowego lub reguł identyfikatorów w `search/identifiers.py`, także nowego obrazu `db` z inną wersją `hunspell-pl` albo `polish.stop` (dziennik zmian wtedy o tym informuje). Istniejące wartości `tsv_*` zostały wyliczone starym słownikiem i nie będą pasować do zapytań przetworzonych nowym, dopóki nie przebudujesz indeksu. Restart `db` zrywa też wszystkie połączenia, więc każde połączenie załaduje nowy słownik przy pierwszym użyciu.
 
 ## Backup
 
@@ -246,6 +246,12 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `reprocess --stuck` | zawieszone i oczekujące wersje z powrotem do kolejki (bez audytu) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `search-check` | porównaj indeks wyszukiwania z wyodrębnionym tekstem (tylko identyfikatory; kod 1 przy różnicy) | `Extracted versions: 26` … `Search index OK.` |
+| `reindex-search --missing` | zaindeksuj to, co zgłasza `search-check`, usuń osierocone wiersze | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
+| `reindex-search --all` | przebuduj cały indeks (po zmianie słownika albo konfiguracji) | ta sama linia z sumą |
+| `reindex-search --document ID` | jeden dokument ponownie | ta sama linia |
+
+**Wyszukiwanie.** Po aktualizacji do 0.4.0 worker przy pierwszym starcie indeksuje wszystkie wcześniej przetworzone dokumenty (linia logu `search: indexed N version(s) missing from the index`; dla 200 dokumentów kilka sekund); `search-check` musi potem wypisać `Search index OK.`. Nowe dokumenty są indeksowane zaraz po przetworzeniu. Publikacja, cofnięcie publikacji, archiwizacja i przywrócenie nie wymagają reindeksu. Każde wyszukiwanie zapisuje w logu jedną linię z samymi licznikami (`search: results=… duration_ms=…`), nigdy frazy. Wyszukiwanie wolniejsze niż `SEARCH_TIMEOUT_MS` jest pokazywane według daty zamiast trafności (`fallback=yes` w logu); jeśli zdarza się często, zobacz uwagi o wydajności w [search.md](search.md#cel-wydajnościowy).
 
 Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`; próbki wyszukiwania w `wyszukiwanie/` z `OCZEKIWANE-wyszukiwanie.txt`).
 
@@ -268,7 +274,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
-| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (20 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
+| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (26 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
@@ -288,6 +294,8 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 
 | Objaw | Prawdopodobna przyczyna | Co sprawdzić |
 |---|---|---|
+| Dokument jest „gotowe”, ale nie jest znajdowany | Niezaindeksowany (zdarzenie nie zostało dostarczone) albo użytkownik nie może go widzieć (cudzy szkic, zarchiwizowany, przetwarzanie zakończone błędem) | `docker compose exec app baza-wiedzy search-check`; potem `reindex-search --missing`; niedostarczone zdarzenia: `docker compose exec app baza-wiedzy events redeliver`, `docker compose logs worker \| grep outbox` |
+| Wyszukiwanie pokazuje „Wyszukiwanie trwało zbyt długo” albo „posortowane według daty” | Bardzo ogólne zapytanie przekroczyło `SEARCH_TIMEOUT_MS` | Normalne dla pojedynczych bardzo częstych słów; częste przy zwykłych zapytaniach: obciążenie bazy (`docker compose exec db psql -U postgres -c 'SELECT count(*) FROM pg_stat_activity'`), pamięć `db`; zobacz [search.md](search.md#cel-wydajnościowy) |
 | Wgrane pliki zostają w stanie „oczekuje” (`pending`) | Worker lub Redis nie działa albo zadanie przepadło, gdy Redis był niedostępny | `docker compose ps`, `docker compose logs worker redis`; gdy oba działają, restart workera (`docker compose restart worker`) albo `docker compose exec app baza-wiedzy reprocess --stuck` kolejkuje oczekujące wersje ponownie |
 | Dokument wisi w stanie „przetwarzanie” | Worker został zabity w trakcie próby (limit pamięci, restart) | Odczekaj `INGEST_STALE_MINUTES` i zrestartuj workera albo `docker compose exec app baza-wiedzy reprocess --stuck`; w logu workera jest identyfikator wersji (`docker compose logs worker \| grep <id wersji>`) |
 | „błąd”: „Nie rozpoznano kodowania tekstu…” | TXT w stronie kodowej innej niż UTF-8, Windows-1250, ISO-8859-2 (na przykład DOS CP852) | Zapisz plik w UTF-8 i wgraj go ponownie (ADR-022) |

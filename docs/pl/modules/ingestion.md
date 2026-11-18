@@ -1,6 +1,6 @@
 # Moduł: ingestion
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 ## Zakres
 
@@ -32,7 +32,7 @@ Kolumny: [data-model.md](../data-model.md#ingestion).
 
 `modules/ingestion/services/api.py`:
 - `parts_of(db, version_id)` → lista `PartView` (kolejność, typ części, pochodzenie, strona, numer kawałka, język, tekst, rozmiar, flaga OCR) — źródło dla indeksu wyszukiwania (Faza 3).
-- `notes_of(db, version_id)`, `extracted_version_ids(db)` (pełna reindeksacja).
+- `notes_of(db, version_id)`, `extracted_version_ids(db)` (pełna reindeksacja), `text_part_counts(db, version_ids=None)` (wyodrębnione wersje → liczba części z tekstem; `search-check`).
 - `request_reprocess(db, settings, version_id, actor=…, ip=…)`: powrót do oczekiwania z wyzerowanym licznikiem prób i audytem; wywołujący sprawdza uprawnienia, zatwierdza i kolejkuje; zgłasza `ReprocessBusy`, gdy trwa próba.
 
 Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (pliki tymczasowe, zawieszone i oczekujące wersje, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).
