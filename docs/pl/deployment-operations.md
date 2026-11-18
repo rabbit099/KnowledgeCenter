@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -247,7 +247,7 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
 
-Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`).
+Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`; próbki wyszukiwania w `wyszukiwanie/` z `OCZEKIWANE-wyszukiwanie.txt`).
 
 ## Polecenia dla programisty
 
@@ -260,7 +260,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint-workflows` | Tylko sprawdzenie workflowów przez actionlint |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego pliku TXT (204) i oczekiwanie, aż worker go przetworzy („gotowe”, najwyżej 2 minuty), strona części 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (około minuty przy zbuforowanych warstwach) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprawdza izolację sieci (worker sięga do db i redis, do niczego poza nimi), potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (około 1–2 minut przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (Faza 2): `… passed, 2 skipped`. Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
@@ -268,7 +268,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
-| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; działa w obrazie testowym (LibreOffice dla DOC) |
+| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (20 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
@@ -317,6 +317,7 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 - `worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
 - Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
+- Logi nigdy nie zawierają wyszukiwanych fraz, treści dokumentów, nazw plików ani tematów maili (ADR-025): log proxy usuwa parametry zapytania, `Referer`, `HX-Current-URL`, cele przekierowań, `Content-Disposition` i `X-CSRF-Token`; log dostępu aplikacji usuwa parametry zapytania; błędy bazy są logowane tylko z typem i SQLSTATE. Żądanie wygląda więc w logu proxy jak `"uri":"/documents?[removed]"`. Jeśli dodajesz własne zbieranie logów (na przykład kolejne proxy przed tym), skonfiguruj to samo; `make smoke` to sprawdza. Przeglądarki zapisują adresy wyszukiwań we własnej historii; to jest poza serwerem.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.
 - Regularnie aktualizuj obrazy bazowe (nowe wydanie je przebudowuje).
 - Nie dawaj aplikacji dostępu do `docker.sock`; aktualizacje robi się z hosta.

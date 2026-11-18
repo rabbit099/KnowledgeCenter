@@ -1,6 +1,6 @@
 # Data model
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 PostgreSQL 16. Times are stored as `timestamptz` in UTC. Primary keys are UUIDs unless noted. This is the target model; the Alembic migrations are the source of truth and this page must match them.
 
@@ -35,7 +35,7 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 | Table | Key columns | Notes |
 |---|---|---|
 | `doc_categories` | `id`, `name`, `parent_id` | Optional tree |
-| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id`, `created_at`, `updated_at` | Created by `documents_0002` (Phase 2: every upload is a `draft` with version 1). Planned for Phase 5: `category_id`, `published_at`, `published_by`, `archived_at`. Visibility in SQL: `documents.services.api.visibility_clause` |
+| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id` (the version readers see; set by publishing, kept while archived), `published_at`, `published_by` → `users`, `archived_at` (`documents_0004`), `created_at`, `updated_at` | Created by `documents_0002` (every upload is a `draft` with version 1); lifecycle in Phase 3 (ADR-025). Check `ck_doc_documents_published_version`: a published document names its published version. Planned for Phase 5: `category_id`. Visibility in SQL: `documents.services.api.visibility_clause` |
 | `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename` (sanitised, metadata only), `size_bytes`, `sha256`, `storage_key` (unique, random UUID), `uploaded_by` → `users`, `uploaded_at`, `processing_status` (`pending`/`processing`/`done`/`failed`/`needs_ocr`), `processing_error` (message for the user), `processing_attempts`, `processing_started_at`, `processed_at`, `page_count`, `ocr_applied` | Unique `(document_id, version_no)`; indexes on `sha256` (duplicate warning) and `processing_status`. Planned: `derived_key` (Phase 4), `change_note` (Phase 5) |
 | `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Only for EML/MSG (top-level message); filled by `ingestion` through `documents.services.api`, damaged values stay empty |
 
@@ -98,7 +98,7 @@ See [search.md](search.md).
 ## Invariants
 
 - At least one active user holds the Admin role.
-- `doc_documents.published_version_id` always points to a version of the same document with `processing_status = done`.
+- `doc_documents.published_version_id` always points to a version of the same document; its processing status may be anything (publication does not depend on processing, ADR-025).
 - A document with status `published` has a non-null `published_version_id`.
 - Original files are never modified; `sha256` of the stored file matches the column.
 - `audit_log` rows are never updated or deleted by the application.

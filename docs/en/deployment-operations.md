@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
@@ -247,7 +247,7 @@ What runs where: the web application (`app`) stores uploads and enqueues them; t
 | `events redeliver` | deliver undelivered events, remove old delivered ones | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
 
-Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`).
+Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`; search samples in `wyszukiwanie/` with `OCZEKIWANE-wyszukiwanie.txt`).
 
 ## Developer commands
 
@@ -260,7 +260,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make lint-workflows` | Only the actionlint check of the workflows |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
-| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small TXT file (204) and waiting until the worker has processed it ("gotowe", at most 2 minutes), the parts page 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (about 1 minute with cached layers) |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, checks the network isolation (the worker reaches db and redis, nothing outside), then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small text PDF and of a TXT file named `smoke Łódź.txt` (204 each) and waiting until the worker has processed both ("gotowe", at most 2 minutes each), the parts pages 200, publishing the TXT 303, downloading it (same bytes; `application/octet-stream`, `nosniff`, `attachment` with the ASCII and UTF-8 name, `CSP sandbox`), then a unique phrase in a query string, `Referer` and `HX-Current-URL` that must appear in no log of proxy, app, worker and db (and the proxy log must contain no file name and no CSRF token), logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (about 1–2 minutes with cached layers) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. The runner is the target `test` of the worker image (LibreOffice, Tesseract; ADR-023) and runs the markers `integration` and `tools`. Expected end (Phase 2): `… passed, 2 skipped`. The first run builds the test image (about 2 minutes) and downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
@@ -268,7 +268,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<branch> m="text"` | Creates an empty migration file in the branch of the core or a module (`core`, `search`, ...), on the host, no database needed |
 | `make shell` | Shell inside the `app` container (needs Docker) |
-| `make probki DIR=<directory>` | Writes synthetic sample files for a manual test of every format and error case (TXT cp1250 and cp852, DOCX, DOC, text PDF, scanned PDF, encrypted PDF, EML and MSG with attachments, damaged files) into the directory, with `OCZEKIWANE.txt` listing the expected result of each; runs in the test image (LibreOffice for the DOC) |
+| `make probki DIR=<directory>` | Writes synthetic sample files for a manual test of every format and error case (TXT cp1250 and cp852, DOCX, DOC, text PDF, scanned PDF, encrypted PDF, EML and MSG with attachments, damaged files) into the directory, with `OCZEKIWANE.txt` listing the expected result of each; the subdirectory `wyszukiwanie/` holds the search corpus (20 Polish and English documents, the same as in the golden search tests, `tests/fixtures/search_corpus.py`) and `OCZEKIWANE-wyszukiwanie.txt` lists their target state (publish, draft, archive) and the queries with the expected documents; runs in the test image (LibreOffice for the DOC) |
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
@@ -317,6 +317,7 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 - `worker`, `db` and `redis` are only on the internal Docker network `backend` (no route to the internet, no name resolution of public names); `app` is on it and on `default` (reached by the proxy, outgoing LDAPS to Active Directory). Healthchecks run inside the containers and are not affected; `scripts/offline_bundle.sh` lists images only and needs no change; the coming `update.sh` (Phase 6) runs `docker compose`, which creates or updates both networks. Check: `make smoke` ("Network isolation"), or on a server `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` must fail with `OSError` (network unreachable).
 - Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
 - Docker logs rotate: at most 5 files × 10 MB per container.
+- Logs never contain search phrases, document content, file names or e-mail subjects (ADR-025): the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`; the application's access log drops query strings; database errors are logged with type and SQLSTATE only. A request therefore shows as `"uri":"/documents?[removed]"` in the proxy log. If you add your own log collection (for example a reverse proxy in front of this one), configure the same; `make smoke` checks it. Browsers keep the addresses of searches in their own history; this is outside the server.
 - `.env` and backups contain secrets and personal data; restrict permissions.
 - Update the base images regularly (a new release rebuilds them).
 - Do not give the application access to `docker.sock`; updates are done from the host.

@@ -1,10 +1,24 @@
 # Changelog
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+### Added
+- Publishing (Phase 3, stage A; moved from Phase 5, ADR-025): buttons "Publikuj", "Cofnij publikację", "Archiwizuj" and "Przywróć" on the document page (plain forms, no JavaScript needed). Own documents need `documents.publish`; other people's need `documents.publish_any` (publish, unpublish) or `documents.edit_any` (archive, restore). Restoring leads to a draft. Publication is allowed in every processing status; the page warns when the content cannot be found by search, or only partly. A page shown before someone else changed the status cannot apply an action (409). Audited as `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (identifiers and statuses only). Migration `documents_0004` (`published_at`, `published_by`, `archived_at`, check that a published document names its version). "Moje dokumenty" has a status column.
+- Download of the original ("Pobierz oryginał", `/documents/<id>/download`) for everyone who can see the document: always saved as a file (`application/octet-stream`, `attachment`, `nosniff`, `CSP sandbox`, `private, no-store`), the file name in ASCII and exact UTF-8. Audited as `document.download`.
+- `make probki` also writes the synthetic search corpus (`wyszukiwanie/`, 20 Polish and English documents) with `OCZEKIWANE-wyszukiwanie.txt` (target state of each file, queries and expected documents); the same corpus feeds the golden search tests.
+
+### Changed
+- The owner of a document sees it in every state, archived included (Readers still never see archived documents).
+- The role editor requires `documents.read_drafts` next to `documents.publish_any` and `documents.edit_any` ("wymaga: …" in the matrix, refused save with a message); roles saved earlier without it are marked "niespójna" and are not changed automatically.
+- `make smoke` also publishes and downloads a file and checks that a search phrase reaches no log (proxy, app, worker, db) and that the proxy log holds no file name or CSRF token.
+
+### Security
+- No search phrases, file names or tokens in logs (ADR-025): the proxy log (access and Caddy's own) drops query strings, `Referer`, `HX-Current-URL`, `Location`, `HX-Redirect`, `Content-Disposition` and `X-CSRF-Token` (until now the CSRF header and download names would have been logged); the application access log drops query strings; database exceptions are logged without their message (PostgreSQL quotes the offending value) and SQLAlchemy hides bound parameters.
+- Responses that set their own security headers (downloads) keep them; no header is sent twice.
 
 ## [0.3.0] - 2026-11-17
 

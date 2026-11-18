@@ -1,6 +1,6 @@
 # Search
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text from scanned pages; after that, every document is searched the same way.
 
@@ -52,11 +52,11 @@ Metadata (title, file name, e-mail subject and sender) is matched with tsvector 
 
 Enforced in SQL for every query:
 
-- user must have `documents.read`;
-- normal users: `doc_documents.status = 'published'` and the part belongs to `doc_documents.published_version_id`;
-- authors additionally see their own drafts (latest version);
-- holders of `documents.read_drafts` see all drafts;
-- archived documents are excluded unless the filter explicitly asks and the user may see them.
+- the documents a user may see are exactly those of `visibility_clause` ([auth-and-permissions.md](auth-and-permissions.md#document-visibility)): published ones with `documents.read`, all drafts with `documents.read_drafts`, own documents in every state; drafts are marked "szkic" in the results;
+- the searched version is the published one (`published_version_id`) for published and archived documents and the latest one for drafts (`Document.current_version_id`);
+- archived documents are excluded unless the filter "pokaż zarchiwizowane" asks for them and the user may see them (owner, `documents.edit_any`); Readers never see them.
+
+Search phrases are never logged, audited or stored (ADR-025).
 
 Old versions are not searchable in the MVP.
 

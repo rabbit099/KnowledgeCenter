@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -46,6 +46,10 @@ Tick items when they are finished and documented.
 - [x] Language detection per part
 
 ### Phase 3 — Search
+- [x] Publish, unpublish, archive, restore (moved from Phase 5; ADR-025), role rule "publish_any and edit_any require read_drafts"
+- [x] Download of the original with safe headers, audited
+- [x] No search phrases, file names or tokens in any log (proxy, app, database errors)
+- [x] Synthetic Polish-English search corpus for golden tests and `make probki`
 - [ ] Indexing in `pl`, `english`, `simple_unaccent`
 - [ ] Search UI (HTMX), snippets, filters, pagination
 - [ ] Metadata search with `pg_trgm`
@@ -59,7 +63,7 @@ Tick items when they are finished and documented.
 - [ ] Derived searchable PDF, `ocr_applied` flag, timeouts and limits
 
 ### Phase 5 — Document lifecycle
-- [ ] Draft / published / archived, versions, publishing a chosen version
+- [ ] Versions, publishing a chosen version (draft / published / archived: Phase 3)
 - [ ] Categories
 - [ ] Preview in the browser (stretch goal)
 

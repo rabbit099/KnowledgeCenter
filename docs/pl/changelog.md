@@ -1,10 +1,24 @@
 # Dziennik zmian
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+### Added
+- Publikowanie (Faza 3, etap A; przeniesione z Fazy 5, ADR-025): przyciski „Publikuj”, „Cofnij publikację”, „Archiwizuj” i „Przywróć” na stronie dokumentu (zwykłe formularze, bez JavaScriptu). Własne dokumenty wymagają `documents.publish`; cudze `documents.publish_any` (publikacja, cofnięcie) albo `documents.edit_any` (archiwizacja, przywrócenie). Przywrócenie prowadzi do szkicu. Publikacja jest dozwolona przy każdym statusie przetwarzania; strona ostrzega, gdy treści nie można wyszukać albo tylko częściowo. Strona wyświetlona, zanim ktoś inny zmienił stan, nie wykona akcji (409). Audyt `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (tylko identyfikatory i stany). Migracja `documents_0004` (`published_at`, `published_by`, `archived_at`, warunek, że opublikowany dokument wskazuje swoją wersję). „Moje dokumenty” mają kolumnę stanu.
+- Pobieranie oryginału („Pobierz oryginał”, `/documents/<id>/download`) dla każdego, kto widzi dokument: zawsze zapis do pliku (`application/octet-stream`, `attachment`, `nosniff`, `CSP sandbox`, `private, no-store`), nazwa pliku w ASCII i dokładna w UTF-8. Audyt `document.download`.
+- `make probki` zapisuje też syntetyczny korpus wyszukiwania (`wyszukiwanie/`, 20 dokumentów polskich i angielskich) z `OCZEKIWANE-wyszukiwanie.txt` (docelowy stan każdego pliku, zapytania i oczekiwane dokumenty); ten sam korpus zasila testy golden wyszukiwania.
+
+### Changed
+- Właściciel dokumentu widzi go we wszystkich stanach, także zarchiwizowanym (Czytelnicy nadal nigdy nie widzą zarchiwizowanych).
+- Edytor ról wymaga `documents.read_drafts` obok `documents.publish_any` i `documents.edit_any` („wymaga: …” w macierzy, odmowa zapisu z komunikatem); role zapisane wcześniej bez niego są oznaczane jako „niespójna” i nie są zmieniane automatycznie.
+- `make smoke` publikuje i pobiera plik oraz sprawdza, że wyszukiwana fraza nie trafia do żadnego logu (proxy, app, worker, db), a log proxy nie zawiera nazwy pliku ani tokenu CSRF.
+
+### Security
+- Żadnych wyszukiwanych fraz, nazw plików ani tokenów w logach (ADR-025): log proxy (dostępu i własny Caddy) usuwa parametry zapytania, `Referer`, `HX-Current-URL`, `Location`, `HX-Redirect`, `Content-Disposition` i `X-CSRF-Token` (dotąd nagłówek CSRF i nazwy pobieranych plików trafiłyby do logu); log dostępu aplikacji usuwa parametry zapytania; wyjątki bazy danych są logowane bez komunikatu (PostgreSQL cytuje w nim błędną wartość), a SQLAlchemy ukrywa parametry.
+- Odpowiedzi ustawiające własne nagłówki bezpieczeństwa (pobieranie) je zachowują; żaden nagłówek nie jest wysyłany dwa razy.
 
 ## [0.3.0] - 2026-11-17
 

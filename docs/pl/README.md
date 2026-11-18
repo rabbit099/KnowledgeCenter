@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -46,6 +46,10 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Wykrywanie języka dla każdej części
 
 ### Faza 3 — Wyszukiwanie
+- [x] Publikacja, cofnięcie publikacji, archiwizacja, przywrócenie (przeniesione z Fazy 5; ADR-025), reguła ról „publish_any i edit_any wymagają read_drafts”
+- [x] Pobieranie oryginału z bezpiecznymi nagłówkami, z audytem
+- [x] Żadnych wyszukiwanych fraz, nazw plików ani tokenów w logach (proxy, aplikacja, błędy bazy)
+- [x] Syntetyczny polsko-angielski korpus wyszukiwania dla testów golden i `make probki`
 - [ ] Indeksacja w `pl`, `english`, `simple_unaccent`
 - [ ] Interfejs wyszukiwania (HTMX), fragmenty, filtry, paginacja
 - [ ] Wyszukiwanie po metadanych z `pg_trgm`
@@ -59,7 +63,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Pochodny PDF z warstwą tekstu, flaga `ocr_applied`, limity i timeouty
 
 ### Faza 5 — Cykl życia dokumentu
-- [ ] Szkic / opublikowany / zarchiwizowany, wersje, publikacja wybranej wersji
+- [ ] Wersje, publikacja wybranej wersji (szkic / opublikowany / zarchiwizowany: Faza 3)
 - [ ] Kategorie
 - [ ] Podgląd w przeglądarce (opcjonalnie)
 

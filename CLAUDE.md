@@ -78,10 +78,10 @@ baza-wiedzy/
 │   │   ├── admin/         # admin panel skeleton
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
-│       ├── documents/     # module.py, routes, models, services/api.py, storage
+│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, services/api.py, storage
 │       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
 │       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
-├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py)
+├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py; search_corpus.py: golden corpus + make probki)
 ├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
@@ -117,9 +117,9 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - **Boundaries**: a module never imports the internals of another module. Allowed: `baza_wiedzy.core.*` and another module's `services/api.py` (only if declared in `requires`). Everything else goes through in-process events defined in `core/events.py`. Enforced by import-linter (`make lint`, CI). Do not weaken the contracts to make a change compile; change the design.
 - **Events** are synchronous and in-process; the bus persists nothing. Payloads carry identifiers only. An event that must not be lost goes through the publisher's outbox table, written in the same transaction as the result and redelivered until it succeeds (`document.version.extracted` via `ing_outbox`, ADR-020), so handlers must be idempotent. Current events: `document.version.uploaded`, `document.version.extracted`, `document.published`. New events and their payloads are added to `core/events.py` and documented in the module docs.
 - **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` owns the extracted text (`ing_parts`), its notes and outbox, and updates status and e-mail metadata through `documents.services.api`; `search` owns its index (`srch_parts`) and, from Phase 3, copies the text through `ingestion.services.api` after `document.version.extracted` (ADR-020).
-- **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility; `search` injects it into its queries (details in Phase 3). Visibility stays in SQL.
+- **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility (`visibility.py`: owner sees own documents in every state, drafts need `documents.read_drafts`, published `documents.read`, archived `documents.edit_any`); `search` injects it into its queries. Visibility stays in SQL.
 - **Migrations**: one Alembic branch per module (`branch_labels`) plus a `core` branch; a branch that `requires` another has `depends_on` it. `baza-wiedzy migrate` upgrades **all** branches, independent of `ENABLED_MODULES` (the schema is always complete); `/ready` compares the database with all script heads.
-- **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes.
+- **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes. A code may declare required codes (`Permission.requires`); the role editor refuses a role without them (ADR-025).
 - **Extension points** (inside the repository only, no dynamic plugin loading): extractor registry (new format = new file in `ingestion/extractors/`), `SearchBackend`, login providers (local, LDAP), file storage (in `documents`).
 - A new module needs: manifest, `services/api.py`, import-linter contract, docs `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`, tests.
 - Keep it thin. No dependency injection framework, no plugin system, no per-module deployments.
@@ -142,7 +142,8 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
 - Containers run as non-root. Postgres and Redis are not published on host ports. `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
-- Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
+- Audit log every login, upload, publish/unpublish, archive/restore, download, delete, role/permission change, setting change. Searches are never audited.
+- Logs, audit and error messages never contain document content, file names, e-mail subjects or search phrases. Search phrases travel in URLs, so the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`, the app access log drops query strings, and database exceptions are logged without their message (ADR-025). `make smoke` checks it.
 - Test fixtures are synthetic. Never commit real company documents or real mail.
 
 ## 9. Documentation rules (MANDATORY)

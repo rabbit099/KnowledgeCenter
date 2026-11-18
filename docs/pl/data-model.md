@@ -1,6 +1,6 @@
 # Model danych
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 PostgreSQL 16. Czasy są zapisywane jako `timestamptz` w UTC. Klucze główne to UUID, chyba że napisano inaczej. To model docelowy; źródłem prawdy są migracje Alembica i ta strona musi się z nimi zgadzać.
 
@@ -35,7 +35,7 @@ Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (n
 | Tabela | Kluczowe kolumny | Uwagi |
 |---|---|---|
 | `doc_categories` | `id`, `name`, `parent_id` | Opcjonalne drzewo |
-| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id`, `created_at`, `updated_at` | Tworzone przez `documents_0002` (Faza 2: każde wgranie to `draft` z wersją 1). Planowane na Fazę 5: `category_id`, `published_at`, `published_by`, `archived_at`. Widoczność w SQL: `documents.services.api.visibility_clause` |
+| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id` (wersja widoczna dla czytelników; ustawiana przy publikacji, zachowywana przy archiwizacji), `published_at`, `published_by` → `users`, `archived_at` (`documents_0004`), `created_at`, `updated_at` | Tworzone przez `documents_0002` (każde wgranie to `draft` z wersją 1); cykl życia w Fazie 3 (ADR-025). Warunek `ck_doc_documents_published_version`: opublikowany dokument wskazuje opublikowaną wersję. Planowane na Fazę 5: `category_id`. Widoczność w SQL: `documents.services.api.visibility_clause` |
 | `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename` (po sanityzacji, tylko metadana), `size_bytes`, `sha256`, `storage_key` (unikalny, losowy UUID), `uploaded_by` → `users`, `uploaded_at`, `processing_status` (`pending`/`processing`/`done`/`failed`/`needs_ocr`), `processing_error` (komunikat dla użytkownika), `processing_attempts`, `processing_started_at`, `processed_at`, `page_count`, `ocr_applied` | Unikalne `(document_id, version_no)`; indeksy na `sha256` (ostrzeżenie o duplikacie) i `processing_status`. Planowane: `derived_key` (Faza 4), `change_note` (Faza 5) |
 | `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Tylko dla EML/MSG (wiadomość główna); wypełniane przez `ingestion` przez `documents.services.api`, uszkodzone wartości zostają puste |
 
@@ -98,7 +98,7 @@ Zobacz [search.md](search.md).
 ## Niezmienniki
 
 - Co najmniej jeden aktywny użytkownik ma rolę Admin.
-- `doc_documents.published_version_id` zawsze wskazuje wersję tego samego dokumentu z `processing_status = done`.
+- `doc_documents.published_version_id` zawsze wskazuje wersję tego samego dokumentu; jej status przetwarzania może być dowolny (publikacja nie zależy od przetwarzania, ADR-025).
 - Dokument o statusie `published` ma niepuste `published_version_id`.
 - Pliki oryginalne nigdy nie są modyfikowane; `sha256` zapisanego pliku zgadza się z kolumną.
 - Aplikacja nigdy nie aktualizuje ani nie usuwa wierszy `audit_log`.

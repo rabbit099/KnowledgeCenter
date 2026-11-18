@@ -1,6 +1,6 @@
 # Wyszukiwanie
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
 
 Wyszukiwanie to pełnotekstowe wyszukiwanie PostgreSQL (FTS), a nie OCR. OCR tylko zamienia zeskanowane strony na tekst; potem każdy dokument jest przeszukiwany tak samo.
 
@@ -52,11 +52,11 @@ Metadane (tytuł, nazwa pliku, temat i nadawca maila) są dopasowywane przez tsv
 
 Wymuszana w SQL dla każdego zapytania:
 
-- użytkownik musi mieć `documents.read`;
-- zwykli użytkownicy: `doc_documents.status = 'published'`, a część należy do `doc_documents.published_version_id`;
-- autorzy dodatkowo widzą własne szkice (ostatnia wersja);
-- posiadacze `documents.read_drafts` widzą wszystkie szkice;
-- dokumenty zarchiwizowane są wykluczone, chyba że filtr wyraźnie o nie prosi i użytkownik może je widzieć.
+- użytkownik widzi dokładnie te dokumenty, które dopuszcza `visibility_clause` ([auth-and-permissions.md](auth-and-permissions.md#widoczność-dokumentów)): opublikowane z `documents.read`, wszystkie szkice z `documents.read_drafts`, własne dokumenty we wszystkich stanach; szkice są w wynikach oznaczone „szkic”;
+- przeszukiwana wersja to opublikowana (`published_version_id`) dla dokumentów opublikowanych i zarchiwizowanych oraz najnowsza dla szkiców (`Document.current_version_id`);
+- dokumenty zarchiwizowane są wykluczone, chyba że filtr „pokaż zarchiwizowane” o nie prosi i użytkownik może je widzieć (właściciel, `documents.edit_any`); Czytelnicy nigdy ich nie widzą.
+
+Wyszukiwane frazy nigdy nie są logowane, audytowane ani zapisywane (ADR-025).
 
 Stare wersje nie są przeszukiwalne w MVP.
 

@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-18
 
 ## Authentication
 
@@ -113,6 +113,8 @@ Permissions are fixed codes defined in the application. Roles are sets of permis
 
 The catalog is assembled from the manifests of the enabled modules: the core provides `users.manage`, `roles.manage`, `audit.view`, `settings.manage` and `system.view`; the `documents` module provides `documents.*` and `categories.manage`. Permissions of a disabled module are absent from the catalog and ignored in roles (stored role assignments are kept, not deleted). Codes stay fixed in code: a module adds codes in its manifest, admins never invent them.
 
+**Required permissions** (ADR-025): a manifest may declare that a code needs another one in the same role. `documents.publish_any` and `documents.edit_any` require `documents.read_drafts` (publishing or archiving other people's drafts is impossible without seeing them, and neither code shows drafts by itself). The role editor shows "wymaga: …" next to such a code and refuses to save a role that lacks a requirement ("Uprawnienie X wymaga też Y."). Roles saved before the rule existed are not changed automatically: the role list marks them "niespójna" and the role page names the missing codes; until fixed, their holders simply do not see other people's drafts. The default roles satisfy every requirement (test).
+
 ### Default roles
 
 | Role | Permissions |
@@ -160,12 +162,27 @@ If every admin account is unusable, `create-admin` restores access (it reactivat
 | Document state | Who sees it |
 |---|---|
 | Draft | its owner, holders of `documents.read_drafts`, Admin |
-| Published | everyone with `documents.read` |
-| Archived | holders of `documents.edit_any`, Admin |
+| Published | its owner, everyone with `documents.read` |
+| Archived | its owner, holders of `documents.edit_any`, Admin; never Readers |
 
-This is enforced in SQL for lists, search and downloads. Tests cover the role × action matrix.
+The owner sees their own documents in every state. `documents.publish_any` and `documents.edit_any` do not show other people's drafts by themselves (they require `documents.read_drafts`, see above). This is enforced in SQL for lists, the document page, search and downloads (`documents/visibility.py`). Tests cover the role × action matrix.
 
 "Przetwórz ponownie" (process a document again): the owner with `documents.upload` for own documents, holders of `documents.edit_any` for any document they can see; others get 404 (document not visible) or 403. The extracted text and e-mail headers are shown to everyone who can see the document.
+
+### Publishing, archiving and download
+
+Buttons on the document page (ordinary forms with the CSRF field; they work without JavaScript). A user acts only on documents they can see (otherwise 404):
+
+| Action | From → to | Own document | Other people's document |
+|---|---|---|---|
+| Publikuj | draft → published | `documents.publish` | `documents.publish_any` |
+| Cofnij publikację | published → draft | `documents.publish` | `documents.publish_any` |
+| Archiwizuj | draft or published → archived | `documents.publish` | `documents.edit_any` |
+| Przywróć | archived → draft | `documents.publish` | `documents.edit_any` |
+
+Allowed but not permitted: 403 with a message. If the status changed after the page was shown (someone else acted), the action is refused with 409 "Stan dokumentu zmienił się w międzyczasie". Publication does not depend on processing: the page warns when the content cannot be found by search, or only partly (processing waiting, failed or "wymaga OCR"). Publishing sets the published version (the current one), the time and the person; unpublishing and restoring clear them; archiving keeps the published version. Default roles: a Publisher publishes, unpublishes, archives and restores own documents; Admin all documents; a Reader none.
+
+**Download** ("Pobierz oryginał", `/documents/<id>/download`): everyone who can see the document; the published version of published and archived documents, the latest of drafts. The response is always `application/octet-stream` with `Content-Disposition: attachment` (the browser saves the file and never shows it inside the application), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control: private, no-store`; no partial downloads (Range). The file name is the sanitised name from the upload (with the extension of the detected type if it was different), sent as an ASCII fallback (`Łódź` → `Lodz`) and as the exact UTF-8 name. Preview in the browser: Phase 5.
 
 ## Audit log
 
@@ -180,10 +197,10 @@ Actions recorded since Phase 1:
 | Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audit | `audit.export` (`filters`, `rows`, `truncated`) |
-| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line) |
+| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
-Further document actions (`reprocess`, `publish`, `download`, ...) are added with the later phases.
+Searches are not audited and search phrases are never stored (ADR-025). Further document actions (`delete`, version changes) are added with Phase 5.
 
 **Viewer** `/admin/audit` (permission `audit.view`, menu "Dziennik audytu"): newest first, 50 per page, filters by date range (local days, Europe/Warsaw), actor (contains), action (exact name, or a prefix ending with a dot such as `role.`), object (type or id, contains). `details` is shown as escaped key–value pairs (nested keys as `before.name`, lists comma-separated), never as raw JSON.
 
