@@ -39,6 +39,7 @@ from sqlalchemy import (
     select,
     text,
     true,
+    union,
 )
 from sqlalchemy.dialects.postgresql import REGCONFIG, TSQUERY, distinct_on
 from sqlalchemy.exc import OperationalError
@@ -164,20 +165,19 @@ class PostgresBackend:
             text("SELECT set_config('pg_trgm.word_similarity_threshold', :t, true)"),
             {"t": str(self.settings.search_trigram_threshold)},
         )
+        # Hash joins and the sort of a broad query fit in memory instead of temp files.
+        db.execute(text("SELECT set_config('work_mem', '16MB', true)"))
 
     def _run(
         self, db: Session, user: CurrentUser, request: SearchRequest, query: str, *, ranked: bool
     ) -> SearchPage:
         self._limits(db)
         alt1, alt2 = query_alternatives(query)
-        params = {"q": query, "a1": alt1, "a2": alt2}
+        # Only alternatives that differ: OR-ing a query with itself made matching and ranking
+        # do the same work up to three times (stage C measurements).
+        variants = list(dict.fromkeys((query, alt1, alt2)))
         q = select(
-            *(
-                _or(_ws(cfg, params["q"]), _ws(cfg, params["a1"]), _ws(cfg, params["a2"])).label(
-                    key
-                )
-                for key, cfg in CONFIGS.items()
-            )
+            *(_or(*(_ws(cfg, v) for v in variants)).label(key) for key, cfg in CONFIGS.items())
         ).cte("q")
         empty = db.execute(
             select(*(func.numnode(q.c[key]) for key in CONFIGS)).select_from(q)
@@ -207,32 +207,56 @@ class PostgresBackend:
         )
         p = SearchPart
         part_match = or_(*(_matches(getattr(p, f"tsv_{key}"), q.c[key]) for key in CONFIGS))
-        if ranked:
-            score: ColumnElement[Any] = func.greatest(
-                func.ts_rank_cd(p.tsv_pl, q.c.pl, 32)
-                * case((p.language == "en", OTHER_LANGUAGE_FACTOR), else_=1.0),
-                func.ts_rank_cd(p.tsv_en, q.c.en, 32)
-                * case((p.language == "pl", OTHER_LANGUAGE_FACTOR), else_=1.0),
-                func.ts_rank_cd(p.tsv_simple, q.c.simple, 32) * SIMPLE_FACTOR,
-            )
-        else:
-            score = literal(0.0, Float)
-        content_query = (
+        # Ranking reads (and decompresses) a tsvector per configuration, the main cost of a
+        # broad query (stage C measurements). First the configuration of the part's language
+        # (both for "unknown"); the others only when it gives nothing (an identifier, a word
+        # typed without diacritics, a word of the other language): LATERAL computes it once.
+        matched_query = (
             select(
-                p.document_id.label("document_id"),
                 p.id.label("part_id"),
-                scope.c.version_id.label("version_id"),
-                scope.c.doc_date.label("doc_date"),
-                score.label("score"),
+                p.version_id.label("version_id"),
+                p.document_id.label("document_id"),
             )
             .select_from(p)
-            .join(scope, scope.c.version_id == p.version_id)
             .join(q, true())
-            .where(part_match)
         )
+        if ranked:
+            rank_pl = func.ts_rank_cd(p.tsv_pl, q.c.pl, 32)
+            rank_en = func.ts_rank_cd(p.tsv_en, q.c.en, 32)
+            own = case(
+                (p.language == "en", rank_en),
+                (p.language == "pl", rank_pl),
+                else_=func.greatest(rank_pl, rank_en),
+            )
+            first = select(own.label("r")).correlate(p.__table__, q).lateral("first_rank")
+            other = case((p.language == "en", rank_pl), else_=rank_en)
+            score: ColumnElement[Any] = case(
+                (first.c.r > 0, first.c.r),
+                else_=func.greatest(
+                    func.ts_rank_cd(p.tsv_simple, q.c.simple, 32) * SIMPLE_FACTOR,
+                    other * OTHER_LANGUAGE_FACTOR,
+                ),
+            )
+            matched_query = matched_query.join(first, true())
+        else:
+            score = literal(0.0, Float)
+        matched_query = matched_query.add_columns(score.label("score")).where(part_match)
         if request.language:
-            content_query = content_query.where(p.language == request.language)
-        content = content_query.cte("content")
+            matched_query = matched_query.where(p.language == request.language)
+        # Materialised and narrow: the wide rows (tsvectors) never reach the joins.
+        matched = matched_query.cte("matched").prefix_with("MATERIALIZED")
+        content = (
+            select(
+                matched.c.document_id,
+                matched.c.part_id,
+                scope.c.version_id.label("version_id"),
+                scope.c.doc_date.label("doc_date"),
+                matched.c.score,
+            )
+            .select_from(matched)
+            .join(scope, scope.c.version_id == matched.c.version_id)
+            .cte("content")
+        )
         best = (
             select(content)
             .ext(distinct_on(content.c.document_id))
@@ -290,25 +314,18 @@ class PostgresBackend:
         negated = negations(query)
         if negated:
             neg = select(*(_ws(cfg, negated).label(key) for key, cfg in CONFIGS.items())).cte("neg")
+            # One pass over the GIN indexes gives every version containing an excluded word;
+            # checking each candidate's parts instead cost a second per broad query.
             p2, m2 = SearchPart.__table__.alias("p2"), SearchDocument.__table__.alias("m2")
-            docs = docs.where(
-                ~exists(
-                    select(1)
-                    .select_from(p2.join(neg, true()))
-                    .where(
-                        p2.c.version_id == version_id,
-                        or_(*(_matches(p2.c[f"tsv_{key}"], neg.c[key]) for key in CONFIGS)),
-                    )
-                ),
-                ~exists(
-                    select(1)
-                    .select_from(m2.join(neg, true()))
-                    .where(
-                        m2.c.version_id == version_id,
-                        or_(*(_matches(m2.c[f"tsv_meta_{key}"], neg.c[key]) for key in CONFIGS)),
-                    )
-                ),
-            )
+            excluded = union(
+                select(p2.c.version_id)
+                .select_from(p2.join(neg, true()))
+                .where(or_(*(_matches(p2.c[f"tsv_{key}"], neg.c[key]) for key in CONFIGS))),
+                select(m2.c.version_id)
+                .select_from(m2.join(neg, true()))
+                .where(or_(*(_matches(m2.c[f"tsv_meta_{key}"], neg.c[key]) for key in CONFIGS))),
+            ).cte("excluded")
+            docs = docs.where(~exists(select(1).where(excluded.c.version_id == version_id)))
         ranked_docs = docs.cte("docs")
         order = (
             [ranked_docs.c.score.desc(), ranked_docs.c.doc_date.desc()]
