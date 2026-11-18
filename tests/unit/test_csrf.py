@@ -111,3 +111,53 @@ def test_token_is_bound_to_the_session_cookie(client: TestClient) -> None:
 )
 def test_safe_next(target: str | None, expected: str) -> None:
     assert safe_next(target) == expected
+
+
+def test_rejection_reasons() -> None:
+    from baza_wiedzy.core.auth.csrf import rejection_reason
+
+    def reason(
+        *,
+        cookie: bool = True,
+        logged_in: bool = True,
+        supplied: str | None = "a",
+        same_origin: bool = True,
+    ) -> str | None:
+        return rejection_reason(
+            has_binding_cookie=cookie,
+            logged_in=logged_in,
+            supplied=supplied,
+            expected="a",
+            same_origin=same_origin,
+        )
+
+    assert reason() is None
+    assert reason(cookie=False) == "no_session"
+    assert reason(same_origin=False) == "cross_site"
+    assert reason(supplied=None) == "missing_token"
+    assert reason(supplied="b") == "mismatch"
+    assert reason(supplied="b", logged_in=False) == "session_mismatch"
+
+
+def test_csrf_macro_is_always_imported_with_context() -> None:
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "src" / "baza_wiedzy"
+    imports = re.compile(r"\{%\s*from\s+\"admin/_macros.html\"\s+import\s+([^%]*?)\s*%\}")
+    for template in root.rglob("*.html"):
+        for names in imports.findall(template.read_text(encoding="utf-8")):
+            if re.search(r"\bcsrf\b", names):
+                assert names.endswith("with context"), f"{template}: import csrf with context"
+
+
+def test_empty_token_fails_rendering() -> None:
+    import pytest
+
+    from baza_wiedzy.core.web.templating import require_csrf
+
+    assert require_csrf("abc") == "abc"
+    bad: object
+    for bad in ("", None, 0):
+        with pytest.raises(RuntimeError):
+            require_csrf(bad)

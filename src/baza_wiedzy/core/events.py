@@ -2,9 +2,13 @@
 
 Modules talk to each other through public service APIs or through these events, never by
 importing each other's internals. Handlers run in the publisher's process and thread, in
-subscription order; an exception in a handler propagates to the publisher. Events are not
-persisted: a handler that must not lose work (for example indexing) has to be idempotent and
-re-runnable from stored data.
+subscription order; an exception in a handler propagates to the publisher.
+
+The bus itself does not persist anything. Durability is the publisher's job (ADR-020):
+`document.version.extracted` is written to the ingestion outbox (ing_outbox) in the same
+transaction as the extraction result and delivered (again) until a delivery succeeds, so
+handlers must be idempotent. Payloads are thin: identifiers only, never document text; a
+handler reads what it needs through the owning module's services/api.py.
 
 Event names and payload shapes are part of the public contract between modules, so they live
 here, in the core.
@@ -17,8 +21,11 @@ from collections.abc import Callable, Mapping
 from typing import Any, TypedDict
 
 # document.version.uploaded: documents stored a new version; ingestion enqueues processing.
+# Published by the web application after the commit; if it is lost (Redis down), the version
+# stays "pending" and the worker start re-enqueues it.
 DOCUMENT_VERSION_UPLOADED = "document.version.uploaded"
-# document.version.extracted: ingestion extracted text from a version; search indexes it.
+# document.version.extracted: ingestion stored the parts of a version (outbox, at least once);
+# search (Phase 3) reads them through ingestion.services.api and indexes them.
 DOCUMENT_VERSION_EXTRACTED = "document.version.extracted"
 # document.published: a version of a document became visible to readers.
 DOCUMENT_PUBLISHED = "document.published"
@@ -34,21 +41,9 @@ class DocumentPublishedPayload(TypedDict):
     version_id: str
 
 
-class ExtractedPart(TypedDict):
-    part_type: str  # page | body | attachment
-    name: str | None
-    page_no: int | None
-    chunk_no: int
-    language: str  # pl | en | mixed | unknown
-    text: str
-    ocr_applied: bool
-
-
 class VersionExtractedPayload(TypedDict):
     document_id: str
     version_id: str
-    parts: list[ExtractedPart]
-    metadata: Mapping[str, Any]
 
 
 Handler = Callable[[Mapping[str, Any]], None]

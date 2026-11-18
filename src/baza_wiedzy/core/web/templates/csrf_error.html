@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Request refused") }} · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>{{ _("Request refused") }}</h1>
+<p>{{ _("The form could not be accepted because its security token is missing or has expired, for example when the page was open across a login or logout. Nothing was changed.") }}</p>
+<p>{{ _("Go back, reload the page and repeat the action. If it keeps happening, log in again.") }}</p>
+<p><a class="button" href="/">{{ _("Back to the start page") }}</a> <a class="button" href="/login">{{ _("Log in again") }}</a></p>
+{% endblock %}

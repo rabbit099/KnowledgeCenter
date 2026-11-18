@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.2.1 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -40,19 +40,22 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Log audytowy i jego przeglądarka
 
 ### Faza 2 — Upload i przetwarzanie
-- [ ] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
-- [ ] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
-- [ ] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
-- [ ] Wykrywanie języka dla każdej części
+- [x] Upload z walidacją, zapis plików, SHA-256, ostrzeżenie o duplikacie
+- [x] Ekstraktory: PDF (tekst), DOCX, DOC, TXT, EML, MSG (+ załączniki)
+- [x] Pipeline w workerze, statusy, ponowienia, akcja „przetwórz ponownie”
+- [x] Wykrywanie języka dla każdej części
 
 ### Faza 3 — Wyszukiwanie
 - [ ] Indeksacja w `pl`, `english`, `simple_unaccent`
 - [ ] Interfejs wyszukiwania (HTMX), fragmenty, filtry, paginacja
 - [ ] Wyszukiwanie po metadanych z `pg_trgm`
 - [ ] Testy wzorcowe (golden) wyszukiwania i test wydajności (20 000 dokumentów)
+- [ ] Indeksowanie części z tekstem także dla wersji w stanie „wymaga OCR” (`needs_ocr`): ich strony z tekstem są już wyciągnięte
+- [ ] `search` czyta części przez `ingestion.services.api` i deklaruje `requires=("documents", "ingestion")` (ADR-020)
 
 ### Faza 4 — OCR
-- [ ] Wykrywanie stron bez tekstu, OCRmyPDF (`pol+eng`)
+- [x] Wykrywanie stron bez tekstu (Faza 2: strony oznaczane, wersja „wymaga OCR”)
+- [ ] OCRmyPDF (`pol+eng`) dla oznaczonych stron wersji `needs_ocr`, potem `done`
 - [ ] Pochodny PDF z warstwą tekstu, flaga `ocr_applied`, limity i timeouty
 
 ### Faza 5 — Cykl życia dokumentu
@@ -70,4 +73,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Przegląd bezpieczeństwa względem sekcji 8 pliku `CLAUDE.md`
 - [ ] Test odbiorczy na prawdziwych dokumentach (w tym skany i maile)
 - [ ] Instrukcja dla czytelników i publikujących
+- [ ] Na serwerze: dziennik audytu i limity logowania widzą prawdziwe adresy klientów, nie bramę Dockera (sprawdzenie w [auth-and-permissions.md](auth-and-permissions.md#uwierzytelnianie), adres klienta)
 - [ ] Rozdzielenie ról bazy (właściciel schematu do migracji vs rola aplikacji bez praw właściciela) i `REVOKE UPDATE, DELETE, TRUNCATE` na `audit_log`
+- [ ] Usunięcie wyjątku `exclude-newer-package` dla `opentelemetry-api` przy comiesięcznym przeglądzie zależności, gdy `exclude-newer` przejdzie 2026-10-30 (ADR-015)
+- [ ] Na serwerze: worker nie ma dostępu do internetu (sprawdzenie sieci w `make smoke` albo polecenie z deployment-operations.md, Uwagi bezpieczeństwa)

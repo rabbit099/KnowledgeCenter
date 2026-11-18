@@ -29,7 +29,7 @@ from baza_wiedzy.core.db.migrate import schema_check
 from baza_wiedzy.core.db.session import make_engine, make_session_factory
 from baza_wiedzy.core.events import EventBus
 from baza_wiedzy.core.logs import configure_logging
-from baza_wiedzy.core.queue import heartbeat_check
+from baza_wiedzy.core.queue import heartbeat_check, setup_broker
 from baza_wiedzy.core.registry import load_ref, load_registry
 from baza_wiedzy.core.web import routes as core_routes
 from baza_wiedzy.core.web.security import EXCEPTION_HANDLERS, SecurityHeadersMiddleware
@@ -83,14 +83,18 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
     app.state.engine = engine
     app.state.redis = redis_client
     app.state.events = EventBus()
-    app.state.templates = make_templates(settings)
+    app.state.templates = make_templates(
+        settings, tuple(m.templates for m in registry.modules if m.templates)
+    )
     app.state.ready_checks = {
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),
         "schema": schema_check(engine, settings),
         "worker": heartbeat_check(redis_client),
     }
-    registry.register_events(app.state.events)
+    # Actors of enabled modules are bound to the Redis broker so that handlers can enqueue jobs.
+    setup_broker(settings, registry)
+    registry.register_events(app.state.events, settings)
 
     # Authentication and permissions (core).
     session_limits = SessionLimits(

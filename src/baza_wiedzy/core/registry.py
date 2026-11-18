@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
+from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.events import EventBus
 
 CORE_NAME = "core"
@@ -71,7 +72,10 @@ class ModuleManifest:
     settings_schema: str | None = None  # object ref to a pydantic model of admin settings
     tasks: tuple[str, ...] = ()  # object refs to background tasks (Dramatiq actors)
     cli_commands: tuple[str, ...] = ()  # object refs to CLI command callables
-    on_register: Callable[[EventBus], None] | None = None  # subscribe to events here
+    # object refs to callables(Runtime) run once when a worker process starts (recovery work)
+    worker_startup: tuple[str, ...] = ()
+    # subscribe to events here; called with the bus and the settings of the process
+    on_register: Callable[[EventBus, Settings], None] | None = None
 
     def __post_init__(self) -> None:
         if not _NAME_RE.match(self.name):
@@ -151,10 +155,10 @@ class ModuleRegistry:
         ]
         return tuple(sorted(items, key=lambda i: (i.order, i.label)))
 
-    def register_events(self, bus: EventBus) -> None:
+    def register_events(self, bus: EventBus, settings: Settings) -> None:
         for manifest in self.modules:
             if manifest.on_register is not None:
-                manifest.on_register(bus)
+                manifest.on_register(bus, settings)
 
 
 def _with_core(enabled: Iterable[str]) -> list[str]:

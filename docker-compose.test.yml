@@ -32,7 +32,12 @@ services:
       retries: 30
 
   tests:
-    image: ghcr.io/astral-sh/uv:0.13.8-python3.12-trixie-slim
+    # Target `test` of the worker image: LibreOffice and Tesseract for the extractor tests.
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+      target: test
+    image: baza-wiedzy-worker:test
     depends_on:
       db-test:
         condition: service_healthy
@@ -50,8 +55,8 @@ services:
       - venv:/venv
       - uv-cache:/uv-cache
     command: >-
-      sh -c "uv sync --frozen --quiet && uv run --frozen --no-sync
-      pytest -p no:cacheprovider -m integration"
+      sh -c "uv sync --frozen --all-extras --quiet && uv run --frozen --no-sync
+      pytest -p no:cacheprovider -m 'integration or tools'"
 
 volumes:
   venv:

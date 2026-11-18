@@ -32,6 +32,25 @@ x-app-env: &app-env
   ARGON2_MAX_CONCURRENT: ${ARGON2_MAX_CONCURRENT:-3}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   AUDIT_EXPORT_MAX_ROWS: ${AUDIT_EXPORT_MAX_ROWS:-10000}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+  STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
+  INGEST_MAX_ATTEMPTS: ${INGEST_MAX_ATTEMPTS:-3}
+  INGEST_RETRY_MIN_SECONDS: ${INGEST_RETRY_MIN_SECONDS:-30}
+  INGEST_RETRY_MAX_SECONDS: ${INGEST_RETRY_MAX_SECONDS:-600}
+  INGEST_TIME_LIMIT_SECONDS: ${INGEST_TIME_LIMIT_SECONDS:-900}
+  INGEST_STALE_MINUTES: ${INGEST_STALE_MINUTES:-30}
+  INGEST_MAX_DEPTH: ${INGEST_MAX_DEPTH:-3}
+  INGEST_MAX_PARTS: ${INGEST_MAX_PARTS:-2000}
+  INGEST_MAX_TEXT_MB: ${INGEST_MAX_TEXT_MB:-50}
+  LANGUAGE_MIN_LETTERS: ${LANGUAGE_MIN_LETTERS:-40}
+  INGEST_MAX_PAGES: ${INGEST_MAX_PAGES:-2000}
+  OCR_MIN_CHARS: ${OCR_MIN_CHARS:-25}
+  INGEST_CHILD_MEMORY_MB: ${INGEST_CHILD_MEMORY_MB:-1024}
+  INGEST_CHILD_TIMEOUT_SECONDS: ${INGEST_CHILD_TIMEOUT_SECONDS:-300}
+  LIBREOFFICE_MEMORY_MB: ${LIBREOFFICE_MEMORY_MB:-1024}
+  LIBREOFFICE_TIMEOUT_SECONDS: ${LIBREOFFICE_TIMEOUT_SECONDS:-120}
+  OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
+  SCAN_HOOK: ${SCAN_HOOK:-none}
   LDAP_ENABLED: ${LDAP_ENABLED:-false}
   LDAP_URI: ${LDAP_URI:-}
   LDAP_BIND_DN: ${LDAP_BIND_DN:-}
@@ -62,7 +81,7 @@ services:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       TLS_MODE: ${TLS_MODE:-internal}
       ACME_EMAIL: ${ACME_EMAIL:-}
-      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-110}
+      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-51}
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -83,6 +102,11 @@ services:
       <<: *app-env
       # uvicorn takes the client address from X-Forwarded-For only for requests from the proxy.
       FORWARDED_ALLOW_IPS: ${PROXY_IP:-172.30.70.10}
+    # default: reached by the proxy, outbound to Active Directory (LDAPS);
+    # backend: database, Redis and the worker (no internet).
+    networks:
+      - default
+      - backend
     volumes:
       - storage:/data/storage
       # CA certificate and service-account password for Active Directory (read-only).
@@ -108,6 +132,10 @@ services:
       <<: *app-env
       DB_POOL_SIZE: "1"
       DB_MAX_OVERFLOW: "0"
+    # Internal network only: the worker parses untrusted files and runs LibreOffice and
+    # pdfium; it reaches the database and Redis but nothing outside (ADR-024).
+    networks:
+      - backend
     stop_grace_period: 60s
     volumes:
       - storage:/data/storage
@@ -142,6 +170,8 @@ services:
       APP_DB_NAME: ${APP_DB_NAME:-baza_wiedzy}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
     shm_size: 256m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${APP_DB_USER}\" -d \"$${APP_DB_NAME}\""]
@@ -167,6 +197,8 @@ services:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     volumes:
       - redis-data:/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -186,6 +218,10 @@ services:
       - no-new-privileges:true
     volumes:
       - clamav-db:/var/lib/clamav
+    # backend: scanned by the worker (later); default: signature updates from the internet.
+    networks:
+      - default
+      - backend
     deploy:
       resources:
         limits:
@@ -199,6 +235,13 @@ networks:
         # Fixed so that the proxy can have a fixed address. Change it if it collides with a
         # company network or VPN route (docs: deployment-operations.md, Configuration).
         - subnet: ${DOCKER_SUBNET:-172.30.70.0/24}
+  # No route to the outside world (Docker creates no gateway for it): worker, db, redis,
+  # and app as their client. Fixed subnet for the same reason as above (collisions).
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${BACKEND_SUBNET:-172.30.72.0/24}
 
 volumes:
   pgdata:

@@ -26,7 +26,12 @@ def test_all_manifests_include_disabled_modules() -> None:
 
 def test_expected_heads_are_all_script_heads() -> None:
     # Independent of ENABLED_MODULES: the schema is always complete.
-    assert expected_heads(make_config(settings())) == {"core_0003", "documents_0001", "search_0001"}
+    assert expected_heads(make_config(settings())) == {
+        "core_0003",
+        "documents_0003",
+        "ingestion_0001",
+        "search_0001",
+    }
 
 
 @pytest.mark.parametrize(
@@ -47,4 +52,4 @@ def test_schema_status(
 
 def test_revision_unknown_branch_is_a_readable_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["revision", "--branch", "nope", "-m", "x"]) == 1
-    assert "known branches: core, documents, search" in capsys.readouterr().err
+    assert "known branches: core, documents, ingestion, search" in capsys.readouterr().err

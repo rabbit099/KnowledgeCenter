@@ -1,6 +1,6 @@
 # Search
 
-> Applies to: v0.2.1 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-17
 
 Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text from scanned pages; after that, every document is searched the same way.
 
@@ -27,7 +27,7 @@ The detected language (`srch_parts.language`) is informational and usable as a f
 
 Chunking keeps each tsvector under the 1 MB PostgreSQL limit: PDFs are split per page, other text into chunks of at most 100,000 characters.
 
-The `search` module owns the indexed text and its indexes (table `srch_parts`). It receives text from the `ingestion` module through the event `document.version.extracted` and replaces all parts of that version in one transaction, so repeating the event is harmless. Because the text is stored here, reindexing does not need to read the original files again, and replacing the search engine touches only this module.
+The `search` module owns its index (table `srch_parts`, a copy of the text with the `tsv_*` columns). The extracted text itself is owned by `ingestion` (`ing_parts`, ADR-020): on the event `document.version.extracted` (identifiers only, delivered at least once through the ingestion outbox) `search` reads the parts with `ingestion.services.api.parts_of` and replaces all rows of that version in one transaction, so repeating the event is harmless. A full reindex reads `ingestion.services.api` again and never the original files; replacing the search engine touches only this module.
 
 ## Query processing
 

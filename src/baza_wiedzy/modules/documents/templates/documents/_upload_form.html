@@ -1,0 +1,12 @@
+{% if error %}<p class="fail" role="alert">{{ _(error) }}</p>{% endif %}
+<form class="stack" hx-post="/documents/upload" hx-encoding="multipart/form-data" hx-target="#upload-area" hx-swap="innerHTML" hx-disabled-elt="button">
+  <label>{{ _("File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)", mb=max_mb) }}
+    <input type="file" name="file" required accept=".pdf,.docx,.doc,.txt,.eml,.msg">
+  </label>
+  <label>{{ _("Title (optional; by default the file name)") }}
+    <input type="text" name="title" maxlength="300">
+  </label>
+  <button type="submit">{{ _("Upload") }}</button>
+  <p class="muted htmx-indicator">{{ _("Uploading...") }}</p>
+</form>
+<p class="muted">{{ _("A new document is a draft: only you and administrators can see it.") }}</p>

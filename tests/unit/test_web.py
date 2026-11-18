@@ -138,6 +138,26 @@ def test_every_ui_string_has_a_polish_translation() -> None:
     }
     with (LOCALE_DIR / "pl" / "LC_MESSAGES" / "messages.po").open("rb") as po_file:
         catalog = read_po(po_file, locale="pl")
-    translated = {m.id for m in catalog if m.id and m.string and not m.fuzzy}
+    translated = {
+        m.id[0] if isinstance(m.id, tuple) else m.id
+        for m in catalog
+        if m.id and m.string and not m.fuzzy and (not isinstance(m.string, tuple) or all(m.string))
+    }
     assert extracted, "no strings extracted; check the extraction setup"
     assert extracted <= translated, f"untranslated: {sorted(extracted - translated)}"
+
+
+@pytest.mark.parametrize(
+    ("size", "text"),
+    [(0, "0 B"), (17, "17 B"), (1023, "1023 B"), (1536, "1,5 KB"), (5 * 1024**2, "5,0 MB")],
+)
+def test_file_sizes_are_readable(size: int, text: str) -> None:
+    from baza_wiedzy.core.web.templating import filesize
+
+    assert filesize(size) == text
+
+
+def test_long_hashes_are_recognised_for_shortening() -> None:
+    from baza_wiedzy.core.web.templating import is_hash
+
+    assert is_hash("a" * 64) and not is_hash("abc") and not is_hash("Z" * 64) and not is_hash(5)

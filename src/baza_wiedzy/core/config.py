@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -60,6 +60,40 @@ class Settings(BaseSettings):
     ldap_connect_timeout_seconds: int = 5
     ldap_receive_timeout_seconds: int = 10
     ldap_page_size: int = 500
+    # Documents: largest accepted file (the proxy's MAX_REQUEST_MB must be a little larger) and
+    # the storage volume (originals, .incoming/ for uploads in progress).
+    max_upload_mb: int = 50
+    storage_dir: str = "/data/storage"
+    # Ingestion (worker): attempts per version (transient errors only: database, Redis, time
+    # limit), exponential delay between attempts, time limit of one attempt, and the age after
+    # which a version still "processing" counts as interrupted (must exceed the time limit).
+    ingest_max_attempts: int = 3
+    ingest_retry_min_seconds: int = 30
+    ingest_retry_max_seconds: int = 600
+    ingest_time_limit_seconds: int = 900
+    ingest_stale_minutes: int = 30
+    # Extraction limits: nesting of e-mail attachments, parts per version, text per version.
+    ingest_max_depth: int = 3
+    ingest_max_parts: int = 2000
+    ingest_max_text_mb: int = 50
+    # PDF: largest number of pages; a page with fewer non-space characters than OCR_MIN_CHARS
+    # that contains an image is marked "needs OCR" (OCR itself: Phase 4).
+    ingest_max_pages: int = 2000
+    ocr_min_chars: int = 25
+    # Native-code steps run in a child process: PDF (memory limit as address space in MB, time
+    # limit in seconds) and LibreOffice for DOC (same; one conversion at a time per worker
+    # container). The worker container's memory limit (WORKER_MEMORY_LIMIT) applies on top.
+    ingest_child_memory_mb: int = 1024
+    ingest_child_timeout_seconds: int = 300
+    libreoffice_timeout_seconds: int = 120
+    libreoffice_memory_mb: int = 1024
+    # Parts with fewer letters than this get language "unknown" instead of a guess.
+    language_min_letters: int = 40
+    # Delivered events are kept this long in ing_outbox (diagnostics), then removed.
+    outbox_retention_days: int = 7
+    # Virus scan step before extraction. Only "none" exists for now; the step is the place for
+    # ClamAV (docs: ingestion-and-ocr.md, "Virus scan hook").
+    scan_hook: Literal["none"] = "none"
     # Largest number of audit entries in one CSV export (the export says when it was cut).
     audit_export_max_rows: int = 10000
     # Local (break-glass) passwords: length limits in characters, and at most this many Argon2id

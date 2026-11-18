@@ -1,6 +1,6 @@
 # Data model
 
-> Applies to: v0.2.1 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-17
 
 PostgreSQL 16. Times are stored as `timestamptz` in UTC. Primary keys are UUIDs unless noted. This is the target model; the Alembic migrations are the source of truth and this page must match them.
 
@@ -13,9 +13,9 @@ Every module owns its tables, and no module reads or writes the tables of anothe
 | core | none | `users`, `roles`, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions`, `audit_log`, `app_settings` |
 | `documents` | `doc_` | `doc_categories`, `doc_documents`, `doc_versions`, `doc_email_metadata` |
 | `search` | `srch_` | `srch_parts` |
-| `ingestion` | `ing_` | none in the MVP: processing status and metadata live in `doc_versions` and are updated through `documents.services.api` |
+| `ingestion` | `ing_` | `ing_parts`, `ing_results`, `ing_outbox` (the processing status itself lives in `doc_versions` and is updated through `documents.services.api`) |
 
-A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `core_0002` (identity tables and system roles), `core_0003` (audit log), `documents_0001` (default grants of `documents.*`, `depends_on` `core_0002`), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads; revisions implied by `depends_on` are not listed. SQLAlchemy models (`core/db/models.py`) must match the migrations; `make test-db` compares them.
+A foreign key may point to a table of a module that the owner `requires` (for example `srch_parts.version_id` references `doc_versions.id` with `ON DELETE CASCADE`). Migrations: one Alembic branch per module plus a `core` branch; the branch of a module that requires another one declares `depends_on`. Revision files live in the package named by the manifest's `migrations_path` (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<name>/migrations/`) and are named `<branch>_<NNNN>_<slug>.py` with revision id `<branch>_<NNNN>`; `alembic/env.py` and `alembic.ini` are shared. Policy: `baza-wiedzy migrate` upgrades **all** branches (core and every module in the repository), independent of `ENABLED_MODULES`, so the schema is always complete: enabling a module later needs no migration, and a module's tables always exist for foreign keys of other modules. `/ready` compares the database with all script heads. The cost is a few empty tables of disabled modules, which is negligible. Create a revision with `make revision branch=<branch> m="text"`. Current revisions: `core_0001` (extensions), `core_0002` (identity tables and system roles), `core_0003` (audit log), `documents_0001` (default grants of `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0001` (dictionary and text-search configurations, `depends_on` `core_0001`). `alembic_version` stores only the heads; revisions implied by `depends_on` are not listed. SQLAlchemy models (`core/db/models.py`) must match the migrations; `make test-db` compares them.
 
 ## Tables
 
@@ -35,15 +35,23 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 | Table | Key columns | Notes |
 |---|---|---|
 | `doc_categories` | `id`, `name`, `parent_id` | Optional tree |
-| `doc_documents` | `id`, `title`, `description`, `category_id`, `owner_id`, `status` (`draft`/`published`/`archived`), `published_version_id`, `latest_version_id`, `created_at`, `updated_at`, `published_at`, `published_by`, `archived_at` | Readers see only `published` documents, through `published_version_id` |
-| `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename`, `mime_type`, `size_bytes`, `sha256`, `storage_key`, `derived_key`, `processing_status` (`pending`/`processing`/`done`/`failed`), `processing_error`, `processing_warnings` (jsonb), `ocr_applied`, `page_count`, `uploaded_by`, `uploaded_at`, `change_note` | Unique `(document_id, version_no)` |
-| `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Only for EML/MSG |
+| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id`, `created_at`, `updated_at` | Created by `documents_0002` (Phase 2: every upload is a `draft` with version 1). Planned for Phase 5: `category_id`, `published_at`, `published_by`, `archived_at`. Visibility in SQL: `documents.services.api.visibility_clause` |
+| `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename` (sanitised, metadata only), `size_bytes`, `sha256`, `storage_key` (unique, random UUID), `uploaded_by` → `users`, `uploaded_at`, `processing_status` (`pending`/`processing`/`done`/`failed`/`needs_ocr`), `processing_error` (message for the user), `processing_attempts`, `processing_started_at`, `processed_at`, `page_count`, `ocr_applied` | Unique `(document_id, version_no)`; indexes on `sha256` (duplicate warning) and `processing_status`. Planned: `derived_key` (Phase 4), `change_note` (Phase 5) |
+| `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Only for EML/MSG (top-level message); filled by `ingestion` through `documents.services.api`, damaged values stay empty |
+
+### Ingestion
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (jsonb path, e.g. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `created_at` | Extracted text, at most 100,000 characters per row (ADR-020). Unique `(version_id, seq)`. Replaced as a whole in one transaction when a version is processed again |
+| `ing_results` | `version_id` (PK, → `doc_versions`, cascade), `notes` (jsonb list: `encoding`, `skipped`, `failed`, `fallback` with origin), `parts_count`, `chars_total`, `finished_at` | Notes are shown on the document page |
+| `ing_outbox` | `id` (bigint identity), `event`, `payload` (jsonb, identifiers only), `created_at`, `delivered_at`, `attempts`, `last_error` (exception class) | Partial index on undelivered rows; delivered rows removed after `OUTBOX_RETENTION_DAYS` |
 
 ### Search index
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | One row per PDF page, per e-mail body, per attachment chunk. `tsv_*` are generated from `text_content`. Written by `search` from the event `document.version.extracted` |
+| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | Planned (Phase 3). One row per PDF page, per e-mail body, per attachment chunk. `tsv_*` are generated from `text_content`. Copied by `search` from `ing_parts` through `ingestion.services.api` after `document.version.extracted` (ADR-020) |
 
 ### System
 
@@ -58,7 +66,8 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
 users ─< sessions
-doc_documents ─< doc_versions ─< srch_parts (self-reference via parent_part_id)
+doc_documents ─< doc_versions ─< ing_parts, ing_results (cascade)
+doc_versions ─< srch_parts (Phase 3)
 doc_versions ─ 0..1 ─ doc_email_metadata
 doc_documents >─ doc_categories
 ```

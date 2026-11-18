@@ -1,4 +1,4 @@
-{% from "admin/_macros.html" import pagination, csrf %}
+{% from "admin/_macros.html" import pagination, csrf with context %}
 <form method="post" action="/admin/audit/export" class="inline export">
   {{ csrf() }}
   {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
@@ -12,12 +12,12 @@
   <tbody>
   {% for e in result.items %}
     <tr>
-      <td>{{ e.at.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      <td class="nowrap">{{ e.at.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S") }}</td>
       <td>{{ e.actor_label }}</td>
       <td><code>{{ e.action }}</code></td>
       <td>{% if e.entity_type %}{{ e.entity_type }}{% if e.entity_id %} <span class="muted">{{ e.entity_id }}</span>{% endif %}{% endif %}</td>
       <td>{{ e.ip or "" }}</td>
-      <td>{% if pairs[e.id] %}<dl class="pairs">{% for key, value in pairs[e.id] %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}</td>
+      <td>{% if pairs[e.id] %}<dl class="pairs">{% for key, value in pairs[e.id] %}<dt>{{ key }}</dt><dd>{% if is_hash(value) %}<code title="{{ value }}">{{ value[:12] }}…</code>{% else %}{{ value }}{% endif %}</dd>{% endfor %}</dl>{% endif %}</td>
     </tr>
   {% else %}
     <tr><td colspan="6">{{ _("No entries match the filter.") }}</td></tr>

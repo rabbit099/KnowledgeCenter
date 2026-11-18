@@ -1,6 +1,6 @@
 # Model danych
 
-> Dotyczy: v0.2.1 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
 
 PostgreSQL 16. Czasy są zapisywane jako `timestamptz` w UTC. Klucze główne to UUID, chyba że napisano inaczej. To model docelowy; źródłem prawdy są migracje Alembica i ta strona musi się z nimi zgadzać.
 
@@ -13,9 +13,9 @@ Każdy moduł jest właścicielem swoich tabel i żaden moduł nie czyta ani nie
 | rdzeń | brak | `users`, `roles`, `role_permissions`, `user_roles`, `ad_group_role_map`, `sessions`, `audit_log`, `app_settings` |
 | `documents` | `doc_` | `doc_categories`, `doc_documents`, `doc_versions`, `doc_email_metadata` |
 | `search` | `srch_` | `srch_parts` |
-| `ingestion` | `ing_` | brak w MVP: status przetwarzania i metadane są w `doc_versions` i aktualizowane przez `documents.services.api` |
+| `ingestion` | `ing_` | `ing_parts`, `ing_results`, `ing_outbox` (sam status przetwarzania jest w `doc_versions` i aktualizowany przez `documents.services.api`) |
 
-Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`. Pliki rewizji leżą w pakiecie wskazanym przez `migrations_path` w manifeście (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<nazwa>/migrations/`) i mają nazwy `<gałąź>_<NNNN>_<opis>.py` z identyfikatorem rewizji `<gałąź>_<NNNN>`; `alembic/env.py` i `alembic.ini` są wspólne. Zasada: `baza-wiedzy migrate` aktualizuje **wszystkie** gałęzie (rdzeń i każdy moduł w repozytorium), niezależnie od `ENABLED_MODULES`, więc schemat jest zawsze kompletny: późniejsze włączenie modułu nie wymaga migracji, a tabele modułu zawsze istnieją dla kluczy obcych innych modułów. `/ready` porównuje bazę ze wszystkimi głowami skryptów. Kosztem jest kilka pustych tabel wyłączonych modułów, co jest pomijalne. Nową rewizję tworzy `make revision branch=<gałąź> m="tekst"`. Obecne rewizje: `core_0001` (rozszerzenia), `core_0002` (tabele tożsamości i role systemowe), `core_0003` (dziennik audytu), `documents_0001` (domyślne nadania `documents.*`, `depends_on` `core_0002`), `search_0001` (słownik i konfiguracje wyszukiwania tekstowego, `depends_on` `core_0001`). `alembic_version` przechowuje tylko głowy; rewizje wynikające z `depends_on` nie są wymienione. Modele SQLAlchemy (`core/db/models.py`) muszą być zgodne z migracjami; `make test-db` je porównuje.
+Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (na przykład `srch_parts.version_id` wskazuje `doc_versions.id` z `ON DELETE CASCADE`). Migracje: jedna gałąź Alembica na moduł oraz gałąź `core`; gałąź modułu, który wymaga innego, deklaruje `depends_on`. Pliki rewizji leżą w pakiecie wskazanym przez `migrations_path` w manifeście (`src/baza_wiedzy/core/db/migrations/`, `src/baza_wiedzy/modules/<nazwa>/migrations/`) i mają nazwy `<gałąź>_<NNNN>_<opis>.py` z identyfikatorem rewizji `<gałąź>_<NNNN>`; `alembic/env.py` i `alembic.ini` są wspólne. Zasada: `baza-wiedzy migrate` aktualizuje **wszystkie** gałęzie (rdzeń i każdy moduł w repozytorium), niezależnie od `ENABLED_MODULES`, więc schemat jest zawsze kompletny: późniejsze włączenie modułu nie wymaga migracji, a tabele modułu zawsze istnieją dla kluczy obcych innych modułów. `/ready` porównuje bazę ze wszystkimi głowami skryptów. Kosztem jest kilka pustych tabel wyłączonych modułów, co jest pomijalne. Nową rewizję tworzy `make revision branch=<gałąź> m="tekst"`. Obecne rewizje: `core_0001` (rozszerzenia), `core_0002` (tabele tożsamości i role systemowe), `core_0003` (dziennik audytu), `documents_0001` (domyślne nadania `documents.*`, `depends_on` `core_0002`), `documents_0002` (`doc_documents`, `doc_versions`, `doc_email_metadata`), `documents_0003` (`doc_documents.title_source`), `ingestion_0001` (`ing_parts`, `ing_results`, `ing_outbox`, `depends_on` `documents_0002`), `search_0001` (słownik i konfiguracje wyszukiwania tekstowego, `depends_on` `core_0001`). `alembic_version` przechowuje tylko głowy; rewizje wynikające z `depends_on` nie są wymienione. Modele SQLAlchemy (`core/db/models.py`) muszą być zgodne z migracjami; `make test-db` je porównuje.
 
 ## Tabele
 
@@ -35,15 +35,23 @@ Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (n
 | Tabela | Kluczowe kolumny | Uwagi |
 |---|---|---|
 | `doc_categories` | `id`, `name`, `parent_id` | Opcjonalne drzewo |
-| `doc_documents` | `id`, `title`, `description`, `category_id`, `owner_id`, `status` (`draft`/`published`/`archived`), `published_version_id`, `latest_version_id`, `created_at`, `updated_at`, `published_at`, `published_by`, `archived_at` | Czytelnicy widzą tylko dokumenty `published`, przez `published_version_id` |
-| `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename`, `mime_type`, `size_bytes`, `sha256`, `storage_key`, `derived_key`, `processing_status` (`pending`/`processing`/`done`/`failed`), `processing_error`, `processing_warnings` (jsonb), `ocr_applied`, `page_count`, `uploaded_by`, `uploaded_at`, `change_note` | Unikalne `(document_id, version_no)` |
-| `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Tylko dla EML/MSG |
+| `doc_documents` | `id`, `title`, `title_source` (`user`/`filename`/`subject`, `documents_0003`), `description`, `owner_id` → `users`, `status` (`draft`/`published`/`archived`), `latest_version_id`, `published_version_id`, `created_at`, `updated_at` | Tworzone przez `documents_0002` (Faza 2: każde wgranie to `draft` z wersją 1). Planowane na Fazę 5: `category_id`, `published_at`, `published_by`, `archived_at`. Widoczność w SQL: `documents.services.api.visibility_clause` |
+| `doc_versions` | `id`, `document_id`, `version_no`, `kind` (`pdf`/`docx`/`doc`/`txt`/`eml`/`msg`), `original_filename` (po sanityzacji, tylko metadana), `size_bytes`, `sha256`, `storage_key` (unikalny, losowy UUID), `uploaded_by` → `users`, `uploaded_at`, `processing_status` (`pending`/`processing`/`done`/`failed`/`needs_ocr`), `processing_error` (komunikat dla użytkownika), `processing_attempts`, `processing_started_at`, `processed_at`, `page_count`, `ocr_applied` | Unikalne `(document_id, version_no)`; indeksy na `sha256` (ostrzeżenie o duplikacie) i `processing_status`. Planowane: `derived_key` (Faza 4), `change_note` (Faza 5) |
+| `doc_email_metadata` | `version_id`, `subject`, `from_addr`, `to_addrs`, `cc_addrs`, `sent_at`, `message_id` | Tylko dla EML/MSG (wiadomość główna); wypełniane przez `ingestion` przez `documents.services.api`, uszkodzone wartości zostają puste |
+
+### Ingestion
+
+| Tabela | Kluczowe kolumny | Uwagi |
+|---|---|---|
+| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (ścieżka jsonb, np. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `created_at` | Wyciągnięty tekst, najwyżej 100 000 znaków na wiersz (ADR-020). Unikalne `(version_id, seq)`. Zastępowane w całości w jednej transakcji przy ponownym przetworzeniu wersji |
+| `ing_results` | `version_id` (PK, → `doc_versions`, kaskadowo), `notes` (lista jsonb: `encoding`, `skipped`, `failed`, `fallback` z pochodzeniem), `parts_count`, `chars_total`, `finished_at` | Adnotacje są widoczne na stronie dokumentu |
+| `ing_outbox` | `id` (bigint identity), `event`, `payload` (jsonb, tylko identyfikatory), `created_at`, `delivered_at`, `attempts`, `last_error` (klasa wyjątku) | Indeks częściowy na niedostarczonych wierszach; dostarczone usuwane po `OUTBOX_RETENTION_DAYS` |
 
 ### Indeks wyszukiwania
 
 | Tabela | Kluczowe kolumny | Uwagi |
 |---|---|---|
-| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | Jeden wiersz na stronę PDF, treść maila lub fragment załącznika. Kolumny `tsv_*` są generowane z `text_content`. Zapisywana przez `search` ze zdarzenia `document.version.extracted` |
+| `srch_parts` | `id`, `version_id`, `parent_part_id`, `part_type` (`page`/`body`/`attachment`), `name`, `page_no`, `chunk_no`, `language` (`pl`/`en`/`mixed`/`unknown`), `text_content`, `tsv_pl`, `tsv_en`, `tsv_simple`, `ocr_applied` | Planowana (Faza 3). Jeden wiersz na stronę PDF, treść maila lub fragment załącznika. Kolumny `tsv_*` są generowane z `text_content`. Kopiowana przez `search` z `ing_parts` przez `ingestion.services.api` po `document.version.extracted` (ADR-020) |
 
 ### System
 
@@ -58,7 +66,8 @@ Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (n
 users ─< user_roles >─ roles ─< role_permissions
 ad_group_role_map >─ roles
 users ─< sessions
-doc_documents ─< doc_versions ─< srch_parts (samoodniesienie przez parent_part_id)
+doc_documents ─< doc_versions ─< ing_parts, ing_results (kaskadowo)
+doc_versions ─< srch_parts (Faza 3)
 doc_versions ─ 0..1 ─ doc_email_metadata
 doc_documents >─ doc_categories
 ```

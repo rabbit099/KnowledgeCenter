@@ -39,8 +39,8 @@ Out of scope unless explicitly requested: SSO/Kerberos, per-category access cont
 | OCR | OCRmyPDF + Tesseract (`pol` + `eng`) |
 | DOCX | python-docx with a raw-XML fallback |
 | DOC | LibreOffice headless conversion (isolated profile, timeout) |
-| EML / MSG | stdlib `email` (policy=default) / `extract-msg` |
-| Encoding | charset-normalizer (TXT in UTF-8, Windows-1250, ISO-8859-2) |
+| EML / MSG | stdlib `email` (policy=default) / `extract-msg` (GPL-3.0: internal use only, ADR-015) |
+| Encoding | Own fixed rule for TXT: UTF-8, Windows-1250, ISO-8859-2, fail instead of guessing (ADR-022) |
 | Language detection | lingua-language-detector restricted to Polish and English |
 | Auth | Server-side sessions in a cookie (not JWT), argon2id for local passwords, `ldap3` for AD |
 | Proxy / TLS | Caddy |
@@ -64,7 +64,7 @@ baza-wiedzy/
 ├── alembic/                   # migrations
 ├── docker/
 │   ├── app/Dockerfile
-│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice
+│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice; target `test` (never released, ADR-023)
 │   ├── db/                    # Dockerfile, dictionary/ (Hunspell pl + licence, polish.stop), initdb/ (app role only), spike.sql
 │   └── caddy/                 # Dockerfile (non-root) + Caddyfile
 ├── src/baza_wiedzy/
@@ -79,10 +79,10 @@ baza-wiedzy/
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
 │       ├── documents/     # module.py, routes, models, services/api.py, storage
-│       ├── ingestion/     # module.py, extractors/, ocr.py, language.py, tasks.py, services/api.py
+│       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
 │       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
-├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic only)
-├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh; later update.sh, rollback.sh, backup.sh, restore.sh
+├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py)
+├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
 │   └── pl/
@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -115,8 +115,8 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Enabled through `ENABLED_MODULES` (env). At startup the registry validates `requires` and fails with a readable error if a required module is missing. `ingestion` and `search` require `documents`.
 - **Manifest** (`module.py`, `manifest = ModuleManifest(...)`): name, version, requires, permissions, menu items, routers, templates, migrations branch and path, settings schema, background tasks, CLI commands, event subscriptions (`on_register`). Code references in a manifest are lazy strings (`package.module:attr`), so reading manifests imports nothing heavy.
 - **Boundaries**: a module never imports the internals of another module. Allowed: `baza_wiedzy.core.*` and another module's `services/api.py` (only if declared in `requires`). Everything else goes through in-process events defined in `core/events.py`. Enforced by import-linter (`make lint`, CI). Do not weaken the contracts to make a change compile; change the design.
-- **Events** are synchronous, in-process and not persisted. Handlers must be idempotent. Current events: `document.version.uploaded`, `document.version.extracted`, `document.published`. New events and their payloads are added to `core/events.py` and documented in the module docs.
-- **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `search` owns the indexed text and indexes (`srch_parts`); `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` updates status through `documents.services.api` and hands extracted text to `search` through the `document.version.extracted` event.
+- **Events** are synchronous and in-process; the bus persists nothing. Payloads carry identifiers only. An event that must not be lost goes through the publisher's outbox table, written in the same transaction as the result and redelivered until it succeeds (`document.version.extracted` via `ing_outbox`, ADR-020), so handlers must be idempotent. Current events: `document.version.uploaded`, `document.version.extracted`, `document.published`. New events and their payloads are added to `core/events.py` and documented in the module docs.
+- **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` owns the extracted text (`ing_parts`), its notes and outbox, and updates status and e-mail metadata through `documents.services.api`; `search` owns its index (`srch_parts`) and, from Phase 3, copies the text through `ingestion.services.api` after `document.version.extracted` (ADR-020).
 - **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility; `search` injects it into its queries (details in Phase 3). Visibility stays in SQL.
 - **Migrations**: one Alembic branch per module (`branch_labels`) plus a `core` branch; a branch that `requires` another has `depends_on` it. `baza-wiedzy migrate` upgrades **all** branches, independent of `ENABLED_MODULES` (the schema is always complete); `/ready` compares the database with all script heads.
 - **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes.
@@ -136,12 +136,12 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 
 ## 8. Security rules
 
-- Validate uploads by content (libmagic), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
+- Validate uploads by content (own signature and structure checks, ADR-021), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
 - Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
 - Never render the HTML body of an e-mail as HTML. Convert to text.
 - Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
-- Containers run as non-root. Postgres and Redis are not published on host ports.
+- Containers run as non-root. Postgres and Redis are not published on host ports. `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
 - Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
 - Test fixtures are synthetic. Never commit real company documents or real mail.
 
@@ -170,7 +170,7 @@ The documentation is part of the product and you maintain it.
 
 - Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 - `main` is protected; CI (lint, types, tests, docs-check, image build) must pass.
-- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages.
+- Releases: SemVer tags `vX.Y.Z` trigger image builds to GHCR. The tag must equal `version` in `pyproject.toml` and both changelogs must have a `## [X.Y.Z]` section (`scripts/check_release.py`). The changelog `[Unreleased]` section becomes the new version. Workflow actions are pinned to commit SHAs; only the release publish job may write packages. Workflows are checked by `make lint` (actionlint, pinned image) and `tests/unit/test_github_config.py`: GitHub rejects a workflow with a YAML error as a whole and runs nothing, so quote step names containing `: ` or ` #`.
 
 ## 12. Definition of done
 
@@ -192,4 +192,4 @@ Code works and is typed; tests pass; `make lint` and `make docs-check` pass; doc
 5. Decided 2026-11-12: Readers do not see archived documents.
 6. Is a virus scan (ClamAV) required by company policy? Default: optional `antivirus` profile, off.
 7. Expected size: "about 200" at start — documents or users? Design for 20,000 documents and 100 users until confirmed.
-8. Phase 2: in-process events are not persisted; choose between `processing_status` + reprocess command and an outbox table.
+8. Decided 2026-11-17 (ADR-020): outbox table in `ingestion` for `document.version.extracted`, thin events, redelivery at worker start and by `baza-wiedzy events redeliver`; lost uploads are covered by `processing_status` (pending versions are enqueued at worker start).

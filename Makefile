@@ -34,11 +34,19 @@ build: _need-docker ## Build the images
 	$(COMPOSE_DEV) build
 
 .PHONY: lint
-lint: ## ruff, mypy, import boundaries
+# actionlint (with shellcheck for run: scripts) from its image, pinned by digest (ADR-015).
+ACTIONLINT := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+lint: lint-workflows ## ruff, mypy, import boundaries, GitHub workflows
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy
+	uv run --all-extras mypy
 	uv run lint-imports
+
+.PHONY: lint-workflows
+lint-workflows: ## Check .github/workflows/*.yml with actionlint (Docker); dependabot.yml: make test
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is needed for actionlint (workflow check). Install Docker, or run the YAML checks alone: uv run pytest tests/unit/test_github_config.py"; exit 1; }
+	docker run --rm -v "$(CURDIR):/repo:ro" -w /repo $(ACTIONLINT) -no-color
 
 .PHONY: fmt
 fmt: ## Format and auto-fix
@@ -47,7 +55,7 @@ fmt: ## Format and auto-fix
 
 .PHONY: test
 test: ## Run tests (unit; integration when the stack is up)
-	uv run pytest
+	uv run --all-extras pytest
 
 .PHONY: messages
 messages: ## Extract UI strings and update the Polish catalog (then translate msgstr)
@@ -81,6 +89,15 @@ shell: _need-docker ## Shell in the app container
 .PHONY: seed-samples
 seed-samples: _need-docker ## Load synthetic sample documents (not available yet)
 	@echo "Not implemented yet (needs upload and ingestion, Phase 2)."; exit 1
+
+.PHONY: probki
+probki: ## Synthetic sample files for a manual test: make probki DIR=~/bw-probki
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	@test -n "$(DIR)" || { echo 'Usage: make probki DIR=<directory>'; exit 1; }
+	mkdir -p "$(DIR)"
+	docker compose -f docker-compose.test.yml run --rm --build --no-deps \
+		-e OWNER="$$(id -u):$$(id -g)" -v "$$(cd "$(DIR)" && pwd):/out" tests \
+		sh -c 'uv sync --frozen --all-extras --quiet && PYTHONPATH=/src/tests uv run --frozen --no-sync python scripts/make_samples.py /out && chown "$$OWNER" /out/*'
 
 .PHONY: test-db
 test-db: ## Integration and golden search tests in Docker (throwaway DB, no host ports)

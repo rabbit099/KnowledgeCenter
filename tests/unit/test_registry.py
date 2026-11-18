@@ -100,9 +100,9 @@ def test_menu_sections_order_and_availability() -> None:
     registry = load_registry(["documents", "search"])
     admin = [i.label for i in registry.menu("admin")]
     assert admin == ["Users", "Roles", "AD groups", "Audit log", "System"]
-    # Search and Documents have no pages yet (available=False), so the main menu is empty.
-    assert registry.menu("main") == ()
-    assert all(i.section == "admin" for i in registry.menu())
+    # Search has no pages yet (available=False); the documents module has "My documents".
+    assert [i.label for i in registry.menu("main")] == ["My documents"]
+    assert {i.section for i in registry.menu()} == {"admin", "main"}
 
 
 # --- registry logic with synthetic manifests ----------------------------------------------
@@ -177,11 +177,11 @@ def test_event_without_subscribers_is_ignored() -> None:
 def test_modules_subscribe_through_on_register() -> None:
     received: list[str] = []
 
-    def on_register(bus: EventBus) -> None:
+    def on_register(bus: EventBus, settings: Settings) -> None:
         bus.subscribe("ping", lambda p: received.append(p["x"]))
 
     registry = build_registry(["a"], available(manifest("a", on_register=on_register)))
     bus = EventBus()
-    registry.register_events(bus)
+    registry.register_events(bus, Settings(_env_file=None))  # type: ignore[call-arg]
     bus.publish("ping", {"x": "ok"})
     assert received == ["ok"]

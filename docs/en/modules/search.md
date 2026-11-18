@@ -1,6 +1,6 @@
 # Module: search
 
-> Applies to: v0.2.1 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-17
 
 ## Scope
 
@@ -20,7 +20,7 @@ None of its own. Searching needs `documents.read`; seeing drafts needs `document
 
 ## Events
 
-- Subscribes to `document.version.extracted`: replaces all parts of that version in one transaction (idempotent).
+- Subscribes to `document.version.extracted` (Phase 3): reads the parts through `ingestion.services.api.parts_of` and replaces all rows of that version in one transaction (idempotent; the event is delivered at least once and carries identifiers only, ADR-020).
 - Publishes nothing.
 
 ## Public interface

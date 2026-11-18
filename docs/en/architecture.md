@@ -1,6 +1,6 @@
 # Architecture
 
-> Applies to: v0.2.1 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-17
 
 ## Overview
 
@@ -30,6 +30,15 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
 
+Networks (ADR-024):
+
+| Network | Members | Internet |
+|---|---|---|
+| `default` (`DOCKER_SUBNET`, default `172.30.70.0/24`; proxy at `PROXY_IP`) | `proxy`, `app` (`clamav` with the `antivirus` profile, for signature updates) | yes: incoming only through the proxy's published ports; outgoing for `app` (Active Directory over LDAPS) |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
+
+The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
+
 Redis licence: Redis 8 is offered under AGPLv3 (among others), which is acceptable for internal, unmodified use. If that is ever in doubt, [Valkey](https://valkey.io) (BSD-3-Clause) is a 1:1 replacement: change the `redis` image to `valkey/valkey` with a pinned tag; nothing else changes.
 
 `app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.
@@ -42,12 +51,12 @@ The application is a modular monolith: one codebase and one image per role (`app
 |---|---|---|---|---|
 | core | none | `users`, `roles`, `sessions`, `audit_log`, `app_settings` | none | none |
 | `documents` | none | `doc_*` | `document.version.uploaded`, `document.published` | none |
-| `ingestion` | `documents` | none in the MVP (`ing_*` reserved) | `document.version.extracted` | `document.version.uploaded` |
-| `search` | `documents` | `srch_*` | none | `document.version.extracted` |
+| `ingestion` | `documents` | `ing_*` (extracted text, notes, outbox) | `document.version.extracted` (outbox, ids only) | `document.version.uploaded` |
+| `search` | `documents` (Phase 3: also `ingestion`, ADR-020) | `srch_*` | none | `document.version.extracted` |
 
 Rules (enforced in CI by import-linter, see ADR-014):
 - A module never imports the internals of another module. It may import `baza_wiedzy.core` and the `services/api.py` of a module it requires. Everything else goes through events.
-- Events are synchronous and in-process: a handler runs in the process that publishes the event. The `worker` therefore also loads `search` and indexes extracted text inside the worker; in `app` the `ingestion` handler only enqueues the job.
+- Events are synchronous and in-process: a handler runs in the process that publishes the event. The `worker` therefore also loads `search` and indexes extracted text inside the worker; in `app` the `ingestion` handler only enqueues the job. The bus persists nothing: `document.version.extracted` goes through the ingestion outbox (`ing_outbox`, written in the same transaction as the parts, delivered at least once), and payloads carry identifiers only (ADR-020).
 - At startup the registry checks `requires` and stops with a readable message when a required module is not enabled.
 - Permissions, menu items, routers, background tasks, CLI commands and migration branches are collected from the module manifests (`module.py`). A `MenuItem` has a `section` (`main` or `admin`, the admin panel navigation), the permission that shows it and `available` (false until its pages exist); labels and permission descriptions are marked with `N_()` so that `make messages` extracts them for translation.
 - There are no plugins from outside the repository.
@@ -64,7 +73,7 @@ See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.1
 1. User with `documents.upload` sends a file.
 2. `app` validates it (size, type by content), stores it under a UUID key, writes `doc_documents` and `doc_versions` rows with `processing_status = pending`, publishes the event `document.version.uploaded` (the `ingestion` module enqueues `process_version(version_id)`), writes an audit entry.
 3. The browser polls the status of the version (HTMX) and shows progress.
-4. `worker` extracts text, runs OCR if needed, detects language, publishes `document.version.extracted` with the text parts (the `search` module stores and indexes them in `srch_parts`) and sets status `done` or `failed` through `documents.services.api`. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` extracts text, runs OCR if needed (Phase 4), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event (from Phase 3 the `search` module copies the parts into `srch_parts` through `ingestion.services.api`). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publish
 A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `doc_documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.
@@ -78,12 +87,13 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 ## Storage
 
 ```
-/data/storage/<aa>/<bb>/<uuid>          original file (immutable)
-/data/storage/derived/<uuid>.pdf        OCR'd (searchable) PDF, previews
-/data/tmp/                              worker scratch space (cleaned after each job)
+/data/storage/originals/<aa>/<bb>/<key>    original file (immutable, read-only, key = random UUID)
+/data/storage/.incoming/<uuid>.part        upload in progress (same volume, then atomic rename)
+/data/storage/derived/<key>.pdf            OCR'd (searchable) PDF, previews (Phase 4)
+/data/tmp/                                 worker scratch space (cleaned after each job)
 ```
 
-`<aa>/<bb>` are the first characters of the UUID, to avoid huge directories.
+`<aa>/<bb>` are the first characters of the key, to avoid huge directories. The user's file name is never part of a path. `.incoming/` lives on the same volume as `originals/`, so the final move is an atomic rename; files older than an hour there are orphans of interrupted uploads and are removed (at every upload and with `baza-wiedzy storage-cleanup`). The storage belongs to the `documents` module (`modules/documents/storage.py`).
 
 ## Cross-cutting rules
 

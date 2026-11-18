@@ -1,6 +1,6 @@
 [project]
 name = "baza-wiedzy"
-version = "0.2.1"
+version = "0.3.0"
 description = "Internal company knowledge base with full-text search"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115",
     "jinja2>=3.1",
     "ldap3>=2.9",
+    "olefile>=0.46",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -26,7 +27,11 @@ baza-wiedzy = "baza_wiedzy.cli:main"
 
 [project.optional-dependencies]
 worker = [
+    "extract-msg>=0.48",
+    "lingua-language-detector>=2.0",
     "ocrmypdf>=16",
+    "pypdfium2>=4.30",
+    "python-docx>=1.1",
 ]
 
 [dependency-groups]
@@ -37,6 +42,7 @@ dev = [
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    "pyyaml>=6.0",
     "ruff>=0.8",
 ]
 
@@ -64,6 +70,11 @@ src = ["src", "tests", "scripts"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Test data is Polish text with typographic dashes and quotes on purpose.
+"tests/**" = ["RUF001"]
+"scripts/make_samples.py" = ["RUF001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -72,8 +83,8 @@ files = ["src", "tests", "scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# ldap3 ships no type information; its use is confined to core/auth/ldap.py.
-module = ["ldap3", "ldap3.*"]
+# These libraries ship no type information; their use is confined to a few modules.
+module = ["ldap3", "ldap3.*", "olefile", "olefile.*", "lxml", "lxml.*", "pypdfium2", "pypdfium2.*", "extract_msg", "extract_msg.*", "RTFDE", "RTFDE.*", "compressed_rtf", "compressed_rtf.*", "yaml", "yaml.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -82,6 +93,7 @@ addopts = "-ra --strict-markers"
 pythonpath = ["src", "scripts", "tests"]
 markers = [
     "integration: needs real Postgres and Redis (Docker)",
+    "tools: needs LibreOffice (test image of make test-db)",
 ]
 
 [tool.coverage.run]

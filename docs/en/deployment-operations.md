@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.2.1 · Last reviewed: 2026-11-17
+> Applies to: v0.3.0 · Last reviewed: 2026-11-17
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
@@ -45,12 +45,18 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `DOCKER_SUBNET`, `PROXY_IP` | Fixed Docker network of the stack (default `172.30.70.0/24`) and the proxy's address inside it (`172.30.70.10`); the app trusts `X-Forwarded-For` only from `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Host ports of the proxy (default 80, 443) |
 | `IMAGE_PREFIX` | Registry and name prefix of the images, for example `ghcr.io/<owner>/baza-wiedzy` |
-| `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy |
+| `BACKEND_SUBNET` | Internal network of `app`, `worker`, `db`, `redis` without internet access (default `172.30.72.0/24`; change it if it collides with a company network, ADR-024) |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Let's Encrypt contact (`TLS_MODE=acme`); largest request body accepted by the proxy (default 51, keep it `MAX_UPLOAD_MB` + 1) |
+| `MAX_UPLOAD_MB`, `STORAGE_DIR` | Largest uploaded file (default 50 MB); storage volume path in the containers (default `/data/storage`) |
+| `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Processing in the worker: attempts for transient errors (3), delay between them (30 s doubling up to 600 s), time limit of one attempt (900 s), age after which a version still "processing" counts as interrupted (30 min, keep it above the time limit) |
+| `INGEST_MAX_DEPTH`, `INGEST_MAX_PARTS`, `INGEST_MAX_TEXT_MB`, `LANGUAGE_MIN_LETTERS` | Extraction limits per file: e-mail attachment depth (3), parts (2000), text (50 MB); letters needed before a language is detected (40) |
+| `OUTBOX_RETENTION_DAYS`, `SCAN_HOOK` | Days a delivered event stays in `ing_outbox` (7); virus scan step before extraction (`none`, the only value for now) |
 | `POSTGRES_PASSWORD` | Password of the PostgreSQL superuser; used only inside the `db` container |
 | `APP_DB_USER` / `APP_DB_PASSWORD` / `APP_DB_NAME` | Non-superuser that owns the application database; the application and migrations use it. `DATABASE_URL` is built from these in `docker-compose.yml` |
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Container memory limits |
-| `WORKER_PROCESSES` | Worker processes (default 2; one thread and one database connection each; not more than CPU cores) |
+| `WORKER_PROCESSES` | Worker processes (default 2; one thread and one database connection each; not more than CPU cores). Memory measured with 2 processes: 173 MiB idle, below 0.5 GB under load; keep `WORKER_MEMORY_LIMIT` (default 2g) at least 1.4 GB + 0.6 GB per process ([ingestion-and-ocr.md](ingestion-and-ocr.md#native-code-in-child-processes)) |
+| `INGEST_MAX_PAGES`, `OCR_MIN_CHARS`, `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS`, `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` | PDF page limit (2000) and the threshold for "needs OCR" pages (25 characters); memory and time limits of the PDF child process (1024 MB, 300 s) and of LibreOffice (1024 MB, 120 s) |
 | `REDIS_PASSWORD` | Password required by Redis (`requirepass`); URL-safe characters only. `REDIS_URL` is built from it in `docker-compose.yml` |
 | `MAX_UPLOAD_MB` and other limits | See [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Active Directory login, off by default (`LDAP_ENABLED=false`). `./secrets/ldap/` is mounted read-only at `/run/secrets/ldap/` in `app` for the CA certificate and the service-account password file. Details, normalization of names and the test procedure for a real AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-over-tls) |
@@ -75,7 +81,7 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 1. Copy `docker-compose.yml`, `.env.example` and `scripts/` to `/srv/baza-wiedzy/`; rename `.env.example` to `.env` and fill it in; `chmod 600 .env`.
 2. Log in to the registry. GHCR packages are **private by default**, so the server needs a token: create a GitHub personal access token (classic) with only the `read:packages` scope, ideally for a dedicated account with read access to the repository, then on the server: `echo "<token>" | docker login ghcr.io -u <github-user> --password-stdin` (expected: `Login Succeeded`; the credentials are stored in `~/.docker/config.json` of the user running Docker, protect that file). Without it `docker compose pull` fails with `denied` or `unauthorized`. Renew the token before it expires; the same applies to the machine that builds the offline bundle.
 3. Set `APP_VERSION` and `IMAGE_PREFIX`, then start: `docker compose pull && docker compose up -d`. All four project images (`app`, `worker`, `db`, `proxy`) come from GHCR; nothing is built on the server.
-4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`.
+4. Run migrations: `docker compose run --rm app baza-wiedzy migrate`. The worker started in step 3 waits for this: until the schema is at all migration heads it logs `worker startup: waiting for database migrations (schema: not migrated); run baza-wiedzy migrate` (once a minute) and runs its startup work (recovery, outbox) only afterwards. The same applies in development to `make up` followed by `make migrate`.
 5. Create the first admin: `docker compose exec app baza-wiedzy create-admin bw-admin` (asks for the password twice; 14-256 characters), then log in at `https://<PUBLIC_HOSTNAME>/login`.
 6. Check `https://<PUBLIC_HOSTNAME>/ready` returns OK.
 7. Log in as the admin, configure AD group mapping, test an AD login.
@@ -102,7 +108,7 @@ What `update.sh` does:
 1. Pre-checks: Docker running, free disk space, the new images exist in the registry, `.env` contains all variables listed in the new `.env.example` (otherwise it stops and lists the missing ones).
 2. Runs `backup.sh` (database + files).
 3. Pulls the new images.
-4. Stops `worker` so no jobs run during the migration.
+4. Stops `worker` so no jobs run during the migration (a worker that starts before the migration has finished waits for it before its startup work, see First installation).
 5. Runs migrations in a one-off container (`baza-wiedzy migrate`).
 6. Sets `APP_VERSION` in `.env` and starts everything (`docker compose up -d`).
 7. Waits for `/ready` (up to 120 s).
@@ -209,24 +215,60 @@ Zabbix: an HTTP check on `/ready` (expect 200) plus a trigger on the response ti
 
 Logs are JSON lines, one object per line: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; errors add `exc` with the traceback. `app` writes to stdout, worker processes to stderr. Exception: the Dramatiq main process of `worker` prints its few start and stop lines in Dramatiq's own text format (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` sets the level (default `INFO`). Compose sets Docker log rotation (`max-size 10m`, `max-file 5`). Read them with `docker compose logs -f app worker`; filter with `jq`, for example `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
+## Document processing (operator guide)
+
+What runs where: the web application (`app`) stores uploads and enqueues them; the `worker` extracts text in the background. Details and rules: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+
+**Start and migrations.** Order on a new server and in development: start the stack (`docker compose up -d` / `make up`), then migrate (`docker compose run --rm app baza-wiedzy migrate` / `make migrate`). A worker that starts before the migration logs `worker startup: waiting for database migrations` once a minute and does its startup work afterwards: removes leftover temporary directories, re-enqueues waiting versions, recovers stuck ones, delivers undelivered events.
+
+**Statuses** shown on "Moje dokumenty" and on the document page:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| oczekuje | queued | nothing; if it stays: is the worker running (`docker compose ps`)? |
+| przetwarzanie | an attempt is running | nothing; after `INGEST_STALE_MINUTES` (30) without progress it is recovered at the next worker start or with `baza-wiedzy reprocess --stuck` |
+| gotowe | text extracted | — |
+| wymaga OCR | text pages extracted, at least one scanned page without text | OCR comes in Phase 4; the text pages are already stored |
+| błąd | permanent error (damaged, password-protected, unknown encoding, limit) or transient errors in every attempt | the message on the page says which; fix the file and upload again, or "Przetwórz ponownie" after fixing the cause |
+
+**Retries**: only transient errors (database, Redis, time limits), up to `INGEST_MAX_ATTEMPTS` (3), after 30 s, 60 s, 120 s… (at most 600 s). Permanent errors are not retried.
+
+**LibreOffice (DOC)**: one conversion at a time per worker container, at most `LIBREOFFICE_TIMEOUT_SECONDS` (120 s) and `LIBREOFFICE_MEMORY_MB` (1 GB) each; PDF parsing runs in a child process too (`INGEST_CHILD_*`). Neither the worker nor these processes can reach the internet (ADR-024).
+
+**Memory of the worker**: measured with 2 processes 173 MiB idle, below 0.5 GB under load. Rule: `WORKER_MEMORY_LIMIT` ≥ 1.4 GB + 0.6 GB × `WORKER_PROCESSES` (default 2 processes, 2 GB). More processes than CPU cores do not help.
+
+**Commands** (in the `app` container: `docker compose exec app baza-wiedzy …`):
+
+| Command | Effect | Expected output |
+|---|---|---|
+| `reprocess <document or version ID> …` | process again (audited `document.reprocess`) | `Queued for processing again: 1; skipped (busy): 0.` |
+| `reprocess --failed` | every version with status "błąd" | same, with the count |
+| `reprocess --stuck` | stuck and waiting versions back to the queue (no audit) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
+| `events redeliver` | deliver undelivered events, remove old delivered ones | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
+| `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+
+Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`).
+
 ## Developer commands
 
-Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync` once.
+Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync --all-extras` once (the `worker` extra holds the document parsers the tests and type checks need; `make lint` and `make test` add it themselves).
 
 | Command | What it does |
 |---|---|
 | `make help` | Lists all commands |
-| `make lint` | `ruff`, `mypy` and the module boundary check (`lint-imports`) |
+| `make lint` | `ruff`, `mypy`, the module boundary check (`lint-imports`) and `make lint-workflows`: actionlint (with shellcheck for `run:` scripts) on `.github/workflows/*.yml`, from its Docker image pinned by digest, so Docker is required. The structure of the workflows and of `dependabot.yml` is also checked without Docker by `tests/unit/test_github_config.py` (`make test`). A YAML error in a workflow makes GitHub reject the whole file and run no job at all ("Invalid workflow file"), so quote any step name that contains `: ` or ` #` |
+| `make lint-workflows` | Only the actionlint check of the workflows |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
-| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel and logout work` (about 1 minute with cached layers) |
-| `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. Expected end: `17 passed, 2 skipped` (Phase 0). The first run downloads the Python packages into a Docker volume |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small TXT file (204) and waiting until the worker has processed it ("gotowe", at most 2 minutes), the parts page 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (about 1 minute with cached layers) |
+| `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. The runner is the target `test` of the worker image (LibreOffice, Tesseract; ADR-023) and runs the markers `integration` and `tools`. Expected end (Phase 2): `… passed, 2 skipped`. The first run builds the test image (about 2 minutes) and downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
 | `make up` / `make down` / `make logs` / `make build` | Start, stop, follow logs and build the Docker stack (needs Docker) |
-| `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0001, search_0001).` |
+| `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<branch> m="text"` | Creates an empty migration file in the branch of the core or a module (`core`, `search`, ...), on the host, no database needed |
 | `make shell` | Shell inside the `app` container (needs Docker) |
+| `make probki DIR=<directory>` | Writes synthetic sample files for a manual test of every format and error case (TXT cp1250 and cp852, DOCX, DOC, text PDF, scanned PDF, encrypted PDF, EML and MSG with attachments, damaged files) into the directory, with `OCZEKIWANE.txt` listing the expected result of each; runs in the test image (LibreOffice for the DOC) |
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
@@ -246,7 +288,13 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 
 | Symptom | Likely cause | What to check |
 |---|---|---|
-| Uploaded files stay `pending` | Worker or Redis down | `docker compose ps`, `docker compose logs worker redis` |
+| Uploaded files stay "oczekuje" (`pending`) | Worker or Redis down, or the job was lost while Redis was down | `docker compose ps`, `docker compose logs worker redis`; once both run, a worker restart (`docker compose restart worker`) or `docker compose exec app baza-wiedzy reprocess --stuck` enqueues waiting versions again |
+| A document hangs in "przetwarzanie" | The worker was killed during an attempt (memory limit, restart) | Wait `INGEST_STALE_MINUTES` and restart the worker, or `docker compose exec app baza-wiedzy reprocess --stuck`; the worker log has the version ID (`docker compose logs worker \| grep <version id>`) |
+| "błąd": "Nie rozpoznano kodowania tekstu…" | TXT in a code page other than UTF-8, Windows-1250, ISO-8859-2 (for example DOS CP852) | Save the file as UTF-8 and upload it again (ADR-022) |
+| "błąd": "Chwilowy problem…" repeated, then "Przetwarzanie kilka razy nie powiodło się…" | Database or Redis unavailable for longer than the retries, or attempts above `INGEST_TIME_LIMIT_SECONDS` | Fix the cause (`docker compose logs worker`: exception class per version), then "Przetwórz ponownie" or `baza-wiedzy reprocess --failed` |
+| "błąd": "Przetwarzanie trwało dłużej niż limit czasu." on a DOC or PDF | LibreOffice or the PDF child process ran out of `LIBREOFFICE_TIMEOUT_SECONDS` / `INGEST_CHILD_TIMEOUT_SECONDS` in every attempt (very large or broken file, overloaded server) | `docker compose logs worker \| grep <version id>` (`IsolationTimeout`); raise the limit in `.env` if the file is legitimate, `docker compose up -d worker`, then "Przetwórz ponownie" |
+| "błąd": "…zabezpieczony hasłem…" | Password-protected PDF, DOC or DOCX | Upload a copy without a password; the application never asks for passwords |
+| `baza-wiedzy events redeliver` reports failed deliveries | An event handler raises (exception class in the log) | Fix the handler (a bug: report it), run the command again; entries stay until delivered |
 | `failed` with timeout on a scan | Very large or poor-quality scan | Increase `OCR_TIMEOUT_SECONDS`, rescan, reprocess |
 | AD users see "Logowanie kontem firmowym jest chwilowo niedostępne" | Domain controllers unreachable, certificate problem or service account refused (audit `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; for `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` and the host name in `LDAP_URI`. The break-glass admin still works |
 | `app` exits with `Active Directory configuration: ...` | `LDAP_ENABLED=true` with an incomplete configuration (missing CA file, `ldap://` URI, empty bind DN) | Fix the variable named in the message, or set `LDAP_ENABLED=false` |
@@ -258,12 +306,15 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 | `app` exits with `SECRET_KEY is missing or too weak` | `SECRET_KEY` shorter than 32 characters or a placeholder | Generate a key (see Configuration), put it in `.env`, `docker compose up -d app` |
 | "Zbyt wiele nieudanych prób" (HTTP 429) on login | Failed-login lock for the name and/or address | Wait `LOGIN_LOCKOUT_MINUTES`, or `docker compose exec app baza-wiedzy unlock-login --user <name>` / `--ip <address>` |
 | `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` collides with another Docker network or route | Choose another `DOCKER_SUBNET` and `PROXY_IP` (Configuration) |
-| 403 "Żądanie odrzucone (brak lub błędny token CSRF)" | Page open for a long time across a `SECRET_KEY` change or a new session, or a blocked cross-site request | Reload the page and repeat the action |
+| 403 page "Żądanie odrzucone" | Page open for a long time across a `SECRET_KEY` change or a new session, or a blocked cross-site request | Reload the page and repeat the action; the reason is in the log: `docker compose logs app \| grep 'CSRF check refused'` (`missing_token` on every submit of one form = a template bug, report it) |
+| Upload ends with "Plik jest większy niż dozwolony rozmiar" (413), or the browser shows a proxy error for big files | File above `MAX_UPLOAD_MB`, or `MAX_REQUEST_MB` (proxy) not above `MAX_UPLOAD_MB` | Raise both in `.env` (`MAX_REQUEST_MB` = `MAX_UPLOAD_MB` + 1), `docker compose up -d proxy app` |
+| Files accumulate in `/data/storage/.incoming` | Uploads interrupted (browser closed, app restarted) | Harmless; removed after an hour at the next upload, or now: `docker compose exec app baza-wiedzy storage-cleanup` (expected: `Removed N orphaned incoming file(s) ...`) |
 | Application refuses to start: `module ... requires ...` | `ENABLED_MODULES` lists a module without one it depends on | Add the required module to `ENABLED_MODULES` in `.env`, or remove the dependent one |
 
 ## Security notes for operators
 
 - Only ports 80/443 are published. Database and Redis are not reachable from the network; Redis also requires a password (`REDIS_PASSWORD`).
+- `worker`, `db` and `redis` are only on the internal Docker network `backend` (no route to the internet, no name resolution of public names); `app` is on it and on `default` (reached by the proxy, outgoing LDAPS to Active Directory). Healthchecks run inside the containers and are not affected; `scripts/offline_bundle.sh` lists images only and needs no change; the coming `update.sh` (Phase 6) runs `docker compose`, which creates or updates both networks. Check: `make smoke` ("Network isolation"), or on a server `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` must fail with `OSError` (network unreachable).
 - Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
 - Docker logs rotate: at most 5 files × 10 MB per container.
 - `.env` and backups contain secrets and personal data; restrict permissions.

@@ -1,0 +1,11 @@
+{# Polled while processing. Processing may change the title (e-mail subject), so a polled
+   response also replaces the heading (out-of-band swap). #}
+{% if polled %}<h1 id="document-title" hx-swap-oob="true">{{ document.title }}</h1>{% endif %}
+{% from "documents/_macros.html" import status_badge %}
+<div{% if busy %} hx-get="/documents/{{ document.id }}/status" hx-trigger="every 3s" hx-target="#processing" hx-swap="innerHTML"{% endif %}>
+  <p>{{ status_badge(version.processing_status) }}{% if version.processing_attempts %} <span class="muted">({{ _("attempts: %(n)s", n=version.processing_attempts) }})</span>{% endif %}</p>
+  {% if version.processing_error %}<p class="fail">{{ _(version.processing_error) }}</p>{% endif %}
+</div>
+{% if not busy and "ingestion" in enabled_modules %}
+<div id="parts" hx-get="/ingestion/versions/{{ version.id }}/parts" hx-trigger="load" hx-swap="innerHTML"><p class="muted">{{ _("Loading the extracted text…") }}</p></div>
+{% endif %}
