@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-18 13:48+0100\n"
+"POT-Creation-Date: 2026-11-18 14:30+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -111,11 +111,17 @@ msgstr "Wszystkie usługi działają."
 msgid "Allowed"
 msgstr "Dozwolone"
 
+msgid "Apply"
+msgstr "Zastosuj"
+
 msgid "Archive"
 msgstr "Archiwizuj"
 
 msgid "Audit log"
 msgstr "Dziennik audytu"
+
+msgid "Author"
+msgstr "Autor"
 
 msgid "Back to my documents"
 msgstr "Powrót do moich dokumentów"
@@ -168,6 +174,15 @@ msgstr "Schemat bazy danych"
 msgid "Date"
 msgstr "Data"
 
+msgid "Date from"
+msgstr "Data od"
+
+msgid "Date to"
+msgstr "Data do"
+
+msgid "Date: the sending date of an e-mail, otherwise the upload date."
+msgstr "Data: dla maili data wysłania, dla pozostałych dokumentów data wgrania."
+
 msgid "Deactivate (revokes all sessions)"
 msgstr "Dezaktywuj (unieważnia wszystkie sesje)"
 
@@ -192,11 +207,17 @@ msgstr "Szczegóły"
 msgid "Display name (optional)"
 msgstr "Nazwa wyświetlana (opcjonalnie)"
 
+msgid "Document search is not available for your account."
+msgstr "Wyszukiwanie dokumentów nie jest dostępne dla Twojego konta."
+
 msgid "Download the original"
 msgstr "Pobierz oryginał"
 
 msgid "E-mail"
 msgstr "E-mail"
+
+msgid "E-mail (EML, MSG)"
+msgstr "E-mail (EML, MSG)"
 
 msgid "Edit metadata, archive and restore documents of others"
 msgstr "Edycja metadanych, archiwizacja i przywracanie dokumentów innych osób"
@@ -217,8 +238,21 @@ msgstr "Plik"
 msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
 msgstr "Plik (PDF, DOCX, DOC, TXT, EML, MSG; do %(mb)s MB)"
 
+msgid "File type"
+msgstr "Typ pliku"
+
 msgid "Filter"
 msgstr "Filtruj"
+
+msgid "Filters and sorting"
+msgstr "Filtry i sortowanie"
+
+#, python-format
+msgid "Found %(num)d document."
+msgid_plural "Found %(num)d documents."
+msgstr[0] "Znaleziono %(num)d dokument."
+msgstr[1] "Znaleziono %(num)d dokumenty."
+msgstr[2] "Znaleziono %(num)d dokumentów."
 
 msgid "From"
 msgstr "Od"
@@ -253,6 +287,9 @@ msgstr "Nieprawidłowa nazwa użytkownika: użyj liter, cyfr oraz '.', '_', '@',
 
 msgid "Job queue"
 msgstr "Kolejka zadań"
+
+msgid "Language of the text"
+msgstr "Język tekstu"
 
 msgid "Last login"
 msgstr "Ostatnie logowanie"
@@ -303,6 +340,9 @@ msgstr "Mapowanie zapisane; grupa istnieje w Active Directory."
 msgid "Mappings"
 msgstr "Mapowania"
 
+msgid "Match in the title, file name or e-mail headers."
+msgstr "Dopasowanie w tytule, nazwie pliku albo nagłówkach maila."
+
 msgid ""
 "Members of a mapped Active Directory group get the role at every login. Roles from groups are "
 "recalculated at each login; roles given in the application are kept."
@@ -339,6 +379,9 @@ msgstr "Nowa rola"
 msgid "Next"
 msgstr "Następna"
 
+msgid "No documents found."
+msgstr "Nie znaleziono dokumentów."
+
 msgid "No documents yet."
 msgstr "Nie ma jeszcze dokumentów."
 
@@ -374,6 +417,10 @@ msgstr "Obiekt"
 
 msgid "One of the selected roles does not exist any more."
 msgstr "Jedna z wybranych ról już nie istnieje."
+
+#, python-format
+msgid "Only the first %(n)s pages are shown; make the query more specific to see the rest."
+msgstr "Pokazujemy tylko pierwsze %(n)s stron; doprecyzuj zapytanie, aby zobaczyć pozostałe."
 
 msgid "Open sessions"
 msgstr "Otwarte sesje"
@@ -455,6 +502,12 @@ msgstr "Żądanie odrzucone"
 msgid "Restore"
 msgstr "Przywróć"
 
+msgid "Result pages"
+msgstr "Strony wyników"
+
+msgid "Results"
+msgstr "Wyniki"
+
 #, python-format
 msgid "Results: %(total)s"
 msgstr "Wyniki: %(total)s"
@@ -483,6 +536,9 @@ msgstr "Zapisano."
 msgid "Search"
 msgstr "Szukaj"
 
+msgid "Search in documents"
+msgstr "Szukaj w dokumentach"
+
 msgid "Search in titles and file names"
 msgstr "Szukaj w tytułach i nazwach plików"
 
@@ -495,14 +551,29 @@ msgstr "Widzenie i wyszukiwanie wszystkich szkiców"
 msgid "See version, queue and health status"
 msgstr "Podgląd wersji, kolejki i stanu systemu"
 
+msgid ""
+"Several words: documents with all of them. \"Quotation marks\": exact phrase. A minus before a "
+"word (-draft): without it. or between words: either of them. Numbers and codes can be typed with "
+"or without separators."
+msgstr ""
+"Kilka słów: dokumenty zawierające wszystkie. „Cudzysłów” (zwykły znak \"): dokładna fraza. Minus "
+"przed słowem (-projekt): bez tego słowa. or między słowami: jedno albo drugie. Numery i kody "
+"można wpisywać z separatorami albo bez nich."
+
 msgid "Show"
 msgstr "Pokaż"
+
+msgid "Show archived documents"
+msgstr "Pokaż zarchiwizowane"
 
 msgid "Size"
 msgstr "Rozmiar"
 
 msgid "Some systems are not working."
 msgstr "Niektóre usługi nie działają."
+
+msgid "Sort by"
+msgstr "Sortuj według"
 
 msgid "Source"
 msgstr "Źródło"
@@ -527,6 +598,9 @@ msgstr "Stan systemu"
 
 msgid "Temporary problem; processing will be retried automatically."
 msgstr "Chwilowy problem; przetwarzanie zostanie automatycznie ponowione."
+
+msgid "Text (TXT)"
+msgstr "Tekst (TXT)"
 
 msgid ""
 "The Admin role always has all permissions, including those of modules added later. It cannot be "
@@ -556,9 +630,6 @@ msgstr "Konto zostało aktywowane."
 
 msgid "The account was deactivated and its sessions were revoked."
 msgstr "Konto zostało dezaktywowane, a jego sesje unieważnione."
-
-msgid "The company knowledge base is being prepared. Document search will be available here soon."
-msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
 
 msgid "The content of the file does not match its extension, or the file is damaged."
 msgstr "Zawartość pliku nie pasuje do jego rozszerzenia albo plik jest uszkodzony."
@@ -643,8 +714,27 @@ msgstr "Nie znaleziono tej grupy w Active Directory."
 msgid "The permission %(code)s also requires %(required)s."
 msgstr "Uprawnienie %(code)s wymaga też %(required)s."
 
+msgid "The query contains only very common words, which are not searched. Add a more specific word."
+msgstr ""
+"Zapytanie zawiera tylko bardzo częste słowa, które nie są wyszukiwane. Dodaj bardziej konkretne "
+"słowo."
+
+#, python-format
+msgid "The query is too long (at most %(n)s characters)."
+msgstr "Zapytanie jest za długie (najwyżej %(n)s znaków)."
+
+msgid ""
+"The query is very general: the results are sorted by date instead of relevance. Add a word to get"
+" more relevant results."
+msgstr ""
+"Zapytanie jest bardzo ogólne: wyniki są posortowane według daty zamiast trafności. Dodaj słowo, "
+"aby dostać trafniejsze wyniki."
+
 msgid "The role name must have 1 to 64 characters."
 msgstr "Nazwa roli musi mieć od 1 do 64 znaków."
+
+msgid "The search took too long. Make the query more specific or use a filter."
+msgstr "Wyszukiwanie trwało zbyt długo. Doprecyzuj zapytanie albo użyj filtra."
 
 msgid "The status of the document has changed in the meantime. Check it and try again."
 msgstr "Stan dokumentu zmienił się w międzyczasie. Sprawdź go i spróbuj ponownie."
@@ -711,6 +801,10 @@ msgstr "Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut."
 msgid "Type"
 msgstr "Typ"
 
+#, python-format
+msgid "Type at least %(n)s characters."
+msgstr "Wpisz co najmniej %(n)s znaki."
+
 msgid "Unknown action."
 msgstr "Nieznana akcja."
 
@@ -757,6 +851,9 @@ msgstr "Przeglądanie dziennika audytu"
 msgid "Warning: every member of this group will become an administrator with all permissions."
 msgstr "Uwaga: każdy członek tej grupy zostanie administratorem ze wszystkimi uprawnieniami."
 
+msgid "Word (DOC, DOCX)"
+msgstr "Word (DOC, DOCX)"
+
 msgid "You are not allowed to do this with this document."
 msgstr "Nie masz uprawnień do tej akcji na tym dokumencie."
 
@@ -783,6 +880,12 @@ msgstr "wszystkie"
 msgid "all documents I can see"
 msgstr "wszystkie dokumenty, które widzę"
 
+msgid "any"
+msgstr "dowolny"
+
+msgid "anyone"
+msgstr "dowolny"
+
 msgid "archived"
 msgstr "zarchiwizowany"
 
@@ -799,6 +902,9 @@ msgstr "treść"
 
 msgid "custom"
 msgstr "własna"
+
+msgid "date, newest first"
+msgstr "daty, od najnowszych"
 
 msgid "draft"
 msgstr "szkic"
@@ -853,6 +959,9 @@ msgstr "opublikowany"
 msgid "ready"
 msgstr "gotowe"
 
+msgid "relevance"
+msgstr "trafności"
+
 #, python-format
 msgid "requires: %(codes)s"
 msgstr "wymaga: %(codes)s"
@@ -883,4 +992,7 @@ msgstr "tak"
 #~ "Readers can still find it by its title and "
 #~ "download it."
 #~ msgstr ""
+
+#~ msgid "The company knowledge base is being prepared. Document search will be available here soon."
+#~ msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
 

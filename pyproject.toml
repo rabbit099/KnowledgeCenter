@@ -129,7 +129,7 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "search uses only the public API of documents"
+name = "search uses only the public APIs of documents and ingestion"
 type = "forbidden"
 source_modules = ["baza_wiedzy.modules.search"]
 forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.ingestion"]
@@ -137,4 +137,5 @@ allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.documents.services.api",
+    "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.ingestion.services.api",
 ]

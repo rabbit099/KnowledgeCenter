@@ -240,6 +240,46 @@ DOCS: tuple[CorpusDoc, ...] = (
         _pdf("Drogi wyjścia oznaczono zielonymi znakami. Punkt zbiórki: parking."),
         title="Drogi wyjścia – budynek B",  # the searched word is only in the file name
     ),
+    # Identifiers (ADR-026): the same number written differently in documents and queries.
+    CorpusDoc(
+        "kontrahent",
+        "kontrahent.txt",
+        _txt("Karta kontrahenta: Hurtownia Przykładowa, NIP 7251801126, REGON 123456785."),
+        title="Karta kontrahenta",
+    ),
+    CorpusDoc(
+        "zlecenie-17",
+        "zlecenie-kotlownia.txt",
+        _txt("Zlecenie nr 17/2026 na przegląd kotłowni w budynku A."),
+        title="Zlecenie przeglądu kotłowni",
+    ),
+    CorpusDoc(
+        "umowa-um-17",
+        "umowa-dostawa.txt",
+        _txt("Umowa UM/17/2026 na dostawę materiałów biurowych."),
+        title="Umowa na dostawę materiałów",
+    ),
+    CorpusDoc(
+        "kontakt",
+        "kontakt-awaryjny.txt",
+        _txt("Kontakt w sprawie awarii: dyżurny technik, tel. 603 388 100 (całą dobę)."),
+        title="Kontakt awaryjny",
+    ),
+    CorpusDoc(
+        "recepcja",
+        "recepcja.txt",
+        _txt("Recepcja: +48 501 222 333, e-mail recepcja@biuro.example.com."),
+        title="Recepcja",
+    ),
+    CorpusDoc(
+        "zgloszenie",
+        "zgloszenie-awarii.txt",
+        _txt(
+            "Zgłoszenie IT-002: serwer EX-PVE1 nie odpowiada pod adresem 192.168.10.25, "
+            "strona intranet.example.com jest niedostępna."
+        ),
+        title="Zgłoszenie awarii",
+    ),
 )
 
 KEYS = frozenset(doc.key for doc in DOCS)
@@ -261,8 +301,14 @@ QUERIES: tuple[GoldenQuery, ...] = (
     _q("UM/2026/017", ("umowa-serwisowa", "aneks"), ("rejestr-umow",), note="numer umowy"),
     _q("Łódź", ("lodz", "umowa-serwisowa"), note="Łódź znajduje też „w Łodzi”"),
     _q(
-        "lodz", ("lodz",), note="bez polskich znaków: dokładnie to słowo (bez odmiany, patrz uwagi)"
+        "lodz",
+        ("lodz",),
+        ("umowa-serwisowa",),
+        note="bez polskich znaków: dokładnie to słowo; „w Łodzi” NIE jest znajdowane "
+        "(udokumentowane ograniczenie, patrz uwagi)",
     ),
+    _q("lodzi", ("umowa-serwisowa",), note="bez polskich znaków, forma z tekstu: znajduje"),
+    _q("faktura -korekta", ("faktura-0042",), ("faktura-0043",), note="wykluczenie w dokumencie"),
     _q('"zasady bezpieczeństwa"', ("procedura-bhp",), ("magazyn",), note="fraza w cudzysłowie"),
     _q("bezpieczeństwo -magazyn", ("procedura-bhp",), ("magazyn",), note="wykluczenie minusem"),
     _q(
@@ -272,8 +318,37 @@ QUERIES: tuple[GoldenQuery, ...] = (
         top="faktura-0042",
         note="numer faktury",
     ),
-    _q("725-18-01-126", ("faktura-0042",), note="NIP"),
-    _q("EX-PVE0", ("backup-policy",), note="nazwa serwera"),
+    _q(
+        "725-18-01-126", ("faktura-0042", "kontrahent"), note="NIP z myślnikami (tekst: oba zapisy)"
+    ),
+    _q("7251801126", ("faktura-0042", "kontrahent"), note="NIP bez myślników (tekst: oba zapisy)"),
+    _q(
+        "17/2026",
+        ("zlecenie-17", "umowa-um-17"),
+        ("umowa-serwisowa", "aneks"),
+        note="numer umowy, także wewnątrz UM/17/2026; nie UM/2026/017",
+    ),
+    _q("UM/17/2026", ("umowa-um-17",), ("zlecenie-17", "umowa-serwisowa"), note="pełny numer"),
+    _q("UM-17-2026", ("umowa-um-17",), note="numer z innymi separatorami"),
+    _q("umowie 17/2026", ("umowa-um-17",), note="słowo w innej formie i numer"),
+    _q("603 388 100", ("kontakt",), note="telefon ze spacjami"),
+    _q("603388100", ("kontakt",), note="telefon bez spacji"),
+    _q("+48 603 388 100", ("kontakt",), note="telefon z kierunkowym (tekst bez)"),
+    _q("501222333", ("recepcja",), note="telefon bez kierunkowego (tekst z +48)"),
+    _q("+48501222333", ("recepcja",), note="telefon z kierunkowym, bez spacji"),
+    _q("IT-002", ("zgloszenie",), note="kod zgłoszenia"),
+    _q("IT002", ("zgloszenie",), note="kod bez myślnika"),
+    _q("192.168.10.25", ("zgloszenie",), note="adres IP"),
+    _q("192.168.10", ("zgloszenie",), note="początek adresu IP (trzy oktety)"),
+    _q("intranet.example.com", ("zgloszenie",), note="nazwa hosta"),
+    _q(
+        "example.com",
+        ("zgloszenie", "mail-ksiegowosc", "recepcja"),
+        note="domena: host, nadawca maila, adres w tekście",
+    ),
+    _q("recepcja@biuro.example.com", ("recepcja",), note="adres e-mail w tekście"),
+    _q("ksiegowosc", ("mail-ksiegowosc",), note="część adresu przed @ (nadawca)"),
+    _q("EX-PVE0", ("backup-policy",), ("zgloszenie",), note="nazwa serwera (nie EX-PVE1)"),
     _q("backups", ("backup-policy",), note="angielska liczba mnoga"),
     _q("invoice", ("invoices-en",), note="angielska liczba pojedyncza znajduje mnogą"),
     _q("contracts", ("contracts-en",), note="angielska liczba mnoga znajduje pojedynczą"),
@@ -332,8 +407,11 @@ def expected_text(directory: str = "wyszukiwanie") -> str:
         f"1. Wgraj wszystkie pliki z katalogu {directory}/ jako konto z rolą Publikujący",
         "   (np. bw-test), wpisując podany tytuł (bez tytułu: nazwa pliku albo temat maila),",
         "   i ustaw stan przyciskami na stronie dokumentu zgodnie z listą poniżej.",
-        "2. Wyszukuj jako konto z rolą Czytelnik (bw-test2), chyba że podano inaczej.",
-        "   Wyszukiwarka powstaje w etapie B; do tego czasu próbki służą do testu publikacji.",
+        "2. Poczekaj, aż wszystkie mają stan przetwarzania „gotowe” (inwentaryzacja.pdf:",
+        "   „wymaga OCR”), i wyszukuj jako konto z rolą Czytelnik (bw-test2), chyba że",
+        "   podano inaczej (autor = konto, które wgrało pliki; Admin = administrator).",
+        "3. „Znajduje” = te pliki są na liście wyników (mogą być też inne dokumenty z bazy);",
+        "   „nie znajduje” = tego pliku nie ma na liście.",
         "",
         "Pliki i stan po wgraniu:",
     ]
@@ -357,8 +435,13 @@ def expected_text(directory: str = "wyszukiwanie") -> str:
         "  - Zapytanie bez polskich znaków znajduje dokładnie to słowo („lodz” → „Łódź”),",
         "    ale nie jego odmiany („Łodzi”): odmianę rozpoznaje tylko zapytanie z polskimi",
         "    znakami. To ograniczenie słownika (ADR-003, ADR-016).",
+        "    Zapytanie „lodzi” znajduje „w Łodzi”, bo to ta sama forma bez znaków.",
         "  - Nazwiska spoza słownika są znajdowane w formie z tekstu; „Kowalski” nie",
         "    znajdzie „Kowalskim”.",
+        "  - Numery i kody: znajdowane z separatorami i bez („725-18-01-126” = „7251801126”,",
+        "    „603 388 100” = „603388100”), także fragment między separatorami („17/2026”",
+        "    w „UM/17/2026”). Nie działa: część jednego członu („0042” w „00042”), początek",
+        "    numeru („7251*”), fragment niekończący się na separatorze („3388”).",
         "  - Wyniki zależą od wszystkich dokumentów w bazie; testuj na czystej instalacji.",
         "",
     ]

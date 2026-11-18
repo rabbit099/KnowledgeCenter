@@ -328,6 +328,88 @@ def _events_redeliver(_: argparse.Namespace) -> int:
     return 0 if delivery.failed == 0 else 1
 
 
+def _search_runtime() -> Runtime:
+    rt = _cli_runtime()
+    if "search" not in rt.registry:
+        rt.close()
+        raise _CliError("The search module is not enabled (ENABLED_MODULES).")
+    return rt
+
+
+def _reindex_search(args: argparse.Namespace) -> int:
+    import time
+    import uuid
+
+    from baza_wiedzy.modules.documents.services import api as documents
+    from baza_wiedzy.modules.search import indexer
+
+    if not (args.all or args.missing or args.document or args.version):
+        raise _CliError("Give --all, --missing, --document ID or --version ID.")
+    rt = _search_runtime()
+    started = time.monotonic()
+    try:
+        with rt.session_factory() as db:
+            result = indexer.check(db)
+            targets: list[uuid.UUID] = []
+            if args.all:
+                targets = [*result.missing, *indexer.indexed_counts(db), *result.different]
+                targets = [v for v in dict.fromkeys(targets) if v not in result.orphaned]
+            elif args.missing:
+                targets = [*result.missing, *result.different]
+            for raw in args.version or []:
+                targets.append(uuid.UUID(raw))
+            for raw in args.document or []:
+                document = db.get(documents.Document, uuid.UUID(raw))
+                if document is None:
+                    raise _CliError(f"No document with ID {raw}.")
+                targets.extend(v.id for v in documents.versions_of(db, document))
+        indexed = indexer.index_many(rt.session_factory, list(dict.fromkeys(targets)))
+        if (args.all or args.missing) and result.orphaned:
+            indexer.remove_orphans(rt.session_factory, result.orphaned)
+        if args.all:
+            with rt.engine.connect() as conn:  # rebuild the GIN indexes after a full rewrite
+                conn.exec_driver_sql("REINDEX TABLE srch_parts")
+                conn.exec_driver_sql("REINDEX TABLE srch_documents")
+                conn.commit()
+    except ValueError as exc:
+        raise _CliError(f"Not an ID: {exc}.") from exc
+    finally:
+        rt.close()
+    removed = len(result.orphaned) if args.all or args.missing else 0
+    took = time.monotonic() - started
+    print(f"Indexed {indexed} version(s); removed {removed} orphaned; took {took:.1f} s.")
+    return 0
+
+
+def _search_check(_: argparse.Namespace) -> int:
+    from baza_wiedzy.modules.search import indexer
+
+    rt = _search_runtime()
+    try:
+        with rt.session_factory() as db:
+            result = indexer.check(db)
+    finally:
+        rt.close()
+    print(f"Extracted versions: {result.versions}")
+    for label, ids in (
+        ("not indexed", result.missing),
+        ("different number of parts", result.different),
+        ("indexed but no longer extracted", result.orphaned),
+    ):
+        print(f"  {label}: {len(ids)}")
+        for version_id in ids[:20]:
+            print(f"    {version_id}")
+        if len(ids) > 20:
+            print(f"    ... and {len(ids) - 20} more")
+    if result.ok:
+        print("Search index OK.")
+        return 0
+    print(
+        "Search index differs from the extracted text: run `baza-wiedzy reindex-search --missing`."
+    )
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -409,6 +491,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         "redeliver", help="deliver events that were not delivered yet; remove old delivered ones"
     )
     redeliver.set_defaults(handler=_events_redeliver)
+
+    reindex = commands.add_parser(
+        "reindex-search",
+        help="rebuild the search index from the extracted text (after a dictionary change: --all)",
+    )
+    reindex.add_argument("--all", action="store_true", help="every extracted version")
+    reindex.add_argument(
+        "--missing", action="store_true", help="only what search-check reports (and orphans)"
+    )
+    reindex.add_argument("--document", action="append", metavar="ID", help="a document")
+    reindex.add_argument("--version", action="append", metavar="ID", help="a version")
+    reindex.set_defaults(handler=_reindex_search)
+
+    search_check = commands.add_parser(
+        "search-check",
+        help="compare the search index with the extracted text (exit 1 if different)",
+    )
+    search_check.set_defaults(handler=_search_check)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"

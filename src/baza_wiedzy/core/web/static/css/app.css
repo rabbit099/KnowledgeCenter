@@ -60,3 +60,21 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .badge-state-archived { background: #e3e3e3; color: #3d3d3d; }
 .document-actions { flex-wrap: wrap; align-items: center; margin: 1rem 0; }
 .document-actions button.button { background: var(--bg); color: var(--accent); font: inherit; cursor: pointer; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.search-line { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.search-line label { font-weight: 600; }
+.search-line input[type="search"] { flex: 1; min-width: 16rem; padding: 0.45rem; font: inherit; }
+.search-line button, .search-filters button { padding: 0.45rem 1rem; font: inherit; cursor: pointer; }
+.search-filters { margin: 0.5rem 0 1rem; }
+.search-filters fieldset { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; border: 1px solid #dde2ea; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; margin: 0.5rem 0; }
+.filter-row label { display: flex; flex-direction: column; gap: 0.2rem; }
+.results { padding-left: 1.5rem; }
+.hit { margin-bottom: 1.1rem; }
+.hit-title { font-size: 1.05rem; margin: 0 0 0.15rem; }
+.hit-meta, .hit-where { margin: 0; font-size: 0.9rem; }
+.snippet { margin: 0.2rem 0 0; }
+.snippet mark { background: #ffe066; color: #1d2330; padding: 0 0.1rem; }
+.badge-state-draft { background: #e8ecf2; color: #1d2330; margin-left: 0.4rem; }
+.pagination [aria-current="page"] { font-weight: 700; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #1f5fae; outline-offset: 2px; }

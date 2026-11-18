@@ -8,7 +8,8 @@
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
 #      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
 #      and a small text PDF and wait until the worker has processed both ("ready"), publish
-#      the TXT and download it (content and safe headers), send a unique "search phrase" in
+#      the TXT, find it through the search page, download it (content and safe headers),
+#      send a unique "search phrase" to the search page and in
 #      the query string, Referer and HX-Current-URL and require that it appears in no
 #      container log (proxy, app, worker, db; ADR-025), log out
 # Everything (containers, volumes, the temporary env file) is removed at the end.
@@ -235,12 +236,25 @@ for wanted in "content-type: application/octet-stream" "x-content-type-options: 
     tr -d '\r' < "$HEADERS" | grep -qi "^$wanted\$" || { echo "FAILED: download header missing: $wanted"; exit 1; }
 done
 echo "    download headers: ok"
+# Search finds the published TXT through the proxy: an inflected form (Polish dictionary) and
+# a query without diacritics (simple_unaccent).
+for query in "urz%C4%85dzenie" "spoldzielni"; do
+    page="$(curl -sk -c "$JAR" -b "$JAR" "$BASE/search?q=$query")"
+    case "$page" in
+        *"href=\"$TXT_DOC\""*) echo "    search $query: found" ;;
+        *) echo "FAILED: search for $query does not find the published TXT; index state:"
+           compose exec -T app baza-wiedzy search-check || true
+           exit 1 ;;
+    esac
+done
 rm -f "$SAMPLE_TXT" "$SAMPLE_PDF" "$DOWNLOAD"
 
 echo "==> Search phrases never reach a log (query string, Referer, HX-Current-URL, redirects)"
 PHRASE="tajnafraza$(python3 -c 'import secrets; print(secrets.token_hex(8))')"
 status -H "Referer: $BASE/search?q=$PHRASE" -H "HX-Current-URL: $BASE/search?q=$PHRASE" \
     "$BASE/documents?q=$PHRASE&page=1" > /dev/null
+expect "search with the phrase" 200 "$(status "$BASE/search?q=$PHRASE&sort=date")"
+expect "search with an unbalanced quote" 200 "$(status "$BASE/search?q=%22$PHRASE")"
 curl -sk -D "$HEADERS" -o /dev/null "$BASE/documents?q=$PHRASE"  # no session: login redirect
 grep -qi "^location: /login?next=.*$PHRASE" "$HEADERS" \
     || { echo "FAILED: the login redirect does not carry the request (test is not meaningful)"; exit 1; }
@@ -264,5 +278,5 @@ echo "    proxy, app, worker, db logs: no search phrase; proxy log: no file name
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", publish and download, no search phrase in logs, logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", publish, search and download, no search phrase in logs, logout"
 exit 0

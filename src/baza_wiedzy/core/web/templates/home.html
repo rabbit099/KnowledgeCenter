@@ -3,8 +3,16 @@
 <h1>{{ app_name }}</h1>
 {% if current_user and not current_user.permissions %}
 <p class="fail">{{ _("Your account has no permissions yet. Contact an administrator to get access.") }}</p>
+{% elif "search" in enabled_modules and has_perm("documents.read") %}
+<form method="get" action="/search" role="search" class="search-form">
+  <div class="search-line">
+    <label for="home-q">{{ _("Search in documents") }}</label>
+    <input type="search" id="home-q" name="q" maxlength="200" autofocus>
+    <button type="submit">{{ _("Search") }}</button>
+  </div>
+</form>
 {% else %}
-<p>{{ _("The company knowledge base is being prepared. Document search will be available here soon.") }}</p>
+<p>{{ _("Document search is not available for your account.") }}</p>
 {% endif %}
 {% if has_perm("system.view") %}
 <section class="status" hx-get="{{ url_for('status_fragment').path }}" hx-trigger="load, every 30s" hx-swap="innerHTML">

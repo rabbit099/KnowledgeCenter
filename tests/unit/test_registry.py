@@ -47,6 +47,11 @@ def test_search_without_documents_gives_readable_error() -> None:
     assert "ENABLED_MODULES" in message
 
 
+def test_search_needs_ingestion_for_the_extracted_text() -> None:
+    with pytest.raises(ModuleDependencyError, match="'ingestion'"):
+        load_registry(["documents", "search"])
+
+
 def test_documents_alone_is_valid() -> None:
     assert load_registry(["documents"]).names == ("core", "documents")
 
@@ -97,11 +102,11 @@ def test_catalog_matches_documented_permissions() -> None:
 
 
 def test_menu_sections_order_and_availability() -> None:
-    registry = load_registry(["documents", "search"])
+    registry = load_registry(["documents", "ingestion", "search"])
     admin = [i.label for i in registry.menu("admin")]
     assert admin == ["Users", "Roles", "AD groups", "Audit log", "System"]
-    # Search has no pages yet (available=False); the documents module has "My documents".
-    assert [i.label for i in registry.menu("main")] == ["My documents"]
+    # Search (order 10) comes before "My documents" (order 20).
+    assert [i.label for i in registry.menu("main")] == ["Search", "My documents"]
     assert {i.section for i in registry.menu()} == {"admin", "main"}
 
 
