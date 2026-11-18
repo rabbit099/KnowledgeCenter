@@ -1,0 +1,85 @@
+# Search performance measurement: `make perf N=20000` (manual, not CI; docs/en/search.md).
+# A throwaway PostgreSQL with the production settings of docker-compose.yml (max_connections 40,
+# shared_buffers 256 MB, 2 GB memory limit, data on a volume, not tmpfs) and a one-off runner
+# in the test image. The `dict` service writes a Hunspell dictionary without diacritics
+# (evaluation only, never used by the application) into .perf-dict/. No port is published.
+name: baza-wiedzy-perf
+
+x-db-env: &db-env
+  POSTGRES_PASSWORD: perf-superuser-only
+  APP_DB_USER: app
+  APP_DB_PASSWORD: perf
+  APP_DB_NAME: kb_perf
+
+services:
+  dict:
+    build: docker/db
+    image: baza-wiedzy-db:perf
+    entrypoint: ["sh", "-c"]
+    environment:
+      OWNER: ${OWNER:-0:0}
+    command:
+      - >-
+        set -e; TS="$$(pg_config --sharedir)/tsearch_data"; export LC_ALL=C.UTF-8;
+        for ext in dict affix; do
+        sed 'y/ąćęłńóśźżĄĆĘŁŃÓŚŹŻ/acelnoszzACELNOSZZ/' "$$TS/pl_pl.$$ext" > "/out/pl_unaccent.$$ext";
+        done; cp "$$TS/pl_pl.dict" /out/pl_pl.dict; chown "$$OWNER" /out/*
+    volumes:
+      - ./.perf-dict:/out
+
+  db-perf:
+    image: baza-wiedzy-db:perf
+    command: ["postgres", "-c", "max_connections=40", "-c", "shared_buffers=256MB"]
+    environment: *db-env
+    shm_size: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    volumes:
+      - perf-pgdata:/var/lib/postgresql/data
+      - ./.perf-dict/pl_unaccent.dict:/usr/share/postgresql/16/tsearch_data/pl_unaccent.dict:ro
+      - ./.perf-dict/pl_unaccent.affix:/usr/share/postgresql/16/tsearch_data/pl_unaccent.affix:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d kb_perf"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  perf:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+      target: test
+    image: baza-wiedzy-worker:test
+    depends_on:
+      db-perf:
+        condition: service_healthy
+    working_dir: /src
+    environment:
+      PERF_DATABASE_URL: postgresql://app:perf@db-perf:5432/kb_perf
+      # Only for reading per-connection memory (pg_backend_memory_contexts needs a superuser).
+      PERF_SUPERUSER_URL: postgresql://postgres:perf-superuser-only@db-perf:5432/kb_perf
+      PERF_DOCS: ${PERF_DOCS:-20000}
+      OWNER: ${OWNER:-0:0}
+      UV_PROJECT_ENVIRONMENT: /venv
+      UV_CACHE_DIR: /uv-cache
+      UV_LINK_MODE: copy
+    volumes:
+      - .:/src:ro
+      - venv:/venv
+      - uv-cache:/uv-cache
+      - ./perf-results:/out
+      - ./.perf-dict:/dict:ro
+    command:
+      - sh
+      - -c
+      - >-
+        uv sync --frozen --all-extras --quiet && uv run --frozen --no-sync python
+        scripts/perf_search.py --docs "$$PERF_DOCS" --out /out --dict-dir /dict;
+        status=$$?; chown -R "$$OWNER" /out; exit $$status
+
+volumes:
+  perf-pgdata:
+  venv:
+  uv-cache:

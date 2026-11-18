@@ -57,3 +57,19 @@ def test_worker_has_a_connection_for_the_job_and_one_for_event_handlers() -> Non
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
     env = compose["services"]["worker"]["environment"]
     assert int(env["DB_POOL_SIZE"]) + int(env["DB_MAX_OVERFLOW"]) >= 2
+
+
+def test_relevance_inputs_are_ignored_and_refused_inside_the_repository() -> None:
+    """The repository is public: company documents and queries for `make relevance` never get
+    in (Makefile refuses paths inside it; .gitignore is the second net)."""
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for pattern in (
+        "/relevance/",
+        "/trafnosc/",
+        "/dokumenty-firmy/",
+        "/zapytania*.txt",
+        "/queries*.txt",
+    ):
+        assert pattern in ignored
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "is inside the repository, which is public" in makefile

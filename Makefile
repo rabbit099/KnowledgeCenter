@@ -99,6 +99,29 @@ probki: ## Synthetic sample files for a manual test: make probki DIR=~/bw-probki
 		-e OWNER="$$(id -u):$$(id -g)" -v "$$(cd "$(DIR)" && pwd):/out" tests \
 		sh -c 'uv sync --frozen --all-extras --quiet && PYTHONPATH=/src/tests uv run --frozen --no-sync python scripts/make_samples.py /out && chown "$$OWNER" /out/* /out/wyszukiwanie/*'
 
+.PHONY: relevance
+TOP ?= 5
+relevance: _need-docker ## Rate search on own documents (dev stack): make relevance DIR=<docs> QUERIES=<file> AS=<user> [TOP=5] [ONLY=1]
+	@test -n "$(DIR)" -a -n "$(QUERIES)" -a -n "$(AS)" || { echo 'Usage: make relevance DIR=<directory outside the repository> QUERIES=<file outside the repository> AS=<user name> [TOP=5]'; exit 1; }
+	@dir="$$(realpath "$(DIR)")" && queries="$$(realpath "$(QUERIES)")" || exit 1; \
+	for path in "$$dir" "$$queries"; do case "$$path/" in "$(CURDIR)"/*) \
+	echo "Refused: $$path is inside the repository, which is public. Keep company documents and queries outside it."; exit 1;; esac; done; \
+	test -d "$$dir" -a -f "$$queries" || { echo "DIR must be a directory and QUERIES a file."; exit 1; }; \
+	$(COMPOSE_DEV) run --rm --no-deps -v "$$dir:/relevance/docs:ro" -v "$$queries:/relevance/queries.txt:ro" \
+		-v "$(CURDIR)/scripts:/scripts:ro" app python /scripts/relevance.py \
+		--docs /relevance/docs --queries /relevance/queries.txt --user "$(AS)" --top "$(TOP)" \
+		$(if $(filter 1,$(ONLY)),--only-uploaded,)
+
+.PHONY: perf
+N ?= 20000
+perf: ## Search performance on N synthetic documents (manual, minutes): make perf N=20000
+	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
+	mkdir -p .perf-dict perf-results
+	docker compose -f docker-compose.perf.yml run --rm --build -e OWNER="$$(id -u):$$(id -g)" dict
+	PERF_DOCS=$(N) OWNER="$$(id -u):$$(id -g)" docker compose -f docker-compose.perf.yml run --rm --build perf; \
+	status=$$?; if [ "$(PERF_KEEP)" = "1" ]; then echo "PERF_KEEP=1: the perf database stays (docker compose -f docker-compose.perf.yml down -v removes it)"; \
+	else docker compose -f docker-compose.perf.yml down -v --remove-orphans >/dev/null 2>&1; fi; exit $$status
+
 .PHONY: test-db
 test-db: ## Integration and golden search tests in Docker (throwaway DB, no host ports)
 	@command -v docker >/dev/null 2>&1 || { echo "Docker is not installed or not in PATH; this command needs it."; exit 1; }
