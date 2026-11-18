@@ -54,7 +54,8 @@ Tick items when they are finished and documented.
 - [x] Search UI (plain GET form, no JavaScript needed), snippets, filters, sorting, pagination (ADR-027)
 - [x] Metadata search with weights and `pg_trgm` near matches
 - [x] Golden search tests on the synthetic corpus (in CI)
-- [ ] Performance test (20,000 and 100,000 documents, `make perf`), stage C
+- [x] Performance test (20,000 and 100,000 documents, `make perf`, manual): p95 329 ms at 20,000 (ADR-028)
+- [x] Local relevance check with own documents (`make relevance`, never in the repository)
 - [x] Index the text parts of versions in "wymaga OCR" (`needs_ocr`) too: their text pages are already extracted
 - [x] `search` reads parts through `ingestion.services.api` and declares `requires=("documents", "ingestion")` (ADR-020)
 - [x] `search-check`, `reindex-search`, indexing of missing versions at worker start
@@ -88,5 +89,6 @@ Tick items when they are finished and documented.
 - [ ] Remove the `exclude-newer-package` exception for `opentelemetry-api` at the monthly dependency review once `exclude-newer` is past 2026-10-30 (ADR-015)
 - [ ] On the server: the worker has no internet access (`make smoke` network check, or the command in deployment-operations.md, Security notes)
 - [ ] Search relevance with the owner's real (non-confidential) documents and typical queries (locally, never committed)
-- [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); a dictionary without diacritics so that `lodz` also finds "w Łodzi"; failed versions findable by title
+- [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); failed versions findable by title (a dictionary without diacritics was evaluated and rejected, ADR-028)
+- [ ] Search under concurrency: fewer relations per statement or PostgreSQL 18, if more than ~10 searches/s are needed (ADR-028); memory settings before 100,000 documents
 - [ ] Delete or shorten old proxy logs from before 0.4.0 if they may contain CSRF tokens (changelog 0.4.0, Security)

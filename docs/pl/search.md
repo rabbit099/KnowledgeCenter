@@ -87,7 +87,7 @@ Nie działa (z założenia): fragment jednego członu („0042” w „00042”)
 ## Ranking
 
 Dla każdego dokumentu (ADR-027):
-- treść: najlepsza część; `ts_rank_cd(…, 32)` w każdej konfiguracji, wygrywa najlepsza wartość; `simple_unaccent` × 0,8 (dopasowania ze stemmingiem są nieco wyżej); konfiguracja języka innego niż wykryty dla części × 0,9 („nieznany”: obie w pełni);
+- treść: najlepsza część; `ts_rank_cd(…, 32)` konfiguracji wykrytego języka części (`pl` albo `english`; „nieznany”: lepsza z obu); dopiero gdy daje 0 (identyfikator, słowo wpisane bez polskich znaków, słowo drugiego języka), lepsza z `simple_unaccent` × 0,8 i drugiego języka × 0,9. Ranking czyta tsvector każdej używanej konfiguracji, co jest głównym kosztem szerokiego zapytania, więc ta kolejność oszczędza większość pracy (ADR-028);
 - plus metadane: `ts_rank(…, 32)` z wagami A (tytuł, temat) = 1,0 i B (nazwa pliku, nadawca, odbiorcy) = 0,4, więc trafienie w tytule jest wyżej niż w treści; dopasowanie przybliżone (trigramy) liczy się jako `0,3 × podobieństwo`, poniżej dopasowania dokładnego;
 - remisy: nowszy dokument pierwszy, potem według id (deterministycznie).
 
@@ -223,9 +223,40 @@ Start workera sam wykonuje część `--missing` (linia logu `search: indexed N v
 - `test_corpus.py`: syntetyczny korpus polsko-angielski `tests/fixtures/search_corpus.py` (26 dokumentów, 48 zapytań; te same pliki `make probki` zapisuje do `wyszukiwanie/` z `OCZEKIWANE-wyszukiwanie.txt`). Każdy plik przechodzi wgranie, ekstrakcję, indeksowanie po zdarzeniu i publikację; każde zapytanie idzie przez `/search` jako Czytelnik, autor albo Admin i jest porównywane z „musi znaleźć”, „nie może znaleźć” i „pierwszy wynik”. Pokryte: odmiana (umowa/umowy/umowie), polskie znaki (Łódź/lodz), nazwiska, frazy, wykluczenie w innej części, zapytania dwujęzyczne, angielska liczba mnoga, słowa tylko w załączniku maila, temacie albo nadawcy, częściowo zeskanowany PDF, słowo tylko w nazwie pliku, literówka w tytule, szkice i zarchiwizowane według roli, identyfikatory (NIP, numery umów, telefony, nazwy hostów, kody, adresy e-mail, domeny, adresy IP). To, że `lodz` nie znajduje „w Łodzi”, jest udokumentowanym przypadkiem (oczekiwanie „nie może znaleźć”), a nie błędem.
 - Tam też: escapowanie HTML z dokumentów, fragmenty i ich lokalizacja, sortowanie, każdy filtr, limity zapytania, limit czasu, brak frazy w logu, `search-check` i `reindex-search`, publikacja działająca bez reindeksu, powtórzone zdarzenia.
 
-Gdy dotrą prawdziwe (niepoufne) dokumenty i typowe zapytania właściciela, są testowane lokalnie (nigdy nie trafiają do repozytorium): wgraj je do instalacji testowej i zapisz wyniki w tej sekcji.
+**Prawdziwe dokumenty i zapytania (tylko lokalnie).** Repozytorium jest publiczne: dokumenty i zapytania firmy nigdy do niego nie trafiają ani do CI. Oceniaj je lokalnie przez `make relevance` na stosie deweloperskim:
+
+1. Umieść dokumenty w katalogu **poza** repozytorium (na przykład `~/trafnosc/dokumenty/`), a zapytania w pliku poza nim (`~/trafnosc/zapytania.txt`): jedno zapytanie w linii, `#` dla komentarzy, opcjonalnie `zapytanie => fragment oczekiwanego tytułu albo nazwy pliku`.
+2. `make up`, zaloguj się raz kontem, które ma być właścicielem szkiców (albo użyj istniejącego konta Publikującego), potem `make relevance DIR=~/trafnosc/dokumenty QUERIES=~/trafnosc/zapytania.txt AS=bw-test ONLY=1`.
+3. Pierwsze uruchomienie wgrywa każdy plik jako szkic tego użytkownika i czeka na workera (linie `processing: {...}`); kolejne uruchomienia używają tych samych plików (ten sam SHA-256) i tylko wyszukują.
+4. Dla każdego zapytania wynik pokazuje liczbę dokumentów, czas i pierwsze `TOP` wyników: wynik, tytuł, nazwę pliku, miejsce trafienia („strona 3”, „załącznik: … › strona 1”, „tytuł/nazwa/nagłówki”) i fragment z trafieniami w «»; przy `=>` także OK albo MISSING i podsumowanie na końcu.
+5. Oceń wyniki ręcznie; zapisuj tu tylko wnioski bez treści (na przykład „18 z 20 zapytań ma oczekiwany dokument na pierwszym miejscu; problemy: skróty”).
+
+Szkice zostają na stosie deweloperskim, widoczne tylko dla tego użytkownika i posiadaczy `documents.read_drafts`; aby je usunąć, odtwórz bazę deweloperską (`make down`, potem `docker volume rm baza-wiedzy_pgdata baza-wiedzy_storage`, co kasuje wszystkie dane lokalne). Wynik zawiera tekst dokumentów: nigdy go nie commituj, nie wklejaj ani nie załączaj.
 
 ## Cel wydajnościowy
 
-p95 poniżej 500 ms na syntetycznym korpusie 20 000 dokumentów (CLAUDE.md 10). Mierzone w Fazie 3, etap C, generatorem 20 000 i 100 000 dokumentów (`make perf`, ręcznie); wyniki i plany zapytań zostaną zapisane tutaj.
+p95 poniżej 500 ms na syntetycznym korpusie 20 000 dokumentów (CLAUDE.md 10): **spełniony** — p95 329 ms dla wszystkich typów zapytań, jeden użytkownik. Zmierzono 2026-11-18 przez `make perf` (ręcznie; [deployment-operations.md](deployment-operations.md#polecenia-dla-programisty)): jednorazowy PostgreSQL z ustawieniami produkcyjnymi (`max_connections` 40, `shared_buffers` 256 MB, limit pamięci 2 GB), deterministyczny korpus polsko-angielski (słownictwo Zipfa z prawdziwymi słowami biznesowymi na początku, numery faktur, NIP, telefony, nazwy hostów, 15 % maili, 10 % szkiców), na 14-wątkowej maszynie deweloperskiej pod WSL2 (współdzielonej, więc przebiegi różnią się do ±30 %; sprzęt produkcyjny może być inny). Pełne wyniki z planami zapytań: `perf-results/perf-N.md` danego przebiegu (poza gitem).
+
+| | 20 000 dokumentów | 100 000 dokumentów (informacyjnie) |
+|---|---|---|
+| Części, tekst | 44 800 części, 28 mln znaków | 225 000 części, 142 mln znaków |
+| Pełne indeksowanie, jeden proces (= jeden proces workera) | 304 s, około 3900 dokumentów/min (przebiegi: 3300–4600) | 1441 s (24 min), około 4200 dokumentów/min |
+| Rozmiar bazy | 381 MB | 1770 MB |
+| `srch_parts` (sterta + TOAST + indeksy) | 268 MB | 1263 MB |
+| Kolumny tsvector `tsv_pl` / `tsv_en` / `tsv_simple` | 46 / 47 / 50 MB (sam tekst 28 MB) | 233 / 238 / 253 MB |
+| Indeksy GIN sześciu tsvectorów | 91 MB | 358 MB |
+| Indeks trigramowy (metadane) | 5,6 MB | 16 MB |
+| Wszystkie zapytania, jeden użytkownik: p50 / p95 / maks. | **98 / 329 / 404 ms** | 467 / 2138 / 4681 ms |
+| 10 równoczesnych wyszukiwań, ciepłe: p50 / p95, przepustowość | 279 / 1508 ms, 16 wyszukiwań/s | 1254 / 5247 ms, 3,6 wyszukiwania/s |
+| 10 równoczesnych, nowe połączenia (ładowanie słownika) | 267 / 1965 ms | 1635 / 5533 ms (część przekroczyła limit czasu) |
+
+Według typu zapytania przy 20 000 dokumentów (Czytelnik, p50 / p95 ms): numer faktury 25 / 30; NIP 26 / 33; telefon 27 / 35; literówka w tytule 15 / 19; dwa słowa angielskie 58 / 63; fraza 68 / 79; rzadkie słowo 68 / 173; sortowanie według daty 103 / 111; dwa słowa 147 / 152; filtr typu i daty 210 / 223; bardzo częste słowo 211 / 229; jedno częste słowo („umowa”, 13 556 dokumentów) 224 / 239; dwa słowa odmienione 240 / 248; wykluczenie „faktura -korekta” 332 / 373. Admin (także szkice) mieści się w 10 % tych wartości.
+
+**Co zajmuje czas.** `EXPLAIN (ANALYZE, BUFFERS)` szerokiego zapytania: dopasowanie przez trzy indeksy GIN 5–20 ms; ranking czyta i rozpakowuje tsvector (średnio około 1 KB, 71 leksemów) dla każdej części i konfiguracji, około 3 µs na część i konfigurację plus odczyt; `ts_headline` dla 20 wyników 30 ms; Python 12 ms. Strojenie w etapie C (ADR-028), z efektem przy 20 000 dokumentów: łączenie przez OR tylko alternatyw identyfikatorów różnych od zapytania (potrajały pracę dopasowania i rankingu: „umowa” 368 → 236 ms), ranking najpierw w konfiguracji języka części, pozostałe tylko gdy ta daje 0, wąskie zmaterializowane CTE zamiast szerokich wierszy w złączeniach (bez plików tymczasowych), wykluczenia jednym przejściem po GIN (`faktura -korekta` 1026 → 332 ms), `work_mem` 16 MB na wyszukiwanie. Ogólne p95: 1032 ms przed, 329 ms po. Wypróbowane i odrzucone: tsvectory bez kompresji (`STORAGE EXTERNAL`, ranking tylko o 15 % szybszy, więcej miejsca).
+
+**Limit równoległości.** Przepustowość zatrzymuje się na około 10–16 wyszukiwaniach/s niezależnie od liczby wątków (1 wątek 4,9/s, 4 wątki 10,8/s przy p95 488 ms, 10 wątków 10,1/s); baza używa 6 z 14 rdzeni. Przyczyna: jedno wyszukiwanie bierze 35 blokad relacji (tabele i każdy indeks rozważany przez planer), PostgreSQL 16 trzyma 16 na sesję w szybkiej ścieżce, reszta idzie przez współdzielony menedżer blokad i do 30 % aktywnych sesji czeka na `LWLock:LockManager`. Dla 100 użytkowników (kilka wyszukiwań jednocześnie) to wystarcza; opcje, gdyby nie wystarczało: mniej relacji na instrukcję (nazwy autorów i daty kopiowane do indeksu zamiast złączeń) albo PostgreSQL 18 z większą liczbą slotów szybkiej ścieżki (ADR, poza Fazą 3).
+
+**100 000 dokumentów.** Szerokie zapytania trwają 1,5–2,4 s, a równoległość spada: baza (1,8 GB) nie mieści się już w 256 MB `shared_buffers` i limicie kontenera 2 GB, więc ranking czyta z dysku. Przed taką wielkością: `POSTGRES_SHARED_BUFFERS` około 1 GB i `DB_MEMORY_LIMIT` około 4 GB, potem ponowny pomiar; kolejnym krokiem byłby limit liczby rankingowanych części. Do tego czasu limit czasu z wynikami według daty utrzymuje stronę responsywną.
+
+**Słownik bez polskich znaków** (oceniony, niewdrożony; ADR-028): drugi słownik Hunspell bez diakrytyków (`pl_unaccent`) sprawiłby, że `lodz` znajdzie „w Łodzi” (8 z 10 sprawdzonych słów znalezionych w innej formie: Gdańsku, źródła, świadczeń, …). Koszt: 24,8 MB więcej na każde połączenie z bazą (dziś 27,3 MB), czyli 2,09 GB na oba słowniki przy 40 połączeniach — więcej niż dzisiejsze `DB_MEMORY_LIMIT` 2 GB; około 230 MB tsvector + 95 MB GIN więcej przy 100 000 dokumentów (czwarta konfiguracja, około +25 % indeksu); oraz nowe fałszywe trafienia: 12 z 14 sprawdzonych par różnych słów (łaski ↔ laska, sądu ↔ sad, żony ↔ zona, kąta ↔ kat, rządu ↔ rzad, więcej ↔ wiec, …); 3715 grup rdzeni słownika (2,4 % z 308 304) zlewa się w jeden klucz. Dzisiejsze zachowanie (dokładna forma bez znaków przez `simple_unaccent`) zostaje.
 

@@ -87,7 +87,7 @@ Does not work (by design): a part of one segment ("0042" in "00042"); prefixes (
 ## Ranking
 
 Per document (ADR-027):
-- content: the best part; `ts_rank_cd(…, 32)` per configuration, best value wins; `simple_unaccent` × 0.8 (stemmed matches rank slightly higher); the configuration of the other language than the part's detected one × 0.9 ("unknown": both full);
+- content: the best part; `ts_rank_cd(…, 32)` of the configuration of the part's detected language (`pl` or `english`; "unknown": the better of both); only when that gives 0 (an identifier, a word typed without diacritics, a word of the other language) the better of `simple_unaccent` × 0.8 and the other language × 0.9. Ranking reads a tsvector per configuration it uses, which is the main cost of a broad query, so the order saves most of it (ADR-028);
 - plus metadata: `ts_rank(…, 32)` with the weights A (title, subject) = 1.0 and B (file name, sender, recipients) = 0.4, so a match in the title ranks above one in the text; a trigram near match counts `0.3 × similarity`, below an exact match;
 - ties: newer document first, then by id (deterministic).
 
@@ -223,9 +223,40 @@ The worker start runs the `--missing` part by itself (log line `search: indexed 
 - `test_corpus.py`: the synthetic Polish-English corpus `tests/fixtures/search_corpus.py` (26 documents, 48 queries; the same files `make probki` writes to `wyszukiwanie/` with `OCZEKIWANE-wyszukiwanie.txt`). Every file goes through upload, extraction, indexing by the event and publication; every query runs through `/search` as a Reader, as the author or as Admin and is compared with "must find", "must not find" and "first result". Covered: inflection (umowa/umowy/umowie), diacritics (Łódź/lodz), names, phrases, exclusion in another part, bilingual queries, English plurals, words only in an e-mail attachment, subject or sender, a partly scanned PDF, a word only in the file name, a typo in a title, drafts and archived documents per role, identifiers (tax numbers, contract numbers, phone numbers, host names, codes, e-mail addresses, domains, IP addresses). `lodz` not finding "w Łodzi" is a documented case (a "must not find" expectation), not a failure.
 - Also there: escaping of HTML in documents, snippets and their location, sorting, every filter, query limits, the time limit, no phrase in the log, `search-check` and `reindex-search`, publication taking effect without reindexing, repeated events.
 
-When the owner's real (non-confidential) documents and typical queries arrive, they are tested locally (never committed): upload them to a test installation and record the results in this section.
+**Real documents and queries (local only).** The repository is public: company documents and queries never go into it or into CI. Rate them locally with `make relevance` on the development stack:
+
+1. Put the documents in a directory **outside** the repository (for example `~/trafnosc/dokumenty/`) and the queries in a file outside it (`~/trafnosc/zapytania.txt`): one query per line, `#` for comments, optionally `query => part of the expected title or file name`.
+2. `make up`, log in once as the account that will own the drafts (or use an existing Publisher account), then `make relevance DIR=~/trafnosc/dokumenty QUERIES=~/trafnosc/zapytania.txt AS=bw-test ONLY=1`.
+3. The first run uploads every file as a draft of that user and waits for the worker (`processing: {...}` lines); later runs reuse the files (same SHA-256) and only search.
+4. For each query the output shows the number of documents, the time, and the first `TOP` results: score, title, file name, where the hit is ("strona 3", "załącznik: … › strona 1", "tytuł/nazwa/nagłówki") and the fragment with hits in «»; with `=>` also OK or MISSING, and a summary at the end.
+5. Rate the results by hand; record only conclusions without content here (for example "18 of 20 queries have the expected document first; problems: abbreviations").
+
+The drafts stay on the development stack, visible only to that user and holders of `documents.read_drafts`; to remove them, recreate the development database (`make down`, then `docker volume rm baza-wiedzy_pgdata baza-wiedzy_storage`, which deletes all local data). The output contains document text: never commit, paste or attach it.
 
 ## Performance target
 
-p95 below 500 ms on a synthetic corpus of 20,000 documents (CLAUDE.md 10). Measured in Phase 3, stage C with a generator of 20,000 and 100,000 documents (`make perf`, manual); results and query plans will be recorded here.
+p95 below 500 ms on a synthetic corpus of 20,000 documents (CLAUDE.md 10): **met** — p95 329 ms over all query types, a single user. Measured on 2026-11-18 with `make perf` (manual; [deployment-operations.md](deployment-operations.md#developer-commands)): a throwaway PostgreSQL with the production settings (`max_connections` 40, `shared_buffers` 256 MB, 2 GB memory limit), a deterministic Polish/English corpus (Zipf vocabulary with real business words at the top, invoice numbers, tax numbers, phone numbers, host names, 15 % e-mails, 10 % drafts), on a 14-thread development machine under WSL2 (shared, so runs differ by up to ±30 %; production hardware may differ). Full results with the query plans: `perf-results/perf-N.md` of a run (not in git).
+
+| | 20,000 documents | 100,000 documents (information) |
+|---|---|---|
+| Parts, text | 44,800 parts, 28 M characters | 225,000 parts, 142 M characters |
+| Full index, one process (= one worker process) | 304 s, about 3,900 documents/min (runs: 3,300–4,600) | 1,441 s (24 min), about 4,200 documents/min |
+| Database size | 381 MB | 1,770 MB |
+| `srch_parts` (heap + TOAST + indexes) | 268 MB | 1,263 MB |
+| tsvector columns `tsv_pl` / `tsv_en` / `tsv_simple` | 46 / 47 / 50 MB (text itself 28 MB) | 233 / 238 / 253 MB |
+| GIN indexes of the six tsvectors | 91 MB | 358 MB |
+| Trigram index (metadata) | 5.6 MB | 16 MB |
+| All queries, one user: p50 / p95 / max | **98 / 329 / 404 ms** | 467 / 2,138 / 4,681 ms |
+| 10 concurrent searches, warm: p50 / p95, throughput | 279 / 1,508 ms, 16 searches/s | 1,254 / 5,247 ms, 3.6 searches/s |
+| 10 concurrent, new connections (dictionary load) | 267 / 1,965 ms | 1,635 / 5,533 ms (some exceeded the time limit) |
+
+Per query type at 20,000 documents (Reader, p50 / p95 ms): invoice number 25 / 30; NIP 26 / 33; phone 27 / 35; typo in a title 15 / 19; English two words 58 / 63; phrase 68 / 79; rare word 68 / 173; sort by date 103 / 111; two words 147 / 152; filter type + date 210 / 223; very common word 211 / 229; one common word ("umowa", 13,556 documents) 224 / 239; inflected two words 240 / 248; exclusion "faktura -korekta" 332 / 373. Admin (drafts too) is within 10 % of these.
+
+**What costs the time.** `EXPLAIN (ANALYZE, BUFFERS)` of a broad query: matching through the three GIN indexes takes 5–20 ms; ranking reads and decompresses a tsvector (about 1 KB, 71 lexemes on average) per part and configuration, about 3 µs per part and configuration plus the reading; `ts_headline` for 20 results 30 ms; Python 12 ms. Stage C tuning (ADR-028), with the effect at 20,000 documents: OR-ing only identifier alternatives that differ from the query (they tripled matching and ranking work: "umowa" 368 → 236 ms), ranking the configuration of the part's language first and the others only when it gives 0, a narrow materialised CTE instead of wide rows in the joins (no temp files), exclusions through one GIN pass (`faktura -korekta` 1,026 → 332 ms), `work_mem` 16 MB per search. Overall p95: 1,032 ms before, 329 ms after. Tried and rejected: tsvectors stored uncompressed (`STORAGE EXTERNAL`, ranking only 15 % faster, more disk).
+
+**Concurrency limit.** Throughput stops at about 10–16 searches/s whatever the number of threads (1 thread 4.9/s, 4 threads 10.8/s with p95 488 ms, 10 threads 10.1/s); the database uses 6 of 14 cores. Cause: one search takes 35 relation locks (tables and every index the planner considers), PostgreSQL 16 keeps 16 per session in its fast path, the rest goes through the shared lock manager, and up to 30 % of the active sessions wait on `LWLock:LockManager`. For 100 users (a few searches at the same time) this is enough; options if it is not: fewer relations per statement (owner names and dates copied into the index instead of joined), or PostgreSQL 18 with more fast-path slots (an ADR, outside Phase 3).
+
+**100,000 documents.** Broad queries take 1.5–2.4 s and concurrency drops: the database (1.8 GB) no longer fits the 256 MB shared buffers and the 2 GB container limit, so ranking reads from disk. Before such a size: `POSTGRES_SHARED_BUFFERS` about 1 GB and `DB_MEMORY_LIMIT` about 4 GB, then measure again; a cap on the number of ranked parts would be the next step. The time limit with the fallback by date keeps the page responsive meanwhile.
+
+**Dictionary without diacritics** (evaluated, not deployed; ADR-028): a second Hunspell dictionary with the diacritics removed (`pl_unaccent`) would make `lodz` find "w Łodzi" (8 of 10 tested words found in another form: Gdańsku, źródła, świadczeń, …). Cost: 24.8 MB more per database connection (27.3 MB today), i.e. 2.09 GB for both dictionaries at 40 connections — more than today's `DB_MEMORY_LIMIT` 2 GB; about 230 MB tsvector + 95 MB GIN more at 100,000 documents (a fourth configuration, about +25 % index); and new false matches: 12 of 14 tested pairs of different words (łaski ↔ laska, sądu ↔ sad, żony ↔ zona, kąta ↔ kat, rządu ↔ rzad, więcej ↔ wiec, …); 3,715 groups of dictionary stems (2.4 % of 308,304) collapse into one key. Today's behaviour (exact form without diacritics through `simple_unaccent`) stays.
 

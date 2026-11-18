@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user>` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -146,7 +146,7 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Containers run as non-root. Postgres and Redis are not published on host ports. The worker needs two database connections per process (job + event handler during outbox delivery; ADR-026). `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
 - Audit log every login, upload, publish/unpublish, archive/restore, download, delete, role/permission change, setting change. Searches are never audited.
 - Logs, audit and error messages never contain document content, file names, e-mail subjects or search phrases. Search phrases travel in URLs, so the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`, the app access log drops query strings, and database exceptions are logged without their message (ADR-025). `make smoke` checks it.
-- Test fixtures are synthetic. Never commit real company documents or real mail.
+- Test fixtures are synthetic. Never commit real company documents or real mail. The repository is public: real documents and queries are evaluated only locally with `make relevance` (inputs outside the repository, output never committed or pasted).
 
 ## 9. Documentation rules (MANDATORY)
 

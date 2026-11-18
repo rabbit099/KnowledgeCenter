@@ -54,7 +54,8 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Interfejs wyszukiwania (zwykły formularz GET, bez wymogu JavaScriptu), fragmenty, filtry, sortowanie, paginacja (ADR-027)
 - [x] Wyszukiwanie po metadanych z wagami i dopasowaniami przybliżonymi `pg_trgm`
 - [x] Testy wzorcowe (golden) wyszukiwania na syntetycznym korpusie (w CI)
-- [ ] Test wydajności (20 000 i 100 000 dokumentów, `make perf`), etap C
+- [x] Test wydajności (20 000 i 100 000 dokumentów, `make perf`, ręcznie): p95 329 ms przy 20 000 (ADR-028)
+- [x] Lokalna ocena trafności na własnych dokumentach (`make relevance`, nigdy w repozytorium)
 - [x] Indeksowanie części z tekstem także dla wersji w stanie „wymaga OCR” (`needs_ocr`): ich strony z tekstem są już wyciągnięte
 - [x] `search` czyta części przez `ingestion.services.api` i deklaruje `requires=("documents", "ingestion")` (ADR-020)
 - [x] `search-check`, `reindex-search`, indeksowanie brakujących wersji przy starcie workera
@@ -88,5 +89,6 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Usunięcie wyjątku `exclude-newer-package` dla `opentelemetry-api` przy comiesięcznym przeglądzie zależności, gdy `exclude-newer` przejdzie 2026-10-30 (ADR-015)
 - [ ] Na serwerze: worker nie ma dostępu do internetu (sprawdzenie sieci w `make smoke` albo polecenie z deployment-operations.md, Uwagi bezpieczeństwa)
 - [ ] Trafność wyszukiwania na prawdziwych (niepoufnych) dokumentach i typowych zapytaniach właściciela (lokalnie, nigdy w repozytorium)
-- [ ] Do oceny (backlog): poprawianie literówek w treści (słownik słów z `ts_stat` + trigramy); słownik bez polskich znaków, żeby `lodz` znajdowało też „w Łodzi”; wersje z błędem przetwarzania znajdowane po tytule
+- [ ] Do oceny (backlog): poprawianie literówek w treści (słownik słów z `ts_stat` + trigramy); wersje z błędem przetwarzania znajdowane po tytule (słownik bez polskich znaków oceniony i odrzucony, ADR-028)
+- [ ] Wyszukiwanie przy równoległości: mniej relacji na instrukcję albo PostgreSQL 18, jeśli potrzeba więcej niż ~10 wyszukiwań/s (ADR-028); ustawienia pamięci przed 100 000 dokumentów
 - [ ] Usunąć albo skrócić stare logi proxy sprzed 0.4.0, jeśli mogą zawierać tokeny CSRF (dziennik zmian 0.4.0, Security)
