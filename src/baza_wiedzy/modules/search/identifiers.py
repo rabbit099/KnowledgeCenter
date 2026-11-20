@@ -1,8 +1,8 @@
 """Identifiers (numbers and codes) as extra search tokens (ADR-026).
 
 PostgreSQL's text parser splits or glues identifiers in ways that differ between a document
-and a query: "UM/17/2026" is one token, so "17/2026" does not find it; "603 388 100" is three
-tokens and "603388100" one; "IT-002" becomes "it" and "-002"; "ksiegowosc@example.com" is one
+and a query: "UM/17/2026" is one token, so "17/2026" does not find it; "600 100 200" is three
+tokens and "600100200" one; "IT-002" becomes "it" and "-002"; "ksiegowosc@example.com" is one
 token, so the domain alone does not find it. Each identifier is therefore also written in a
 normalised form without separators, at indexing (extra tokens, `ident_terms`) and in the query
 (alternative queries, OR-ed with the original). Everything here is lower case and without
@@ -13,14 +13,14 @@ Rules (what is recognised):
   "725-18-01-126", "IT-002", "EX-PVE0", "FV/2026/11/0042"): every contiguous run of segments
   joined ("um17", "172026", "um172026", ...) and the single segments;
 - digit groups separated by spaces or dashes, at least 6 digits, optionally with "+"
-  ("603 388 100", "+48 603 388 100", "725 18 01 126"): every contiguous run of groups joined;
+  ("600 100 200", "+48 600 100 200", "725 18 01 126"): every contiguous run of groups joined;
   in a query starting with "+", also the variant without the country code;
 - e-mail addresses: the local part (and its pieces), the domain and its parent domains;
 - host names ("intranet.example.com"): the name and its parent domains;
 - IPv4 addresses: the address and its first three octets ("192.168.10").
 
 What does not work (by design, docs/en/search.md): a part of one segment ("0042" in "00042"),
-prefixes ("7251*"), runs that do not end at a separator ("3388" in "603 388 100"), letters and
+prefixes ("7251*"), runs that do not end at a separator ("1002" in "600 100 200"), letters and
 digits separated only by spaces ("UM 17 2026"), other country prefixes ("0048"), IPv6, ranges.
 """
 

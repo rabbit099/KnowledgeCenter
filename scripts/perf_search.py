@@ -336,7 +336,7 @@ def queries(samples: dict[str, str]) -> list[tuple[str, dict[str, Any]]]:
         ("phrase", {"query": '"protokół odbioru"'}),
         ("exclusion", {"query": "faktura -korekta"}),
         ("identifier: NIP digits", {"query": samples.get("nip", "7251801126")}),
-        ("identifier: phone", {"query": samples.get("phone", "603 388 100")}),
+        ("identifier: phone", {"query": samples.get("phone", "600 100 200")}),
         ("typo in title (trigram)", {"query": "harmonogran przeglądów"}),
         (
             "filter: kind + date",

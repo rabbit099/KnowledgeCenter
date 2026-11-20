@@ -31,7 +31,7 @@ Numbers and codes are found with or without separators:
 |---|---|
 | `7251801126` or `725-18-01-126` | the tax number written either way |
 | `17/2026` | "UM/17/2026" (a part between separators) |
-| `603 388 100`, `603388100`, `+48 603 388 100` | the same phone number written any of these ways |
+| `600 100 200`, `600100200`, `+48 600 100 200` | the same phone number written any of these ways |
 | `IT002` or `IT-002`, `EX-PVE0` | codes and server names |
 | `example.com`, `ksiegowosc@example.com` | addresses in that domain, the exact address |
 | `192.168.10.25`, `192.168.10` | the address, addresses in that network |
@@ -56,7 +56,7 @@ Under "Filtry i sortowanie": file type (PDF, Word, e-mail, text), language of th
 
 - **No synonyms**: "kopia zapasowa" does not find "backup", "umowa" does not find "kontrakt". Try the other word, or both: `"kopia zapasowa" or backup`.
 - **Without Polish letters only the exact form**: `lodz` finds "Łódź" but not "w Łodzi" (`lodzi` does). Type Polish letters to find every form.
-- **No partial words or numbers**: `faktu` does not find "faktura" in the text; `7251` does not find "7251801126"; `3388` does not find "603 388 100". Small typos and incomplete words are forgiven only in titles, file names, e-mail subjects and senders (never in numbers).
+- **No partial words or numbers**: `faktu` does not find "faktura" in the text; `7251` does not find "7251801126"; `1002` does not find "600 100 200". Small typos and incomplete words are forgiven only in titles, file names, e-mail subjects and senders (never in numbers).
 - **Scanned pages** are found only after OCR (Phase 4; the document page then says "wymaga OCR"). Documents whose processing failed and documents without text are found only by title and file name.
 - **Limits**: 2 to 200 characters; 20 results per page; at most 50 pages; a search that takes longer than 3 seconds is shown by date instead of relevance with a note ("Zapytanie jest bardzo ogólne…"); if even that is too slow, the page asks to narrow the query.
 

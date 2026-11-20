@@ -31,7 +31,7 @@ Numery i kody są znajdowane z separatorami i bez:
 |---|---|
 | `7251801126` albo `725-18-01-126` | NIP zapisany w dowolny z tych sposobów |
 | `17/2026` | „UM/17/2026” (fragment między separatorami) |
-| `603 388 100`, `603388100`, `+48 603 388 100` | ten sam numer telefonu zapisany w dowolny z tych sposobów |
+| `600 100 200`, `600100200`, `+48 600 100 200` | ten sam numer telefonu zapisany w dowolny z tych sposobów |
 | `IT002` albo `IT-002`, `EX-PVE0` | kody i nazwy serwerów |
 | `example.com`, `ksiegowosc@example.com` | adresy w tej domenie, dokładny adres |
 | `192.168.10.25`, `192.168.10` | adres, adresy w tej sieci |
@@ -56,7 +56,7 @@ Pod „Filtry i sortowanie”: typ pliku (PDF, Word, e-mail, tekst), język teks
 
 - **Brak synonimów**: „kopia zapasowa” nie znajdzie „backup”, „umowa” nie znajdzie „kontrakt”. Wpisz drugie słowo albo oba: `"kopia zapasowa" or backup`.
 - **Bez polskich liter tylko dokładna forma**: `lodz` znajduje „Łódź”, ale nie „w Łodzi” (`lodzi` znajduje). Wpisz polskie litery, aby znaleźć każdą formę.
-- **Brak fragmentów słów i numerów**: `faktu` nie znajdzie „faktura” w treści; `7251` nie znajdzie „7251801126”; `3388` nie znajdzie „603 388 100”. Drobne literówki i niepełne słowa są wybaczane tylko w tytułach, nazwach plików, tematach i nadawcach maili (nigdy w numerach).
+- **Brak fragmentów słów i numerów**: `faktu` nie znajdzie „faktura” w treści; `7251` nie znajdzie „7251801126”; `1002` nie znajdzie „600 100 200”. Drobne literówki i niepełne słowa są wybaczane tylko w tytułach, nazwach plików, tematach i nadawcach maili (nigdy w numerach).
 - **Zeskanowane strony** są znajdowane dopiero po OCR (Faza 4; strona dokumentu pokazuje wtedy „wymaga OCR”). Dokumenty, których przetwarzanie zakończyło się błędem, i dokumenty bez tekstu są znajdowane tylko po tytule i nazwie pliku.
 - **Limity**: od 2 do 200 znaków; 20 wyników na stronę; najwyżej 50 stron; wyszukiwanie trwające dłużej niż 3 sekundy jest pokazywane według daty zamiast trafności z adnotacją („Zapytanie jest bardzo ogólne…”); jeśli i to jest zbyt wolne, strona prosi o zawężenie zapytania.
 

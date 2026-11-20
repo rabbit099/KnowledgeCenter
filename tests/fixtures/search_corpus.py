@@ -262,7 +262,7 @@ DOCS: tuple[CorpusDoc, ...] = (
     CorpusDoc(
         "kontakt",
         "kontakt-awaryjny.txt",
-        _txt("Kontakt w sprawie awarii: dyżurny technik, tel. 603 388 100 (całą dobę)."),
+        _txt("Kontakt w sprawie awarii: dyżurny technik, tel. 600 100 200 (całą dobę)."),
         title="Kontakt awaryjny",
     ),
     CorpusDoc(
@@ -331,9 +331,9 @@ QUERIES: tuple[GoldenQuery, ...] = (
     _q("UM/17/2026", ("umowa-um-17",), ("zlecenie-17", "umowa-serwisowa"), note="pełny numer"),
     _q("UM-17-2026", ("umowa-um-17",), note="numer z innymi separatorami"),
     _q("umowie 17/2026", ("umowa-um-17",), note="słowo w innej formie i numer"),
-    _q("603 388 100", ("kontakt",), note="telefon ze spacjami"),
-    _q("603388100", ("kontakt",), note="telefon bez spacji"),
-    _q("+48 603 388 100", ("kontakt",), note="telefon z kierunkowym (tekst bez)"),
+    _q("600 100 200", ("kontakt",), note="telefon ze spacjami"),
+    _q("600100200", ("kontakt",), note="telefon bez spacji"),
+    _q("+48 600 100 200", ("kontakt",), note="telefon z kierunkowym (tekst bez)"),
     _q("501222333", ("recepcja",), note="telefon bez kierunkowego (tekst z +48)"),
     _q("+48501222333", ("recepcja",), note="telefon z kierunkowym, bez spacji"),
     _q("IT-002", ("zgloszenie",), note="kod zgłoszenia"),
@@ -439,9 +439,9 @@ def expected_text(directory: str = "wyszukiwanie") -> str:
         "  - Nazwiska spoza słownika są znajdowane w formie z tekstu; „Kowalski” nie",
         "    znajdzie „Kowalskim”.",
         "  - Numery i kody: znajdowane z separatorami i bez („725-18-01-126” = „7251801126”,",
-        "    „603 388 100” = „603388100”), także fragment między separatorami („17/2026”",
+        "    „600 100 200” = „600100200”), także fragment między separatorami („17/2026”",
         "    w „UM/17/2026”). Nie działa: część jednego członu („0042” w „00042”), początek",
-        "    numeru („7251*”), fragment niekończący się na separatorze („3388”).",
+        "    numeru („7251*”), fragment niekończący się na separatorze („1002”).",
         "  - Wyniki zależą od wszystkich dokumentów w bazie; testuj na czystej instalacji.",
         "",
     ]

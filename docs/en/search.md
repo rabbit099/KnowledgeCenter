@@ -50,19 +50,19 @@ Metadata (title, file name, e-mail subject, sender, recipients) is matched with 
 
 ## Identifiers (numbers and codes)
 
-The text parser splits or glues identifiers differently in a document and a query: "UM/17/2026" is one token (so "17/2026" would not find it), "603 388 100" three tokens, "IT-002" becomes "it" and "-002", an e-mail address one token (so its domain would not find it). Therefore `search/identifiers.py` adds normalised tokens without separators at indexing (`ident_terms`, in all three tsvectors) and rewrites the query the same way (ADR-026):
+The text parser splits or glues identifiers differently in a document and a query: "UM/17/2026" is one token (so "17/2026" would not find it), "600 100 200" three tokens, "IT-002" becomes "it" and "-002", an e-mail address one token (so its domain would not find it). Therefore `search/identifiers.py` adds normalised tokens without separators at indexing (`ident_terms`, in all three tsvectors) and rewrites the query the same way (ADR-026):
 
 | Recognised | Example | Extra tokens |
 |---|---|---|
 | Letters/digits joined by `-` or `/`, with a digit | `UM/17/2026`, `725-18-01-126`, `IT-002`, `EX-PVE0` | every run of segments joined and every segment: `um172026`, `172026`, `um17`, `2026`, … |
-| Digit groups separated by spaces or dashes, ≥ 6 digits, optional `+` | `603 388 100`, `+48 603 388 100` | every run of groups joined: `603388100`, `48603388100`, `388100`, … |
+| Digit groups separated by spaces or dashes, ≥ 6 digits, optional `+` | `600 100 200`, `+48 600 100 200` | every run of groups joined: `600100200`, `48600100200`, `100200`, … |
 | E-mail addresses | `ksiegowosc@example.com` | local part and its pieces, domain and parent domains |
 | Host names | `intranet.example.com` | the name and its parent domains |
 | IPv4 addresses | `192.168.10.25` | the address and its first three octets |
 
-The query gets the joined form of each identifier as an alternative (`725-18-01-126` → `7251801126`, `+48 603 388 100` → `48603388100` and `603388100`, `+48501222333` → `48501222333`); words keep their diacritics so the Polish dictionary still applies ("umowie 17/2026" finds "Umowa UM/17/2026"). The original query is always kept, so nothing it finds is lost.
+The query gets the joined form of each identifier as an alternative (`725-18-01-126` → `7251801126`, `+48 600 100 200` → `48600100200` and `600100200`, `+48501222333` → `48501222333`); words keep their diacritics so the Polish dictionary still applies ("umowie 17/2026" finds "Umowa UM/17/2026"). The original query is always kept, so nothing it finds is lost.
 
-Does not work (by design): a part of one segment ("0042" in "00042"); prefixes ("7251*"); a run not ending at a separator ("3388" in "603 388 100"); letters and digits separated only by spaces ("UM 17 2026"); other country prefixes ("0048"); IPv6; ranges and CIDR; typos in numbers. Cost: a few extra tokens per identifier (a chain of n segments gives up to n(n+1)/2, at most 8 segments joined in all combinations, at most 5,000 tokens per part); joined numbers next to each other in prose ("2019 2020 2021") create tokens nobody searches — harmless.
+Does not work (by design): a part of one segment ("0042" in "00042"); prefixes ("7251*"); a run not ending at a separator ("1002" in "600 100 200"); letters and digits separated only by spaces ("UM 17 2026"); other country prefixes ("0048"); IPv6; ranges and CIDR; typos in numbers. Cost: a few extra tokens per identifier (a chain of n segments gives up to n(n+1)/2, at most 8 segments joined in all combinations, at most 5,000 tokens per part); joined numbers next to each other in prose ("2019 2020 2021") create tokens nobody searches — harmless.
 
 ## Ranking
 

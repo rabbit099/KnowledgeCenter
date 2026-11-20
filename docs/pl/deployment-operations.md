@@ -259,6 +259,8 @@ Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<ka
 
 Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync --all-extras` (dodatek `worker` zawiera parsery dokumentów potrzebne testom i sprawdzaniu typów; `make lint` i `make test` dodają go same).
 
+**Dane testowe.** Dane w repozytorium są wyłącznie syntetyczne. Numery telefonów z puli 600 100 xxx, adresy e-mail i hosty w domenach zarezerwowanych (example.com, example.org), NIP-y i numery umów wymyślone. Żadnych nazw firm, numerów ani fragmentów z prawdziwych dokumentów. Prawdziwe dokumenty i zapytania do testu trafności zostają poza repozytorium (`make relevance DIR=… QUERIES=…` poza drzewem repo).
+
 | Polecenie | Co robi |
 |---|---|
 | `make help` | Wypisuje wszystkie polecenia |

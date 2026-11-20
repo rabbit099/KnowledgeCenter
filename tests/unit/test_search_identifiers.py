@@ -15,7 +15,7 @@ from baza_wiedzy.modules.search.snippets import START, STOP, strip_sentinels, to
     [
         ("NIP 725-18-01-126", {"7251801126", "725", "126"}),
         ("Umowa UM/17/2026 z dnia", {"um172026", "172026", "um17", "um", "2026"}),
-        ("tel. +48 603 388 100.", {"48603388100", "603388100", "388100"}),
+        ("tel. +48 600 100 200.", {"48600100200", "600100200", "100200"}),
         ("IT-002, EX-PVE0", {"it002", "expve0", "pve0"}),
         ("ksiegowosc@example.com", {"ksiegowosc", "example.com"}),
         ("jan.kowalski@biuro.example.com", {"jan.kowalski", "jan", "kowalski", "example.com"}),
@@ -48,7 +48,7 @@ def test_token_limit_and_long_chains() -> None:
         ("725-18-01-126", ("7251801126", "7251801126")),
         ("17/2026", ("172026", "172026")),
         ("UM-17-2026", ("um172026", "um172026")),
-        ("+48 603 388 100", ("48603388100", "603388100")),
+        ("+48 600 100 200", ("48600100200", "600100200")),
         ("+48501222333", ("48501222333", "48501222333")),
         ("zażółć 17/2026", ("zażółć 172026", "zażółć 172026")),  # words keep diacritics
         ("faktura -FV/2026/11/0043", ("faktura -fv2026110043", "faktura -fv2026110043")),

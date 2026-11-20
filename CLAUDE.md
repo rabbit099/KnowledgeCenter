@@ -170,6 +170,10 @@ The documentation is part of the product and you maintain it.
 - Permission tests: a matrix of roles × actions, including "reader cannot see drafts" and "reader cannot find drafts through search".
 - A performance test generates a synthetic corpus of 20,000 documents; search p95 target < 500 ms.
 
+### Test data
+
+Data in the repository is synthetic only. Phone numbers from the range 600 100 xxx, e-mail addresses and hosts in reserved domains (example.com, example.org), tax numbers (NIP) and contract numbers invented. No company names, numbers or fragments from real documents. Real documents and queries for the relevance check stay outside the repository (`make relevance DIR=… QUERIES=…` outside the repository tree).
+
 ## 11. Git workflow
 
 - Feature branches, small commits, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).

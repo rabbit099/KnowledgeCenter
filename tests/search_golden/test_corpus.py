@@ -257,13 +257,13 @@ def test_check_and_reindex_commands(
     with corpus.rt.session_factory.begin() as db:
         db.execute(delete(SearchPart).where(SearchPart.document_id == victim))
         db.execute(delete(SearchDocument).where(SearchDocument.document_id == victim))
-    assert corpus.found("reader", q="603388100") == []
+    assert corpus.found("reader", q="600100200") == []
     assert main(["search-check"]) == 1
     out = capsys.readouterr().out
     assert "not indexed: 1" in out and "reindex-search --missing" in out
     assert main(["reindex-search", "--missing"]) == 0
     assert "Indexed 1 version(s)" in capsys.readouterr().out
-    assert corpus.found("reader", q="603388100") == ["kontakt"]
+    assert corpus.found("reader", q="600100200") == ["kontakt"]
     assert main(["reindex-search", "--document", str(victim)]) == 0
     assert main(["reindex-search"]) == 1  # nothing chosen
     assert main(["search-check"]) == 0

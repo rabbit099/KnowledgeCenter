@@ -259,6 +259,8 @@ Samples for checking a server or a new version by hand: `make probki DIR=<direct
 
 Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync --all-extras` once (the `worker` extra holds the document parsers the tests and type checks need; `make lint` and `make test` add it themselves).
 
+**Test data.** Data in the repository is synthetic only. Phone numbers from the range 600 100 xxx, e-mail addresses and hosts in reserved domains (example.com, example.org), tax numbers (NIP) and contract numbers invented. No company names, numbers or fragments from real documents. Real documents and queries for the relevance check stay outside the repository (`make relevance DIR=… QUERIES=…` outside the repository tree).
+
 | Command | What it does |
 |---|---|
 | `make help` | Lists all commands |

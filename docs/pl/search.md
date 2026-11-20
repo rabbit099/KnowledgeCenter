@@ -50,19 +50,19 @@ Metadane (tytuł, nazwa pliku, temat maila, nadawca, odbiorcy) są dopasowywane 
 
 ## Identyfikatory (numery i kody)
 
-Parser tekstu dzieli albo skleja identyfikatory inaczej w dokumencie i w zapytaniu: „UM/17/2026” to jeden token (więc „17/2026” by go nie znalazło), „603 388 100” to trzy tokeny, „IT-002” daje „it” i „-002”, adres e-mail to jeden token (więc jego domena by go nie znalazła). Dlatego `search/identifiers.py` dodaje przy indeksowaniu znormalizowane tokeny bez separatorów (`ident_terms`, we wszystkich trzech tsvectorach) i tak samo przepisuje zapytanie (ADR-026):
+Parser tekstu dzieli albo skleja identyfikatory inaczej w dokumencie i w zapytaniu: „UM/17/2026” to jeden token (więc „17/2026” by go nie znalazło), „600 100 200” to trzy tokeny, „IT-002” daje „it” i „-002”, adres e-mail to jeden token (więc jego domena by go nie znalazła). Dlatego `search/identifiers.py` dodaje przy indeksowaniu znormalizowane tokeny bez separatorów (`ident_terms`, we wszystkich trzech tsvectorach) i tak samo przepisuje zapytanie (ADR-026):
 
 | Rozpoznawane | Przykład | Dodatkowe tokeny |
 |---|---|---|
 | Litery/cyfry połączone `-` albo `/`, z cyfrą | `UM/17/2026`, `725-18-01-126`, `IT-002`, `EX-PVE0` | każdy ciąg członów sklejony i każdy człon: `um172026`, `172026`, `um17`, `2026`, … |
-| Grupy cyfr rozdzielone spacjami albo myślnikami, ≥ 6 cyfr, opcjonalnie `+` | `603 388 100`, `+48 603 388 100` | każdy ciąg grup sklejony: `603388100`, `48603388100`, `388100`, … |
+| Grupy cyfr rozdzielone spacjami albo myślnikami, ≥ 6 cyfr, opcjonalnie `+` | `600 100 200`, `+48 600 100 200` | każdy ciąg grup sklejony: `600100200`, `48600100200`, `100200`, … |
 | Adresy e-mail | `ksiegowosc@example.com` | część przed @ i jej kawałki, domena i domeny nadrzędne |
 | Nazwy hostów | `intranet.example.com` | nazwa i domeny nadrzędne |
 | Adresy IPv4 | `192.168.10.25` | adres i jego pierwsze trzy oktety |
 
-Zapytanie dostaje sklejoną formę każdego identyfikatora jako alternatywę (`725-18-01-126` → `7251801126`, `+48 603 388 100` → `48603388100` i `603388100`, `+48501222333` → `48501222333`); słowa zachowują polskie znaki, więc słownik polski nadal działa („umowie 17/2026” znajduje „Umowa UM/17/2026”). Oryginalne zapytanie zawsze zostaje, więc nic, co ono znajduje, nie ginie.
+Zapytanie dostaje sklejoną formę każdego identyfikatora jako alternatywę (`725-18-01-126` → `7251801126`, `+48 600 100 200` → `48600100200` i `600100200`, `+48501222333` → `48501222333`); słowa zachowują polskie znaki, więc słownik polski nadal działa („umowie 17/2026” znajduje „Umowa UM/17/2026”). Oryginalne zapytanie zawsze zostaje, więc nic, co ono znajduje, nie ginie.
 
-Nie działa (z założenia): fragment jednego członu („0042” w „00042”); prefiksy („7251*”); ciąg niekończący się na separatorze („3388” w „603 388 100”); litery i cyfry rozdzielone tylko spacjami („UM 17 2026”); inne prefiksy krajowe („0048”); IPv6; zakresy i CIDR; literówki w numerach. Koszt: kilka dodatkowych tokenów na identyfikator (ciąg n członów daje do n(n+1)/2, najwyżej 8 członów we wszystkich kombinacjach, najwyżej 5000 tokenów na część); sklejone liczby stojące obok siebie w tekście („2019 2020 2021”) tworzą tokeny, których nikt nie szuka — nieszkodliwe.
+Nie działa (z założenia): fragment jednego członu („0042” w „00042”); prefiksy („7251*”); ciąg niekończący się na separatorze („1002” w „600 100 200”); litery i cyfry rozdzielone tylko spacjami („UM 17 2026”); inne prefiksy krajowe („0048”); IPv6; zakresy i CIDR; literówki w numerach. Koszt: kilka dodatkowych tokenów na identyfikator (ciąg n członów daje do n(n+1)/2, najwyżej 8 członów we wszystkich kombinacjach, najwyżej 5000 tokenów na część); sklejone liczby stojące obok siebie w tekście („2019 2020 2021”) tworzą tokeny, których nikt nie szuka — nieszkodliwe.
 
 ## Ranking
 
