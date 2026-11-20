@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -89,6 +89,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Na serwerze: dziennik audytu i limity logowania widzą prawdziwe adresy klientów, nie bramę Dockera (sprawdzenie w [auth-and-permissions.md](auth-and-permissions.md#uwierzytelnianie), adres klienta)
 - [ ] Rozdzielenie ról bazy (właściciel schematu do migracji vs rola aplikacji bez praw właściciela) i `REVOKE UPDATE, DELETE, TRUNCATE` na `audit_log`
 - [ ] Usunięcie wyjątku `exclude-newer-package` dla `opentelemetry-api` przy comiesięcznym przeglądzie zależności, gdy `exclude-newer` przejdzie 2026-10-30 (ADR-015)
+- [ ] Usunięcie wyjątku `exclude-newer-package` dla `soupsieve` przy comiesięcznym przeglądzie zależności w grudniu 2026, gdy `exclude-newer` przekroczy 2026-11-05 (ADR-015, alert Dependabota #2)
 - [ ] Na serwerze: worker nie ma dostępu do internetu (sprawdzenie sieci w `make smoke` albo polecenie z deployment-operations.md, Uwagi bezpieczeństwa)
 - [ ] Trafność wyszukiwania na prawdziwych (niepoufnych) dokumentach i typowych zapytaniach właściciela (lokalnie, nigdy w repozytorium)
 - [ ] Do oceny (backlog): poprawianie literówek w treści (słownik słów z `ts_stat` + trigramy); wersje z błędem przetwarzania znajdowane po tytule (słownik bez polskich znaków oceniony i odrzucony, ADR-028)

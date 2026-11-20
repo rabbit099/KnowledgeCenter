@@ -146,6 +146,15 @@ case "$APP_NET" in
     *) echo "FAILED: the app must reach db and redis"; exit 1 ;;
 esac
 
+echo "==> Images: no HTML selector libraries in app; soupsieve >= 4.0 in worker (GHSA-mmhr-3c5m-f64f)"
+compose exec -T app python -c "import importlib.util as u, sys; sys.exit(any(u.find_spec(m) for m in ('bs4', 'soupsieve')))" \
+    || { echo "FAILED: the app image contains bs4 or soupsieve (they belong to the worker extra only)"; exit 1; }
+SOUPSIEVE="$(compose exec -T worker python -c "import importlib.metadata as m; print(m.version('soupsieve'))")"
+case "$SOUPSIEVE" in
+    [4-9].*|[1-9][0-9].*) echo "    app: no bs4/soupsieve; worker: soupsieve $SOUPSIEVE" ;;
+    *) echo "FAILED: the worker image has soupsieve $SOUPSIEVE (needs >= 4.0.0)"; exit 1 ;;
+esac
+
 echo "==> Login through the proxy"
 BASE="https://localhost:$HTTPS_PORT"
 ADMIN_PASSWORD="$(secret)"

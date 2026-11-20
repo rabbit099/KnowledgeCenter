@@ -1,6 +1,6 @@
 # Search — guide for users and administrators
 
-> Applies to: v0.4.0 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-20
 
 How to find documents, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
 
