@@ -155,8 +155,32 @@ def index_missing(factory: sessionmaker[Session]) -> int:
     return index_many(factory, missing)
 
 
+STARTUP_LOCK = 0x53524348  # "SRCH": one worker process indexes at start, the others skip
+
+
 def on_worker_start(rt: Runtime) -> None:
-    """Startup hook: index what is missing (a new installation of search, lost events)."""
-    indexed = index_missing(rt.session_factory)
+    """Startup hook: index what is missing (a new installation of search, lost events).
+
+    Every worker process runs its startup hooks; only the one that gets the advisory lock
+    indexes, the others skip at once (no race, no duplicate work). Lock and indexing use ONE
+    connection (a session bound to it), because the worker's pool has two per process and the
+    job thread may need both meanwhile (ADR-026).
+    """
+    with rt.engine.connect() as conn:
+        got = conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": STARTUP_LOCK}).scalar()
+        conn.commit()
+        if not got:
+            log.info("search: startup indexing runs in another worker process; skipped here")
+            return
+        indexed = 0
+        try:
+            with Session(bind=conn) as db:
+                for version_id in check(db).missing:
+                    if index_version(db, version_id) is not None:
+                        indexed += 1
+                    db.commit()
+        finally:
+            conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": STARTUP_LOCK})
+            conn.commit()
     if indexed:
         log.info("search: indexed %s version(s) missing from the index", indexed)

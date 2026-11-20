@@ -189,15 +189,27 @@ def main() -> int:
             started = time.perf_counter()
             try:
                 page = backend.search(db, user, SearchRequest(query=query))
+                hits = list(page.hits)
+                if args.only_uploaded:
+                    # Count only documents of the set: walk every result page (at most
+                    # SEARCH_MAX_PAGES); the order is the ranking order.
+                    for number_of_page in range(2, page.pages + 1):
+                        more = backend.search(
+                            db, user, SearchRequest(query=query, page=number_of_page)
+                        )
+                        hits.extend(more.hits)
             except (QueryProblem, SearchTimeout) as exc:
                 print(f"\n[{number}] {query}\n    {type(exc).__name__}")
                 continue
             ms = (time.perf_counter() - started) * 1000
         note = ", by date: too slow for ranking" if page.by_date_fallback else ""
-        print(f"\n[{number}] {query}   ({page.total} document(s), {ms:.0f} ms{note})")
-        hits = page.hits
         if args.only_uploaded:
             hits = [h for h in hits if h.document_id in mine]
+            others = page.total - len(hits)
+            count = f"{len(hits)} document(s) from the set, +{others} outside it"
+        else:
+            count = f"{page.total} document(s)"
+        print(f"\n[{number}] {query}   ({count}, {ms:.0f} ms{note})")
         hits = hits[: args.top]
         for rank, hit in enumerate(hits, start=1):
             state = {"draft": " · szkic", "archived": " · zarchiwizowany"}.get(hit.status, "")
