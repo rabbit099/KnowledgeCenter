@@ -229,7 +229,7 @@ Propozycja retencji do potwierdzenia z działem prawnym / Inspektorem Ochrony Da
 
 ## Lista kontrolna bezpieczeństwa dla nowych funkcji
 
-- Jakiego uprawnienia wymaga? Czy jest w katalogu i w testach? Każda trasa ma `require_user` albo `require_permission` (także fragmenty HTMX); `tests/unit/test_route_inventory.py` nie przejdzie dla trasy spoza jawnej listy publicznych (`/health`, `/ready`, `/login`, `/static`).
+- Jakiego uprawnienia wymaga? Czy jest w katalogu i w testach? Każda trasa ma `require_user` albo `require_permission` (także fragmenty HTMX); `tests/unit/test_route_inventory.py` nie przejdzie dla trasy spoza jawnej listy publicznych (`/health`, `/ready`, `/login`, `/static` oraz `GET /logout`, który tylko przekierowuje 303 na `/login`: wylogowanie pozostaje POST-em z tokenem CSRF, więc odnośnik ani wpisany adres nikogo nie wylogują).
 - Czy reguła widoczności jest w SQL?
 - Czy zapisuje wpis audytowy?
 - Czy każde żądanie zmieniające stan jest chronione CSRF?

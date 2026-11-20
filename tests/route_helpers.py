@@ -15,6 +15,7 @@ PUBLIC = {
     ("GET", "/ready"),
     ("GET", "/login"),
     ("POST", "/login"),
+    ("GET", "/logout"),  # only redirects to /login; logging out is the POST (CSRF)
 }
 PUBLIC_MOUNTS = {"/static"}
 

@@ -229,7 +229,7 @@ Retention proposal to confirm with the legal department / data protection office
 
 ## Security checklist for new features
 
-- Which permission does it need? Is it in the catalog and in the tests? Every route has `require_user` or `require_permission` (also HTMX fragments); `tests/unit/test_route_inventory.py` fails for any route that is not on its explicit public list (`/health`, `/ready`, `/login`, `/static`).
+- Which permission does it need? Is it in the catalog and in the tests? Every route has `require_user` or `require_permission` (also HTMX fragments); `tests/unit/test_route_inventory.py` fails for any route that is not on its explicit public list (`/health`, `/ready`, `/login`, `/static`, and `GET /logout`, which only redirects to `/login` with 303: logging out stays a POST with the CSRF token, so a link or a typed address cannot log anybody out).
 - Is the visibility rule in the SQL?
 - Does it write an audit entry?
 - Is every state-changing request CSRF-protected?

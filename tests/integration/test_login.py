@@ -127,6 +127,23 @@ def test_login_page_flow_and_logout(
     assert actions_for(db, admin.id)[-2:] == ["auth.login", "auth.logout"]
 
 
+def test_get_logout_redirects_to_the_login_page_and_logs_nobody_out(
+    new_client: Callable[..., TestClient], admin: User, db: Session
+) -> None:
+    anonymous = new_client().get("/logout", follow_redirects=False)
+    assert anonymous.status_code == 303 and anonymous.headers["location"] == "/login"
+    client = new_client()
+    login(client, admin.username, PASSWORD)
+    token = client.cookies.get(SESSION)
+    assert token is not None
+    response = client.get("/logout", follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == "/login"
+    assert "set-cookie" not in response.headers  # the session cookie is not touched
+    assert db.get(DbSession, token_hash(token)) is not None  # still logged in: GET changes nothing
+    assert client.get("/", follow_redirects=False).status_code == 200
+    assert actions_for(db, admin.id)[-1] == "auth.login"
+
+
 def test_failure_does_not_reveal_whether_the_account_exists(
     new_client: Callable[..., TestClient], admin: User, db: Session
 ) -> None:
