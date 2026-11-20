@@ -21,7 +21,7 @@ None of its own. Searching needs `documents.read`; seeing drafts needs `document
 ## Events
 
 - Subscribes to `document.version.extracted`: reads the parts through `ingestion.services.api.parts_of` and the metadata through `documents.services.api.index_metadata` and replaces all rows of that version in one transaction under an advisory lock (idempotent; the event is delivered at least once by the ingestion outbox and carries identifiers only, ADR-020). A failure leaves the event undelivered, so it is delivered again.
-- Worker start (`worker_startup`): indexes every extracted version that has no rows.
+- Worker start (`worker_startup`): indexes every extracted version that has no rows, in one worker process only (session-level advisory lock; the others skip).
 - Publishes nothing.
 
 ## Public interface

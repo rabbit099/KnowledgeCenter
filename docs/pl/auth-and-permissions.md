@@ -88,6 +88,8 @@ Zapisz w dzienniku eksploatacji datę, wynik każdego kroku i użyte wartości (
 - Zasady hasła: od 14 do 256 znaków (`LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`), bez reguł złożoności, bez spacji na początku i końcu; Unicode jest normalizowany (NFKC). Przechowuj je w firmowym menedżerze haseł.
 - Haszowane Argon2id (domyślne argon2-cffi: 3 iteracje, 64 MiB, 4 wątki). Jednocześnie liczy się najwyżej `ARGON2_MAX_CONCURRENT` (domyślnie 3) hashy na proces, co ogranicza pamięć zużywaną przez serię prób logowania.
 - Przeznaczony na sytuacje awaryjne i pierwszą konfigurację. Akcje audytu: `cli.create_admin`, `cli.reset_password` (aktor `cli`).
+- **Pozostałe konta lokalne** (odzyskiwanie dostępu, ADR-029): `docker compose exec app baza-wiedzy users list` wypisuje login, źródło (`local`/`ad`), aktywność, role i ostatnie logowanie (Europe/Warsaw) — bez hashy, e-maili i DN. `docker compose exec app baza-wiedzy users set-password <login>` ustawia nowe hasło konta **lokalnego**: pytane dwa razy (albo `--password-stdin`), nigdy jako argument, ta sama polityka co wyżej; unieważnia wszystkie sesje konta, czyści jego blokady logowania i zapisuje `user.password_reset_cli` (bez hasła i hasha). Oczekiwany wynik: `Password changed for 'jan'; 2 session(s) revoked; login locks cleared (3 key(s)).` Nie aktywuje konta ani nie zmienia ról (do tego `user-active` i panel admina; admin awaryjny nadal używa `create-admin`). Dla konta AD odmawia: `error: 'jkowalski' is an Active Directory account: its password is managed in Active Directory, not here. Nothing was changed.`
+- Świadomie **nie ma resetu hasła mailem**: konta firmowe są w Active Directory (z własnymi procedurami haseł), a nieliczne konta lokalne resetuje operator na serwerze.
 
 ## Model uprawnień
 
@@ -151,6 +153,8 @@ Wiersz poleceń (`docker compose exec app baza-wiedzy …`):
 | Polecenie | Cel |
 |---|---|
 | `create-admin <nazwa> [--password-stdin]` | Utworzenie lokalnego admina awaryjnego albo reset jego hasła |
+| `users list` | Login, źródło, aktywność, role, ostatnie logowanie każdego konta |
+| `users set-password <nazwa> [--password-stdin]` | Nowe hasło konta lokalnego; unieważnia sesje, czyści blokady logowania |
 | `user-active <nazwa> on\|off` | Aktywacja albo dezaktywacja użytkownika (te same zasady co w panelu; `off` unieważnia sesje). Przykład: `User 'jan' is now inactive, 2 session(s) revoked.` |
 | `unlock-login [--user <nazwa>] [--ip <adres>]` | Usunięcie blokad po nieudanych logowaniach |
 | `ad-check [--user <nazwa>] [--password]` | Test konfiguracji AD tylko do odczytu |
@@ -165,7 +169,7 @@ Jeśli żadne konto admina nie nadaje się do użycia, `create-admin` przywraca 
 | Opublikowany | jego właściciel, każdy z `documents.read` |
 | Zarchiwizowany | jego właściciel, posiadacze `documents.edit_any`, Admin; nigdy Czytelnicy |
 
-Właściciel widzi swoje dokumenty we wszystkich stanach. `documents.publish_any` i `documents.edit_any` same nie pokazują cudzych szkiców (wymagają `documents.read_drafts`, patrz wyżej). Jest to wymuszane w SQL dla list, strony dokumentu, wyszukiwania i pobierania (`documents/visibility.py`). Testy obejmują macierz rola × akcja.
+Właściciel widzi swoje dokumenty we wszystkich stanach. **Autorów** cudzych dokumentów (kolumna „Autor” w „Moich dokumentach”, autor w wynikach wyszukiwania, filtr autora) widzą tylko posiadacze `documents.read_drafts`, `documents.publish_any` albo `documents.edit_any` (ADR-030); dla pozostałych autor nie jest nawet odczytywany z bazy, a parametr `author` w adresie jest ignorowany, więc nikt nie może sondować kont. `documents.publish_any` i `documents.edit_any` same nie pokazują cudzych szkiców (wymagają `documents.read_drafts`, patrz wyżej). Jest to wymuszane w SQL dla list, strony dokumentu, wyszukiwania i pobierania (`documents/visibility.py`). Testy obejmują macierz rola × akcja.
 
 „Przetwórz ponownie”: właściciel z `documents.upload` dla własnych dokumentów, posiadacze `documents.edit_any` dla każdego dokumentu, który widzą; pozostali dostają 404 (dokument niewidoczny) albo 403. Wyodrębniony tekst i nagłówki maila widzi każdy, kto widzi dokument.
 
@@ -200,7 +204,7 @@ Akcje zapisywane od Fazy 1:
 | Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
-Wyszukiwania nie są audytowane, a wyszukiwane frazy nigdy nie są zapisywane (ADR-025). Kolejne akcje dokumentów (`delete`, zmiany wersji) dojdą w Fazie 5.
+Reset hasła z wiersza poleceń: `user.password_reset_cli` (`username`, `revoked_sessions`). Wyszukiwania nie są audytowane, a wyszukiwane frazy nigdy nie są zapisywane (ADR-025). Kolejne akcje dokumentów (`delete`, zmiany wersji) dojdą w Fazie 5.
 
 **Przeglądarka** `/admin/audit` (uprawnienie `audit.view`, menu „Dziennik audytu”): od najnowszych, 50 na stronę, filtry: zakres dat (dni lokalne, Europe/Warsaw), wykonawca (zawiera), akcja (dokładna nazwa albo prefiks zakończony kropką, np. `role.`), obiekt (typ lub identyfikator, zawiera). `details` jest pokazywane jako escapowane pary klucz–wartość (klucze zagnieżdżone jako `before.name`, listy po przecinku), nigdy jako surowy JSON.
 

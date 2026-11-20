@@ -15,27 +15,7 @@ Wyszukiwanie to pełnotekstowe wyszukiwanie PostgreSQL (FTS), a nie OCR. OCR tyl
 
 ## Jak wyszukiwać (dla użytkowników)
 
-Pole wyszukiwania jest na stronie głównej i pod „Szukaj” (`/search`); wymaga uprawnienia `documents.read` (mają je wszystkie role domyślne).
-
-| Wpisz | Znajduje |
-|---|---|
-| `umowa serwisowa` | dokumenty zawierające oba słowa, w dowolnej formie („umowy serwisowej”, „umowie”) |
-| `"zasady bezpieczeństwa"` | dokładną frazę (słowa obok siebie) |
-| `faktura -korekta` | dokumenty z „faktura” i bez „korekta” w całym dokumencie |
-| `faktura or rachunek` | dokumenty z jednym z tych słów (`or` po angielsku, małymi literami) |
-| `725-18-01-126`, `7251801126` | ten sam NIP zapisany z myślnikami albo bez |
-| `603 388 100`, `+48 603 388 100` | ten sam numer telefonu ze spacjami, bez spacji, z +48 albo bez |
-| `17/2026` | także „UM/17/2026” (fragment między separatorami) |
-| `example.com`, `192.168.10` | adresy e-mail i nazwy hostów w tej domenie, adresy w tej sieci |
-
-Wyniki są grupowane po dokumencie (pokazywany jest najlepszy fragment z zaznaczonymi trafieniami i miejsce, gdzie jest: „strona 7”, „załącznik: umowa.pdf › strona 2”); szkice są oznaczone „szkic” i znajduje je tylko autor oraz posiadacze `documents.read_drafts`; zarchiwizowane są ukryte, chyba że zaznaczono „Pokaż zarchiwizowane” (tylko autorzy i `documents.edit_any`). Filtry: typ pliku, język tekstu, autor (osoba, która wgrała), zakres dat (mail: data wysłania, pozostałe: data wgrania); sortowanie według trafności albo daty; 20 wyników na stronę, najwyżej 50 stron. Zapytanie musi mieć od 2 do 200 znaków. Drobne literówki w tytule, nazwie pliku, temacie albo nadawcy maila są tolerowane (nie w numerach i nie w treści).
-
-Znane ograniczenia (z założenia, nie błędy):
-- Bez polskich znaków słowo jest znajdowane tylko w dokładnie tej formie: `lodz` znajduje „Łódź”, ale nie „w Łodzi”; `lodzi` znajduje „w Łodzi”. Wpisane z polskimi znakami znajduje każdą formę (`Łódź` znajduje „w Łodzi”). Powód: polski słownik działa na słowach z diakrytykami; indeks bez znaków nie zna odmiany.
-- Nazwiska i słowa spoza słownika są znajdowane tylko w formie z tekstu („Kowalski” nie znajdzie „Kowalskim”).
-- Numery: fragment wewnątrz jednego członu („0042” w „00042”), początek numeru („7251*”) i fragment niekończący się na separatorze („3388” w „603 388 100”) nie są znajdowane.
-- Zeskanowane strony są znajdowane dopiero po OCR (Faza 4); dokumenty, których przetwarzanie zakończyło się błędem, nie są znajdowane (otwórz je z „Moich dokumentów”).
-- Wyszukiwane frazy nie są nigdzie na serwerze zapisywane, audytowane ani logowane (ADR-025); przeglądarka zapamiętuje je w swojej historii.
+Przewodnik dla użytkowników i administratora — składnia zapytań, odmiana, numery i kody, wyniki, filtry, ograniczenia (brak synonimów, polskie litery, fragmenty słów, 2–200 znaków, 20 na stronę, 50 stron, 3 s), widoczność, prywatność i polecenia operatora — jest w [user-guide.md](user-guide.md). Ten dokument opisuje, jak wyszukiwanie działa w środku.
 
 ## Indeksacja
 
@@ -64,7 +44,7 @@ Wejściem jest tekst użytkownika (2–200 znaków po zwinięciu spacji; zawsze 
 - `słowo1 or słowo2` — jedno albo drugie
 - `-słowo` — wykluczenie
 
-Każde z trzech zapytań jest łączone przez OR z dwiema przepisanymi formami, w których każdy identyfikator jest sklejony (druga także bez początkowego numeru kierunkowego), zobacz następną sekcję. Część pasuje, gdy `tsv_pl @@ q_pl OR tsv_en @@ q_en OR tsv_simple @@ q_simple`. Wykluczenie usuwa cały dokument, gdy którakolwiek z jego części albo jego metadane zawierają wykluczone słowo w dowolnej konfiguracji (nie tylko pasująca część). Zapytanie złożone wyłącznie z bardzo częstych słów (wszystkie usunięte jako stop words) nie zwraca wyników, tylko podpowiedź.
+Każde z trzech zapytań jest łączone przez OR z dwiema przepisanymi formami, w których każdy identyfikator jest sklejony (druga także bez początkowego numeru kierunkowego), zobacz następną sekcję. Część pasuje, gdy `tsv_pl @@ q_pl OR tsv_en @@ q_en OR tsv_simple @@ q_simple`. Wykluczenie usuwa cały dokument, gdy którakolwiek z jego części albo jego metadane zawierają wykluczone słowo w dowolnej konfiguracji (nie tylko pasująca część). Stop words są usuwane przez `pl` i `english`, ale zostają w `simple_unaccent`, więc zapytanie z bardzo częstych słów nadal pasuje (do wielu dokumentów); tylko zapytanie puste we wszystkich trzech konfiguracjach nie zwraca wyników, tylko podpowiedź.
 
 Metadane (tytuł, nazwa pliku, temat maila, nadawca, odbiorcy) są dopasowywane tsvectorami z `srch_documents` oraz, dla zapytań co najmniej 4-znakowych bez cyfr i bez operatorów, podobieństwem słów `pg_trgm` (`SEARCH_TRIGRAM_THRESHOLD`, domyślnie 0,6), więc literówka w tytule nadal go znajduje. Numery nigdy nie pasują przez podobieństwo („FV/2026/11/0042” nie może znaleźć „…0043”).
 

@@ -13,6 +13,7 @@ Angielska wersja tej dokumentacji: [`../en/`](../en/README.md).
 | [architecture.md](architecture.md) | Usługi, przepływ danych, stack technologiczny |
 | [data-model.md](data-model.md) | Tabele bazy danych, relacje, indeksy |
 | [search.md](search.md) | Jak działa wyszukiwanie: indeksacja polska i angielska, ranking, fragmenty |
+| [user-guide.md](user-guide.md) | Wyszukiwanie dla użytkowników i administratora: składnia, odmiana, numery i kody, ograniczenia, widoczność, prywatność, polecenia operatora |
 | [ingestion-and-ocr.md](ingestion-and-ocr.md) | Przetwarzanie uploadu, wyciąganie tekstu z każdego formatu, OCR |
 | [auth-and-permissions.md](auth-and-permissions.md) | Logowanie przez Active Directory, role, katalog uprawnień, audyt |
 | [deployment-operations.md](deployment-operations.md) | Instalacja, konfiguracja, aktualizacje, rollback, backup, monitoring |
@@ -56,6 +57,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Testy wzorcowe (golden) wyszukiwania na syntetycznym korpusie (w CI)
 - [x] Test wydajności (20 000 i 100 000 dokumentów, `make perf`, ręcznie): p95 329 ms przy 20 000 (ADR-028)
 - [x] Lokalna ocena trafności na własnych dokumentach (`make relevance`, nigdy w repozytorium)
+- [x] Przewodnik wyszukiwania dla użytkowników i administratora (`user-guide.md`); kolumna i filtr autora dla redaktorów (ADR-030); `users list` / `users set-password` (ADR-029)
 - [x] Indeksowanie części z tekstem także dla wersji w stanie „wymaga OCR” (`needs_ocr`): ich strony z tekstem są już wyciągnięte
 - [x] `search` czyta części przez `ingestion.services.api` i deklaruje `requires=("documents", "ingestion")` (ADR-020)
 - [x] `search-check`, `reindex-search`, indeksowanie brakujących wersji przy starcie workera

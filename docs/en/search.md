@@ -15,27 +15,7 @@ Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text fro
 
 ## How to search (for users)
 
-The search field is on the start page and under "Szukaj" (`/search`); it needs the permission `documents.read` (every default role has it).
-
-| Type | Finds |
-|---|---|
-| `umowa serwisowa` | documents containing both words, in any form ("umowy serwisowej", "umowie") |
-| `"zasady bezpieczeństwa"` | the exact phrase (words next to each other) |
-| `faktura -korekta` | documents with "faktura" and without "korekta" anywhere in the document |
-| `faktura or rachunek` | documents with either word (`or` in English, lower case) |
-| `725-18-01-126`, `7251801126` | the same tax number written with or without dashes |
-| `603 388 100`, `+48 603 388 100` | the same phone number with spaces, without spaces, with or without +48 |
-| `17/2026` | also "UM/17/2026" (a part between separators) |
-| `example.com`, `192.168.10` | e-mail addresses and host names in that domain, addresses in that network |
-
-Results are grouped by document (the best fragment is shown with the hits marked, and where it is: "strona 7", "załącznik: umowa.pdf › strona 2"); drafts are marked "szkic" and are found only by their author and by holders of `documents.read_drafts`; archived documents are hidden unless "Pokaż zarchiwizowane" is ticked (authors and `documents.edit_any` only). Filters: file type, language of the text, author (the person who uploaded), date range (e-mail: sending date, otherwise upload date); sorting by relevance or date; 20 results per page, at most 50 pages. A query needs 2 to 200 characters. Small typos in a title, file name, e-mail subject or sender are tolerated (not in numbers and not in the text).
-
-Known limits (by design, not errors):
-- Without Polish letters a word is found only in exactly that form: `lodz` finds "Łódź" but not "w Łodzi"; `lodzi` finds "w Łodzi". Typed with Polish letters, every form is found (`Łódź` finds "w Łodzi"). Reason: the Polish dictionary works on words with diacritics; the no-diacritics index does not know inflection.
-- Names and words missing from the dictionary are found only in the form of the text ("Kowalski" does not find "Kowalskim").
-- Numbers: a piece inside one segment ("0042" in "00042"), the beginning of a number ("7251*") and a piece not ending at a separator ("3388" in "603 388 100") are not found.
-- Scanned pages are found only after OCR (Phase 4); documents whose processing failed are not found (open them from "Moje dokumenty").
-- Search phrases are not stored, audited or logged anywhere on the server (ADR-025); your browser keeps them in its history.
+The guide for users and administrators — query syntax, inflection, numbers and codes, results, filters, limits (no synonyms, Polish letters, partial words, 2–200 characters, 20 per page, 50 pages, 3 s), visibility, privacy and the operator commands — is [user-guide.md](user-guide.md). This document describes how search works inside.
 
 ## Indexing
 
@@ -64,7 +44,7 @@ Input is the user's string (2–200 characters after collapsing spaces; always a
 - `word1 or word2` — either
 - `-word` — exclusion
 
-Each of the three queries is OR-ed with two rewritten forms in which every identifier is joined (the second also without a leading country code), see the next section. A part matches when `tsv_pl @@ q_pl OR tsv_en @@ q_en OR tsv_simple @@ q_simple`. An exclusion removes the whole document when any of its parts or its metadata contains the excluded word in any configuration (not only the matching part). A query of very common words only (all removed as stop words) returns no result with a hint.
+Each of the three queries is OR-ed with two rewritten forms in which every identifier is joined (the second also without a leading country code), see the next section. A part matches when `tsv_pl @@ q_pl OR tsv_en @@ q_en OR tsv_simple @@ q_simple`. An exclusion removes the whole document when any of its parts or its metadata contains the excluded word in any configuration (not only the matching part). Stop words are removed by `pl` and `english` but kept by `simple_unaccent`, so a query of very common words still matches (many documents); only a query that is empty in all three configurations returns no result, with a hint.
 
 Metadata (title, file name, e-mail subject, sender, recipients) is matched with the tsvectors of `srch_documents` and, for queries of at least 4 characters without digits and without operators, with `pg_trgm` word similarity (`SEARCH_TRIGRAM_THRESHOLD`, default 0.6), so typos in a title still find it. Numbers never match by similarity ("FV/2026/11/0042" must not find "…0043").
 

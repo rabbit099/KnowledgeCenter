@@ -13,6 +13,7 @@ Polish version of this documentation: [`../pl/`](../pl/README.md).
 | [architecture.md](architecture.md) | Services, data flow, technology stack |
 | [data-model.md](data-model.md) | Database tables, relations, indexes |
 | [search.md](search.md) | How search works: Polish/English indexing, ranking, snippets |
+| [user-guide.md](user-guide.md) | Search for users and administrators: syntax, inflection, numbers and codes, limits, visibility, privacy, operator commands |
 | [ingestion-and-ocr.md](ingestion-and-ocr.md) | Upload pipeline, text extraction per format, OCR |
 | [auth-and-permissions.md](auth-and-permissions.md) | Active Directory login, roles, permission catalog, audit |
 | [deployment-operations.md](deployment-operations.md) | Installation, configuration, updates, rollback, backup, monitoring |
@@ -56,6 +57,7 @@ Tick items when they are finished and documented.
 - [x] Golden search tests on the synthetic corpus (in CI)
 - [x] Performance test (20,000 and 100,000 documents, `make perf`, manual): p95 329 ms at 20,000 (ADR-028)
 - [x] Local relevance check with own documents (`make relevance`, never in the repository)
+- [x] Search guide for users and administrators (`user-guide.md`); author column and filter for editors (ADR-030); `users list` / `users set-password` (ADR-029)
 - [x] Index the text parts of versions in "wymaga OCR" (`needs_ocr`) too: their text pages are already extracted
 - [x] `search` reads parts through `ingestion.services.api` and declares `requires=("documents", "ingestion")` (ADR-020)
 - [x] `search-check`, `reindex-search`, indexing of missing versions at worker start

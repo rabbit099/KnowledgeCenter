@@ -88,6 +88,8 @@ Record the date, the result of each step and the values used (without passwords)
 - Password policy: 14 to 256 characters (`LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`), no composition rules, no leading or trailing spaces; Unicode is normalized (NFKC). Store it in the company password manager.
 - Hashed with Argon2id (argon2-cffi defaults: 3 iterations, 64 MiB, 4 lanes). At most `ARGON2_MAX_CONCURRENT` (default 3) hashes run at the same time per process, which caps the memory used by bursts of login attempts.
 - Intended for emergencies and first setup. Audit actions: `cli.create_admin`, `cli.reset_password` (actor `cli`).
+- **Other local accounts** (access recovery, ADR-029): `docker compose exec app baza-wiedzy users list` prints login, source (`local`/`ad`), active, roles and last login (Europe/Warsaw) — no hashes, e-mails or DNs. `docker compose exec app baza-wiedzy users set-password <login>` sets a new password for a **local** account: asked twice (or `--password-stdin`), never an argument, same policy as above; it revokes all sessions of the account, clears its login locks and records `user.password_reset_cli` (no password or hash). Expected: `Password changed for 'jan'; 2 session(s) revoked; login locks cleared (3 key(s)).` It does not reactivate the account or change roles (that is `user-active` and the admin panel; the break-glass admin keeps using `create-admin`). For an AD account it refuses: `error: 'jkowalski' is an Active Directory account: its password is managed in Active Directory, not here. Nothing was changed.`
+- There is deliberately **no password reset by e-mail**: company accounts live in Active Directory (its own password processes), the few local accounts are reset by the operator on the server.
 
 ## Permission model
 
@@ -151,6 +153,8 @@ Command line (`docker compose exec app baza-wiedzy …`):
 | Command | Purpose |
 |---|---|
 | `create-admin <name> [--password-stdin]` | Create the local break-glass admin or reset its password |
+| `users list` | Login, source, active, roles, last login of every account |
+| `users set-password <name> [--password-stdin]` | New password of a local account; revokes sessions, clears login locks |
 | `user-active <name> on\|off` | Activate or deactivate a user (same rules as the panel; `off` revokes sessions). Example: `User 'jan' is now inactive, 2 session(s) revoked.` |
 | `unlock-login [--user <name>] [--ip <address>]` | Clear failed-login locks |
 | `ad-check [--user <name>] [--password]` | Read-only test of the AD configuration |
@@ -165,7 +169,7 @@ If every admin account is unusable, `create-admin` restores access (it reactivat
 | Published | its owner, everyone with `documents.read` |
 | Archived | its owner, holders of `documents.edit_any`, Admin; never Readers |
 
-The owner sees their own documents in every state. `documents.publish_any` and `documents.edit_any` do not show other people's drafts by themselves (they require `documents.read_drafts`, see above). This is enforced in SQL for lists, the document page, search and downloads (`documents/visibility.py`). Tests cover the role × action matrix.
+The owner sees their own documents in every state. **Authors** of other people's documents (the "Autor" column of "Moje dokumenty", the author in search results, the author filter) are shown only to holders of `documents.read_drafts`, `documents.publish_any` or `documents.edit_any` (ADR-030); for everyone else the author is not even read from the database and an `author` parameter in the address is ignored, so nobody can probe for accounts. `documents.publish_any` and `documents.edit_any` do not show other people's drafts by themselves (they require `documents.read_drafts`, see above). This is enforced in SQL for lists, the document page, search and downloads (`documents/visibility.py`). Tests cover the role × action matrix.
 
 "Przetwórz ponownie" (process a document again): the owner with `documents.upload` for own documents, holders of `documents.edit_any` for any document they can see; others get 404 (document not visible) or 403. The extracted text and e-mail headers are shown to everyone who can see the document.
 
@@ -200,7 +204,7 @@ Actions recorded since Phase 1:
 | Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
-Searches are not audited and search phrases are never stored (ADR-025). Further document actions (`delete`, version changes) are added with Phase 5.
+Password resets from the command line: `user.password_reset_cli` (`username`, `revoked_sessions`). Searches are not audited and search phrases are never stored (ADR-025). Further document actions (`delete`, version changes) are added with Phase 5.
 
 **Viewer** `/admin/audit` (permission `audit.view`, menu "Dziennik audytu"): newest first, 50 per page, filters by date range (local days, Europe/Warsaw), actor (contains), action (exact name, or a prefix ending with a dot such as `role.`), object (type or id, contains). `details` is shown as escaped key–value pairs (nested keys as `before.name`, lists comma-separated), never as raw JSON.
 

@@ -21,7 +21,7 @@ Brak własnych. Wyszukiwanie wymaga `documents.read`; widzenie szkiców wymaga `
 ## Zdarzenia
 
 - Subskrybuje `document.version.extracted`: czyta części przez `ingestion.services.api.parts_of` i metadane przez `documents.services.api.index_metadata` i zastępuje wszystkie wiersze tej wersji w jednej transakcji pod blokadą doradczą (idempotentnie; zdarzenie jest dostarczane co najmniej raz przez outbox ingestion i niesie tylko identyfikatory, ADR-020). Błąd zostawia zdarzenie niedostarczone, więc zostanie dostarczone ponownie.
-- Start workera (`worker_startup`): indeksuje każdą wyodrębnioną wersję bez wierszy.
+- Start workera (`worker_startup`): indeksuje każdą wyodrębnioną wersję bez wierszy, tylko w jednym procesie workera (sesyjna blokada doradcza; pozostałe pomijają).
 - Niczego nie publikuje.
 
 ## Interfejs publiczny
