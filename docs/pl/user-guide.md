@@ -1,6 +1,6 @@
 # Wyszukiwanie — przewodnik dla użytkowników i administratora
 
-> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
 Jak znajdować dokumenty, co wyszukiwanie potrafi, a czego nie, kto widzi co i co uruchamia administrator. Szczegóły techniczne (indeksy, ranking, pomiary): [search.md](search.md).
 

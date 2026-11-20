@@ -1,10 +1,12 @@
 # Changelog
 
-> Applies to: v0.4.0 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-20
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.4.1] - 2026-11-20
 
 ### Security
 - `soupsieve` raised from 3.0.4 to 4.0.1 (Dependabot alert #2, GHSA-mmhr-3c5m-f64f, high: polynomial-time CSS selector matching on deeply nested HTML). Not reachable in this application: only the worker contains it (through `beautifulsoup4` ← `extract-msg`), and nothing runs CSS selectors (test `test_soupsieve_exposure.py`; `make smoke` checks that the app image contains neither bs4 nor soupsieve and the worker has soupsieve >= 4.0). Unblocked past `exclude-newer` by a package exception in `pyproject.toml`, to be removed at the monthly dependency review in December 2026 (ADR-015). No other package changed.

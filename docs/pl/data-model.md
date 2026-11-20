@@ -1,6 +1,6 @@
 # Model danych
 
-> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
 PostgreSQL 16. Czasy są zapisywane jako `timestamptz` w UTC. Klucze główne to UUID, chyba że napisano inaczej. To model docelowy; źródłem prawdy są migracje Alembica i ta strona musi się z nimi zgadzać.
 

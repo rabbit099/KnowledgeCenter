@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
 ## Uwierzytelnianie
 

@@ -1,10 +1,12 @@
 # Dziennik zmian
 
-> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.4.1] - 2026-11-20
 
 ### Security
 - `soupsieve` podniesiony z 3.0.4 do 4.0.1 (alert Dependabota #2, GHSA-mmhr-3c5m-f64f, wysoki: wielomianowy czas dopasowania selektorów CSS na głęboko zagnieżdżonym HTML). Nieosiągalny w tej aplikacji: zawiera go tylko worker (przez `beautifulsoup4` ← `extract-msg`), a nic nie uruchamia selektorów CSS (test `test_soupsieve_exposure.py`; `make smoke` sprawdza, że obraz app nie zawiera bs4 ani soupsieve, a worker ma soupsieve >= 4.0). Odblokowany ponad `exclude-newer` wyjątkiem dla jednej paczki w `pyproject.toml`, do usunięcia przy comiesięcznym przeglądzie zależności w grudniu 2026 (ADR-015). Żadna inna paczka się nie zmieniła.

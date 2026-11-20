@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.4.0 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-20
 
 ## Authentication
 
