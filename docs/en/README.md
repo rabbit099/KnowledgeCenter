@@ -89,6 +89,7 @@ Tick items when they are finished and documented.
 - [ ] On the server: the audit log and login limits see the real client addresses, not the Docker gateway (check in [auth-and-permissions.md](auth-and-permissions.md#authentication), client address)
 - [ ] Separate database roles (schema owner for migrations vs application role without ownership rights) and `REVOKE UPDATE, DELETE, TRUNCATE` on `audit_log`
 - [ ] Remove the `exclude-newer-package` exception for `opentelemetry-api` at the monthly dependency review once `exclude-newer` is past 2026-10-30 (ADR-015)
+- [ ] Remove the `exclude-newer-package` exception for `soupsieve` at the monthly dependency review in December 2026, once `exclude-newer` is past 2026-11-05 (ADR-015, Dependabot alert #2)
 - [ ] On the server: the worker has no internet access (`make smoke` network check, or the command in deployment-operations.md, Security notes)
 - [ ] Search relevance with the owner's real (non-confidential) documents and typical queries (locally, never committed)
 - [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); failed versions findable by title (a dictionary without diacritics was evaluated and rejected, ADR-028)
