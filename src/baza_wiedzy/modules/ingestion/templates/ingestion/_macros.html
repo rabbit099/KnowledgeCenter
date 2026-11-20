@@ -25,6 +25,10 @@
 {%- elif note.code == "skipped" and note.reason == "encrypted" -%}{{ _("%(where)s: skipped, the file is password protected", where=where) }}
 {%- elif note.code == "skipped" and note.reason == "not_yet" -%}{{ _("%(where)s: skipped, this file type is not processed yet", where=where) }}
 {%- elif note.code == "skipped" -%}{{ _("%(where)s: skipped, unsupported file type", where=where) }}
+{%- elif note.code == "ocr_failed" and note.reason == "timeout" -%}{{ _("%(where)s: OCR took longer than the time limit; the scanned pages are not searchable yet", where=where) }}
+{%- elif note.code == "ocr_failed" -%}{{ _("%(where)s: OCR failed; the scanned pages are not searchable yet", where=where) }}
+{%- elif note.code == "ocr_too_many_pages" -%}{{ _("%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet", where=where, n=note.pages, limit=note.limit) }}
+{%- elif note.code == "ocr_unreadable" -%}{{ _("%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor scan)", where=where, pages=note.pages|join(", ")) }}
 {%- elif note.code == "failed" -%}{{ _("%(where)s: skipped, the file is damaged or unreadable", where=where) }}
 {%- else -%}{{ where }}: {{ note.code }}{%- endif -%}
 {%- endmacro %}

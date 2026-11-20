@@ -11,13 +11,15 @@ RUN uv sync --frozen --no-dev --extra worker --no-editable
 # Shared base of the released image and of the test image.
 FROM python:3.12.16-slim-trixie AS base
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
-# OCR (tesseract pol+eng, ghostscript for OCRmyPDF), DOC conversion (LibreOffice Writer, no GUI),
-# fonts for LibreOffice. Type detection needs no system library (ADR-021).
+# OCR (Tesseract with the Debian language data pol+eng, the "fast" models; OCRmyPDF rasterises
+# with pypdfium and writes text only, so Ghostscript (AGPL) is not installed, ADR-031), DOC
+# conversion (LibreOffice Writer, no GUI), fonts for LibreOffice. Type detection needs no system
+# library (ADR-021).
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng \
-        ghostscript libreoffice-writer-nogui fonts-dejavu-core; \
+        libreoffice-writer-nogui fonts-dejavu-core; \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --create-home app \

@@ -96,7 +96,7 @@ addopts = "-ra --strict-markers"
 pythonpath = ["src", "scripts", "tests"]
 markers = [
     "integration: needs real Postgres and Redis (Docker)",
-    "tools: needs LibreOffice (test image of make test-db)",
+    "tools: needs LibreOffice or Tesseract (test image of make test-db)",
 ]
 
 [tool.coverage.run]

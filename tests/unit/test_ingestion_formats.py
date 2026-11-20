@@ -65,7 +65,7 @@ HTML_RTF = (
 )
 
 
-def run(tmp_path: Path, kind: str, name: str, data: bytes, **limits: int) -> Collector:
+def run(tmp_path: Path, kind: str, name: str, data: bytes, **limits: Any) -> Collector:
     source = tmp_path / name
     source.write_bytes(data)
     workdir = tmp_path / "work"

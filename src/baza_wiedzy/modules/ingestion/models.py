@@ -61,6 +61,8 @@ class Part(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     char_count: Mapped[int] = mapped_column(Integer, nullable=False)
     needs_ocr: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sql("false"))
+    # The text was recognised by OCR (ingestion_0002, Phase 4).
+    ocr_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sql("false"))
     created_at: Mapped[datetime] = _now()
 
 

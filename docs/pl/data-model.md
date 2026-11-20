@@ -43,7 +43,7 @@ Klucz obcy może wskazywać tabelę modułu, którego właściciel `requires` (n
 
 | Tabela | Kluczowe kolumny | Uwagi |
 |---|---|---|
-| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (ścieżka jsonb, np. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `created_at` | Wyciągnięty tekst, najwyżej 100 000 znaków na wiersz (ADR-020). Unikalne `(version_id, seq)`. Zastępowane w całości w jednej transakcji przy ponownym przetworzeniu wersji |
+| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (ścieżka jsonb, np. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `ocr_applied` (tekst rozpoznany przez OCR, `ingestion_0002`), `created_at` | Wyciągnięty tekst, najwyżej 100 000 znaków na wiersz (ADR-020). Unikalne `(version_id, seq)`. Zastępowane w całości w jednej transakcji przy ponownym przetworzeniu wersji |
 | `ing_results` | `version_id` (PK, → `doc_versions`, kaskadowo), `notes` (lista jsonb: `encoding`, `skipped`, `failed`, `fallback` z pochodzeniem), `parts_count`, `chars_total`, `finished_at` | Adnotacje są widoczne na stronie dokumentu |
 | `ing_outbox` | `id` (bigint identity), `event`, `payload` (jsonb, tylko identyfikatory), `created_at`, `delivered_at`, `attempts`, `last_error` (klasa wyjątku) | Indeks częściowy na niedostarczonych wierszach; dostarczone usuwane po `OUTBOX_RETENTION_DAYS` |
 

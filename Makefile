@@ -97,7 +97,7 @@ probki: ## Synthetic sample files for a manual test: make probki DIR=~/bw-probki
 	mkdir -p "$(DIR)"
 	docker compose -f docker-compose.test.yml run --rm --build --no-deps \
 		-e OWNER="$$(id -u):$$(id -g)" -v "$$(cd "$(DIR)" && pwd):/out" tests \
-		sh -c 'uv sync --frozen --all-extras --quiet && PYTHONPATH=/src/tests uv run --frozen --no-sync python scripts/make_samples.py /out && chown "$$OWNER" /out/* /out/wyszukiwanie/*'
+		sh -c 'uv sync --frozen --all-extras --quiet && PYTHONPATH=/src/tests uv run --frozen --no-sync python scripts/make_samples.py /out && chown "$$OWNER" /out/* /out/wyszukiwanie/* /out/ocr/*'
 
 .PHONY: relevance
 TOP ?= 5

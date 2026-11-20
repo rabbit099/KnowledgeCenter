@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 09:52+0100\n"
+"POT-Creation-Date: 2026-11-20 11:37+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,6 +26,24 @@ msgid "%(num)d part"
 msgid_plural "%(num)d parts"
 msgstr[0] ""
 msgstr[1] ""
+
+#, python-format
+msgid "%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: OCR failed; the scanned pages are not searchable yet"
+msgstr ""
+
+#, python-format
+msgid ""
+"%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor"
+" scan)"
+msgstr ""
+
+#, python-format
+msgid "%(where)s: OCR took longer than the time limit; the scanned pages are not searchable yet"
+msgstr ""
 
 #, python-format
 msgid "%(where)s: read in simplified mode (formatting ignored)"
@@ -480,6 +498,11 @@ msgstr ""
 msgid "Reader"
 msgstr ""
 
+msgid ""
+"Recognised automatically from scanned pages: words and especially numbers (tax numbers, account "
+"and phone numbers, dates) may contain errors. Check them in the original before relying on them."
+msgstr ""
+
 msgid "Remove"
 msgstr ""
 
@@ -581,6 +604,9 @@ msgid "System status"
 msgstr ""
 
 msgid "Temporary problem; processing will be retried automatically."
+msgstr ""
+
+msgid "Text"
 msgstr ""
 
 msgid "Text (TXT)"
@@ -937,6 +963,9 @@ msgid "since %(when)s"
 msgstr ""
 
 msgid "system"
+msgstr ""
+
+msgid "text from OCR"
 msgstr ""
 
 msgid "waiting"

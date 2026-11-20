@@ -54,7 +54,7 @@ def test_partial_module_set_still_migrates_everything(settings: Settings) -> Non
     assert upgrade(only_documents) == [
         "core_0003",
         "documents_0004",
-        "ingestion_0001",
+        "ingestion_0002",
         "search_0002",
     ]
     with TestClient(create_app(only_documents, setup_logging=False)) as client:

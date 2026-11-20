@@ -7,7 +7,8 @@
 #      check the network isolation: the worker reaches db and redis, nothing outside
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
 #      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
-#      and a small text PDF and wait until the worker has processed both ("ready"), publish
+#      and a small text PDF and an image-only scan (OCR) and wait until the worker has
+#      processed them ("ready"; the scan's word is found by search, its text not logged), publish
 #      the TXT, find it through the search page, download it (content and safe headers),
 #      send a unique "search phrase" to the search page and in
 #      the query string, Referer and HX-Current-URL and require that it appears in no
@@ -154,6 +155,16 @@ case "$SOUPSIEVE" in
     [4-9].*|[1-9][0-9].*) echo "    app: no bs4/soupsieve; worker: soupsieve $SOUPSIEVE" ;;
     *) echo "FAILED: the worker image has soupsieve $SOUPSIEVE (needs >= 4.0.0)"; exit 1 ;;
 esac
+TESSERACT="$(compose exec -T worker tesseract --version 2>&1 | head -n 1)"
+LANGS="$(compose exec -T worker tesseract --list-langs 2>&1 | tr '\n' ' ')"
+case "$TESSERACT $LANGS" in
+    "tesseract 5."*" eng"*" osd"*" pol"*) echo "    worker: $TESSERACT, languages: eng osd pol" ;;
+    *) echo "FAILED: unexpected Tesseract in the worker image: $TESSERACT / $LANGS"; exit 1 ;;
+esac
+if compose exec -T worker sh -c 'command -v gs' >/dev/null 2>&1; then
+    echo "FAILED: Ghostscript is in the worker image (not needed, AGPL; ADR-031)"; exit 1
+fi
+echo "    worker: no Ghostscript"
 
 echo "==> Login through the proxy"
 BASE="https://localhost:$HTTPS_PORT"
@@ -228,6 +239,37 @@ out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(o
 open(sys.argv[1], "wb").write(out)
 PY
 upload_and_wait "$SAMPLE_PDF" smoke.pdf application/pdf
+
+echo "==> OCR: a scanned PDF (image only, made in the worker image) is recognised"
+SAMPLE_SCAN="$(mktemp)"
+compose exec -T worker python - > "$SAMPLE_SCAN" <<'PY'
+import io, sys
+from PIL import Image, ImageDraw, ImageFont
+font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
+image = Image.new("L", (1654, 2339), 255)
+draw = ImageDraw.Draw(image)
+for i, line in enumerate(["Protokół odbioru urządzeń chłodniczych", "Skanowany dokument testowy"]):
+    draw.text((160, 220 + i * 75), line, fill=0, font=font)
+out = io.BytesIO()
+image.save(out, "PDF", resolution=200)
+sys.stdout.buffer.write(out.getvalue())
+PY
+upload_and_wait "$SAMPLE_SCAN" skan.pdf application/pdf
+SCAN_DOC="$LAST_DOC"
+rm -f "$SAMPLE_SCAN"
+page="$(curl -sk -c "$JAR" -b "$JAR" "$BASE/search?q=ch%C5%82odniczych")"
+case "$page" in
+    *"href=\"$SCAN_DOC\""*) echo "    search for a word of the scan: found" ;;
+    *) echo "FAILED: search does not find the word recognised by OCR"; exit 1 ;;
+esac
+case "$(curl -sk -c "$JAR" -b "$JAR" "$BASE$SCAN_DOC")" in
+    *"tekst z OCR"*) echo "    document page: \"tekst z OCR\"" ;;
+    *) echo "FAILED: the document page does not say \"tekst z OCR\""; exit 1 ;;
+esac
+if compose logs --no-color worker 2>&1 | grep -qi "odbioru\|chłodniczych"; then
+    echo "FAILED: recognised text appears in the worker log"; exit 1
+fi
+echo "    worker log: no recognised text"
 upload_and_wait "$SAMPLE_TXT" "smoke Łódź.txt" text/plain
 TXT_DOC="$LAST_DOC"
 
@@ -270,7 +312,11 @@ grep -qi "^location: /login?next=.*$PHRASE" "$HEADERS" \
 tr -d '\r' < "$HEADERS" | grep -qi "^referrer-policy: same-origin$" \
     || { echo "FAILED: Referrer-Policy: same-origin missing"; exit 1; }
 rm -f "$HEADERS"
-sleep 2  # let the proxy flush its log
+# Wait until the proxy has written the filtered request (its log is flushed asynchronously).
+for _ in $(seq 1 15); do
+    compose logs --no-color proxy 2>&1 | grep -q '/documents?\[removed\]' && break
+    sleep 1
+done
 if compose logs --no-color proxy app worker db 2>&1 | grep -q "$PHRASE"; then
     echo "FAILED: the search phrase appears in a container log:"
     compose logs --no-color proxy app worker db 2>&1 | grep -n "$PHRASE" | cut -c1-200
@@ -287,5 +333,5 @@ echo "    proxy, app, worker, db logs: no search phrase; proxy log: no file name
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to \"ready\", publish, search and download, no search phrase in logs, logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR) processed to \"ready\", publish, search and download, no search phrase in logs, logout"
 exit 0

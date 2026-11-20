@@ -29,7 +29,7 @@ def test_expected_heads_are_all_script_heads() -> None:
     assert expected_heads(make_config(settings())) == {
         "core_0003",
         "documents_0004",
-        "ingestion_0001",
+        "ingestion_0002",
         "search_0002",
     }
 

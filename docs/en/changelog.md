@@ -6,6 +6,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ## [Unreleased]
 
+### Added
+- OCR of scanned PDF pages (Polish + English), also in e-mail attachments; label "tekst z OCR" and a warning about numbers on the document page; `OCR_*` settings; migration `ingestion_0002` (`ing_parts.ocr_applied`).
+
+### Changed
+- Ghostscript removed from the worker image (not needed, ADR-031).
+
 ## [0.4.1] - 2026-11-20
 
 ### Security

@@ -63,6 +63,15 @@ class Limits:
     child_timeout_seconds: int = 300
     libreoffice_timeout_seconds: int = 120
     libreoffice_memory_mb: int = 1024
+    ocr_enabled: bool = False
+    ocr_languages: str = "pol+eng"
+    ocr_max_pages: int = 200
+    ocr_timeout_seconds: int = 600
+    ocr_page_timeout_seconds: int = 120
+    ocr_jobs: int = 2
+    ocr_memory_mb: int = 2048
+    ocr_max_image_mpixels: int = 200
+    ocr_rotate_threshold: float = 5.0
 
 
 @dataclass
@@ -72,6 +81,7 @@ class RawPart:
     text: str
     page_no: int | None = None
     needs_ocr: bool = False
+    ocr_applied: bool = False  # the text comes from OCR (Phase 4)
 
 
 def format_addresses(pairs: list[tuple[str, str]], limit: int = 4000) -> str | None:
@@ -148,7 +158,14 @@ class Context:
     def top_level(self) -> bool:
         return self.depth == 0
 
-    def add_text(self, text: str, *, page_no: int | None = None, needs_ocr: bool = False) -> None:
+    def add_text(
+        self,
+        text: str,
+        *,
+        page_no: int | None = None,
+        needs_ocr: bool = False,
+        ocr_applied: bool = False,
+    ) -> None:
         text = clean_text(text)
         if not text and not needs_ocr:
             return
@@ -168,6 +185,7 @@ class Context:
                 text=text,
                 page_no=page_no,
                 needs_ocr=needs_ocr,
+                ocr_applied=ocr_applied,
             )
         )
 

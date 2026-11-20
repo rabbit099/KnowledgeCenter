@@ -43,7 +43,7 @@ A foreign key may point to a table of a module that the owner `requires` (for ex
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (jsonb path, e.g. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `created_at` | Extracted text, at most 100,000 characters per row (ADR-020). Unique `(version_id, seq)`. Replaced as a whole in one transaction when a version is processed again |
+| `ing_parts` | `id` (bigint identity), `version_id` → `doc_versions` (`ON DELETE CASCADE`), `seq`, `part_type` (`page`/`body`/`attachment`), `origin` (jsonb path, e.g. `[{"type": "attachment", "name": "umowa.docx"}]`), `page_no`, `chunk_no`, `language` (`pl`/`en`/`unknown`), `text`, `char_count`, `needs_ocr`, `ocr_applied` (text recognised by OCR, `ingestion_0002`), `created_at` | Extracted text, at most 100,000 characters per row (ADR-020). Unique `(version_id, seq)`. Replaced as a whole in one transaction when a version is processed again |
 | `ing_results` | `version_id` (PK, → `doc_versions`, cascade), `notes` (jsonb list: `encoding`, `skipped`, `failed`, `fallback` with origin), `parts_count`, `chars_total`, `finished_at` | Notes are shown on the document page |
 | `ing_outbox` | `id` (bigint identity), `event`, `payload` (jsonb, identifiers only), `created_at`, `delivered_at`, `attempts`, `last_error` (exception class) | Partial index on undelivered rows; delivered rows removed after `OUTBOX_RETENTION_DAYS` |
 

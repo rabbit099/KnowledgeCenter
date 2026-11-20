@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 09:52+0100\n"
+"POT-Creation-Date: 2026-11-20 11:37+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -26,6 +26,28 @@ msgid_plural "%(num)d parts"
 msgstr[0] "%(num)d część"
 msgstr[1] "%(num)d części"
 msgstr[2] "%(num)d części"
+
+#, python-format
+msgid "%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet"
+msgstr ""
+"%(where)s: %(n)s zeskanowanych stron, więcej niż obsługuje OCR (%(limit)s); nie da się ich "
+"jeszcze wyszukać"
+
+#, python-format
+msgid "%(where)s: OCR failed; the scanned pages are not searchable yet"
+msgstr "%(where)s: OCR się nie powiódł; zeskanowanych stron nie da się jeszcze wyszukać"
+
+#, python-format
+msgid ""
+"%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor"
+" scan)"
+msgstr ""
+"%(where)s: OCR nie znalazł (prawie) żadnego tekstu na stronach %(pages)s (pismo odręczne, obraz "
+"albo bardzo słaby skan)"
+
+#, python-format
+msgid "%(where)s: OCR took longer than the time limit; the scanned pages are not searchable yet"
+msgstr "%(where)s: OCR trwało dłużej niż limit czasu; zeskanowanych stron nie da się jeszcze wyszukać"
 
 #, python-format
 msgid "%(where)s: read in simplified mode (formatting ignored)"
@@ -493,6 +515,13 @@ msgstr "Publikujący"
 msgid "Reader"
 msgstr "Czytelnik"
 
+msgid ""
+"Recognised automatically from scanned pages: words and especially numbers (tax numbers, account "
+"and phone numbers, dates) may contain errors. Check them in the original before relying on them."
+msgstr ""
+"Rozpoznany automatycznie ze zeskanowanych stron: słowa, a zwłaszcza numery (NIP, numery kont i "
+"telefonów, daty), mogą zawierać błędy. Przed użyciem sprawdź je w oryginale."
+
 msgid "Remove"
 msgstr "Usuń"
 
@@ -598,6 +627,9 @@ msgstr "Stan systemu"
 
 msgid "Temporary problem; processing will be retried automatically."
 msgstr "Chwilowy problem; przetwarzanie zostanie automatycznie ponowione."
+
+msgid "Text"
+msgstr "Tekst"
 
 msgid "Text (TXT)"
 msgstr "Tekst (TXT)"
@@ -979,6 +1011,9 @@ msgstr "od %(when)s"
 
 msgid "system"
 msgstr "systemowa"
+
+msgid "text from OCR"
+msgstr "tekst z OCR"
 
 msgid "waiting"
 msgstr "oczekuje"

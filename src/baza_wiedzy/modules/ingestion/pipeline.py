@@ -82,6 +82,7 @@ class StoredPart:
     language: str
     text: str
     needs_ocr: bool
+    ocr_applied: bool = False
 
 
 TRANSIENT = (TransientError, OperationalError, DBAPIError, redis.RedisError, TimeLimitExceeded)
@@ -106,6 +107,15 @@ def limits_of(settings: Settings) -> Limits:
         child_timeout_seconds=settings.ingest_child_timeout_seconds,
         libreoffice_timeout_seconds=settings.libreoffice_timeout_seconds,
         libreoffice_memory_mb=settings.libreoffice_memory_mb,
+        ocr_enabled=settings.ocr_enabled,
+        ocr_languages=settings.ocr_languages,
+        ocr_max_pages=settings.ocr_max_pages,
+        ocr_timeout_seconds=settings.ocr_timeout_seconds,
+        ocr_page_timeout_seconds=settings.ocr_page_timeout_seconds,
+        ocr_jobs=settings.ocr_jobs,
+        ocr_memory_mb=settings.ocr_memory_mb,
+        ocr_max_image_mpixels=settings.ocr_max_image_mpixels,
+        ocr_rotate_threshold=settings.ocr_rotate_threshold,
     )
 
 
@@ -167,6 +177,7 @@ def build_parts(settings: Settings, collector: Collector) -> list[StoredPart]:
                     language=language.detect(piece, min_letters=settings.language_min_letters),
                     text=piece,
                     needs_ocr=raw.needs_ocr,
+                    ocr_applied=raw.ocr_applied,
                 )
             )
     if len(stored) > settings.ingest_max_parts:
@@ -179,7 +190,10 @@ def store(
 ) -> bool:
     """Write the whole result; False (caller rolls back) when the attempt is no longer current."""
     needs_ocr = any(part.needs_ocr for part in parts)
-    if not documents.finish(db, claim, needs_ocr=needs_ocr, page_count=collector.page_count):
+    ocr_applied = any(part.ocr_applied for part in parts)
+    if not documents.finish(
+        db, claim, needs_ocr=needs_ocr, page_count=collector.page_count, ocr_applied=ocr_applied
+    ):
         return False
     db.execute(delete(Part).where(Part.version_id == claim.version_id))
     db.execute(delete(Result).where(Result.version_id == claim.version_id))
@@ -195,6 +209,7 @@ def store(
             text=part.text,
             char_count=len(part.text),
             needs_ocr=part.needs_ocr,
+            ocr_applied=part.ocr_applied,
         )
         for seq, part in enumerate(parts, start=1)
     )

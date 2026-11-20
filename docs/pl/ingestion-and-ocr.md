@@ -14,7 +14,7 @@ Jak wgrany plik staje się przeszukiwalnym tekstem. Walidacja uploadu i zapis pl
 | PDF z tekstem | pypdfium2 w procesie potomnym, jedna część na stronę | Faza 2 |
 | DOC | LibreOffice headless konwertuje do DOCX w procesie potomnym, potem ekstraktor DOCX | Faza 2 |
 | MSG | `extract-msg`: nagłówki, treść tekstowa / HTML / RTF, załączniki, załączone wiadomości | Faza 2 |
-| PDF skan | strony bez warstwy tekstu są teraz oznaczane „wymaga OCR”; OCRmyPDF + Tesseract (`pol+eng`) | Faza 4 |
+| PDF skan | strony bez warstwy tekstu są rozpoznawane przez OCR (OCRmyPDF + Tesseract, `pol+eng`), także w załącznikach maili; tylko tekst | Faza 4, etap A |
 
 Załączniki EML/MSG, które same są obsługiwanymi plikami, są wyciągane rekurencyjnie (głębokość ≤ `INGEST_MAX_DEPTH`, domyślnie 3) i zapisywane jako części typu `attachment` (albo `page` dla stron PDF) w `ing_parts`; każda załączona wiadomość Outlooka to jeden poziom. Pozostałe załączniki (obrazy, archiwa) oraz zabezpieczone hasłem są pomijane z adnotacją na stronie dokumentu. OCR samodzielnych obrazów jest poza zakresem MVP.
 
@@ -105,7 +105,7 @@ Jeśli sprawdzenie nie przejdzie (na przykład strona kodowa DOS CP852 albo dane
 ### PDF, DOC i MSG
 
 - **PDF**: jedna część na stronę z pochodzeniem „strona N” (w mailu „załącznik: raport.pdf › strona 2”); liczba stron jest zapisywana w wersji. Strona z tekstem staje się częścią; strona z mniej niż `OCR_MIN_CHARS` (25) znakami innymi niż spacje, zawierająca obraz, to strona zeskanowana: zostaje jako część oznaczona `needs_ocr` (z tym niewielkim tekstem); pusta strona (bez tekstu i obrazu) jest pomijana.
-- **Status skanów** (propozycja dla Fazy 4, bez migracji): wersja z co najmniej jedną oznaczoną stroną kończy się stanem `needs_ocr` („wymaga OCR”) zamiast `done`; jej strony z tekstem są już zapisane i będą wyszukiwalne. Faza 4 bierze wersje `needs_ocr`, uruchamia OCR tylko dla oznaczonych stron (`--skip-text`), zastępuje te części, ustawia `ocr_applied` i przenosi wersję do `done`. „Przetwórz ponownie” działa dla nich jak dla każdej innej wersji.
+- **Status skanów** (Faza 4): zeskanowane strony są rozpoznawane przez OCR w tym samym przebiegu (sekcja [OCR](#ocr)); wersja kończy się stanem `done` z `ocr_applied`. Stan `needs_ocr` („wymaga OCR”) zostaje tylko, gdy OCR jest wyłączony (`OCR_ENABLED=false`), PDF ma więcej zeskanowanych stron niż `OCR_MAX_PAGES` albo OCR się nie powiódł (limit czasu, awaria); strony z tekstem i tak są zapisane i wyszukiwalne, a „Przetwórz ponownie” próbuje jeszcze raz.
 - **DOC**: LibreOffice konwertuje do DOCX, potem czyta go ekstraktor DOCX (tabele „A | B”, nagłówki, stopki).
 - **MSG**: jak EML. Treść: tekstowa, w przeciwnym razie HTML zamieniany na tekst, w przeciwnym razie RTF (HTML osadzony w RTF przez extract-msg, zwykły RTF przez `rtf_text.py`). Załączniki zapisane w pliku przechodzą przez ten sam rejestr (typ po zawartości, pochodzenie „załącznik: nazwa”); załączone wiadomości Outlooka są przetwarzane jako wiadomości zagnieżdżone (każda to jeden poziom głębokości); inne rodzaje (obiekty OLE, odnośniki) są pomijane z adnotacją. Własne loggery bibliotek są wyciszone, więc nic z wiadomości nie trafia do logu. Bez wpisanego tytułu tytułem zostaje temat; strona dokumentu otwarta w trakcie przetwarzania pokazuje nowy tytuł zaraz po jego zakończeniu (odpytywanie statusu podmienia też nagłówek).
 
@@ -131,16 +131,19 @@ Przed ekstrakcją pipeline wywołuje `ingestion/scanning.py` ze ścieżką orygi
 
 ## OCR
 
-Decyzja dla każdego PDF:
-- Wyciągnij tekst strona po stronie przez pypdfium2.
-- Strona „wymaga OCR”, gdy ma mniej niż `OCR_MIN_CHARS` znaków niebiałych (domyślnie 25) i zawiera obraz.
-- Jeśli jakakolwiek strona wymaga OCR, uruchom OCRmyPDF z `--skip-text` (strony, które mają tekst, zostają nietknięte), językami `pol+eng`, `--rotate-pages`, `--deskew`, limitem zadań równoległych i timeoutem (`OCR_TIMEOUT_SECONDS`, domyślnie 1800).
-- Wyciągnij tekst ponownie ze stron po OCR, ustaw `ocr_applied = true` na tych częściach i na wersji.
-- Zapisz powstały PDF jako plik pochodny (kopia z warstwą tekstu). Oryginał zostaje nietknięty i to jego zwraca „pobierz”.
+Faza 4, etap A (ADR-031). Dla każdego PDF, także PDF załączonego do maila (EML, MSG):
+1. Tekst strona po stronie przez pypdfium2 (proces potomny). Strona „wymaga OCR”, gdy ma mniej niż `OCR_MIN_CHARS` znaków niebiałych (domyślnie 25) i zawiera obraz.
+2. Jeśli jakaś strona wymaga OCR i OCR jest włączony, OCRmyPDF działa **tylko na tych stronach** (`--mode force --pages 2,5,…`) w procesie potomnym: języki `OCR_LANGUAGES` (`pol+eng`), automatyczny obrót stron położonych bokiem (`--rotate-pages`, pewność `OCR_ROTATE_THRESHOLD`, domyślnie 5), rasteryzacja stron przez pypdfium (`--rasterizer pypdfium`), **tylko tekst** (`--sidecar`, `--output-type none`): żaden plik pochodny nie jest zapisywany, „Pobierz oryginał” zwraca oryginał.
+3. Rozpoznany tekst zastępuje części tych stron; dostają `ocr_applied` (wersja także); wersja kończy się stanem `done` („gotowe”). Strona, z której OCR wydobył mniej niż `OCR_MIN_CHARS` znaków, dostaje adnotację: „OCR nie znalazł (prawie) żadnego tekstu na stronach …” (pismo odręczne, obraz, bardzo słaby skan).
+4. OCR nigdy nie kończy dokumentu błędem: jeśli jest wyłączony, PDF ma więcej zeskanowanych stron niż `OCR_MAX_PAGES` albo OCR się nie powiódł (limit czasu `OCR_TIMEOUT_SECONDS`, awaria), zeskanowane strony zostają oznaczone „wymaga OCR” z adnotacją w panelu tekstu, strony z tekstem są wyszukiwalne, a „Przetwórz ponownie” próbuje jeszcze raz.
 
-Zaimplementowane w Fazie 2: wyciąganie tekstu strona po stronie i oznaczanie stron wymagających OCR (zobacz [PDF, DOC i MSG](#pdf-doc-i-msg)); sam OCR dojdzie w Fazie 4.
+Strona dokumentu pokazuje „Tekst: tekst z OCR” z ostrzeżeniem, że słowa, a zwłaszcza numery, mogą zawierać błędy rozpoznania; panel tekstu oznacza każdą rozpoznaną stronę „tekst z OCR”.
 
-Znane ograniczenia, o których warto powiedzieć użytkownikom: jakość OCR zależy od jakości skanu; pismo odręczne nie jest obsługiwane; bardzo duże skany mogą trwać minuty; PDF-y zabezpieczone hasłem kończą się komunikatem „PDF jest zabezpieczony hasłem”.
+Wybory zmierzone na syntetycznych skanach (etap A): bez `--deskew` (jego binaryzacja ze stałym progiem zmieniała skan o niskim kontraście w pustą stronę; Tesseract sam czyta skos do około 5°, 8° nie działa w żadnym wariancie); próg obrotu 5 zamiast domyślnego 14 w OCRmyPDF (strona obrócona o 90° zostawała nieobrócona i wychodził bełkot); bez Ghostscripta (niepotrzebny przy rasteryzacji pypdfium i wyniku tylko tekstowym; nie jest instalowany). Izolacja, limity i brak tekstu z OCR w logach: zobacz [Limity bezpieczeństwa](#limity-bezpieczeństwa) i [Kod natywny w procesach potomnych](#kod-natywny-w-procesach-potomnych).
+
+W dalszej części Fazy 4: etap B osobna kolejka i usługa dla OCR, automatyczny OCR do `OCR_AUTO_MAX_PAGES` (30) zeskanowanych stron i „Uruchom OCR” powyżej, stany OCR, `baza-wiedzy ocr --pending`; etap C etykieta w wynikach wyszukiwania i pomiary (czas na stronę, `tessdata_best`).
+
+Znane ograniczenia do przekazania użytkownikom: jakość zależy od skanu; pismo odręczne nie jest obsługiwane; numery (NIP, numery kont i telefonów) mogą być źle odczytane; duże skany trwają minuty; PDF-y zabezpieczone hasłem kończą się komunikatem „PDF jest zabezpieczony hasłem”.
 
 ## Limity bezpieczeństwa
 
@@ -157,7 +160,7 @@ Znane ograniczenia, o których warto powiedzieć użytkownikom: jakość OCR zal
 | LibreOffice: pamięć (przestrzeń adresowa), czas, równoległe konwersje | 1024 MB, 120 s, jedna na kontener workera | `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` |
 | Limit czasu jednej próby | 900 s | `INGEST_TIME_LIMIT_SECONDS` |
 | Próby (tylko błędy przejściowe) | 3, opóźnienie od 30 s, podwajane do 600 s | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS` |
-| Limit czasu OCR | 1800 s | Faza 4 |
+| OCR (na PDF): zeskanowane strony, czas, czas na stronę, procesy Tesseracta, pamięć (przestrzeń adresowa) na proces, rozmiar obrazu strony | 200 stron, 600 s, 120 s, 2, 2048 MB, 200 megapikseli (więcej zeskanowanych stron: zostają „wymaga OCR” z adnotacją) | `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS` |
 | Procesy workera (po jednym zadaniu), pamięć workera | 2, 2 GB | `WORKER_PROCESSES`, `WORKER_MEMORY_LIMIT` |
 
 Pliki zabezpieczone hasłem kończą się komunikatem „…zabezpieczony hasłem. Wgraj kopię bez hasła.”: PDF, gdy pdfium żąda hasła, DOC po fladze szyfrowania (zanim wystartuje LibreOffice), DOCX już przy wgrywaniu (zaszyfrowany plik Office to kontener OLE2 z `EncryptionInfo`). Jako załączniki są pomijane z adnotacją.

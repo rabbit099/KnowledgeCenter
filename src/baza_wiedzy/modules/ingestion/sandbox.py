@@ -52,7 +52,7 @@ def _limits(memory_mb: int | None) -> Callable[[], None]:
     return apply
 
 
-def _environment(workdir: Path) -> dict[str, str]:
+def _environment(workdir: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
     home = workdir / "home"
     tmp = workdir / "tmp"
     home.mkdir(exist_ok=True)
@@ -63,6 +63,7 @@ def _environment(workdir: Path) -> dict[str, str]:
         "TMPDIR": str(tmp),
         "LANG": "C.UTF-8",
         "PYTHONPATH": os.pathsep.join(p for p in sys.path if p),
+        **(extra or {}),
     }
 
 
@@ -72,6 +73,7 @@ def run(
     workdir: Path,
     timeout: float,
     memory_mb: int | None = None,
+    env: dict[str, str] | None = None,
 ) -> Finished:
     """Run argv in its own process group; raise IsolationTimeout after `timeout` seconds.
 
@@ -85,7 +87,7 @@ def run(
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=err,
-            env=_environment(workdir),
+            env=_environment(workdir, env),
             start_new_session=True,
             preexec_fn=_limits(memory_mb),
         )

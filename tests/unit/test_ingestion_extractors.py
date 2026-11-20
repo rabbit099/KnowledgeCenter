@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ from fixtures.samples import (
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def run(tmp_path: Path, kind: str, name: str, data: bytes, **limits: int) -> Collector:
+def run(tmp_path: Path, kind: str, name: str, data: bytes, **limits: Any) -> Collector:
     source = tmp_path / name
     source.write_bytes(data)
     workdir = tmp_path / "work"

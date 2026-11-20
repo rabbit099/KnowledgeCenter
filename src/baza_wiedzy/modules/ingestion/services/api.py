@@ -42,6 +42,7 @@ class PartView:
     text: str
     char_count: int
     needs_ocr: bool
+    ocr_applied: bool = False
 
 
 def parts_of(db: Session, version_id: uuid.UUID) -> list[PartView]:
@@ -57,6 +58,7 @@ def parts_of(db: Session, version_id: uuid.UUID) -> list[PartView]:
             text=p.text,
             char_count=p.char_count,
             needs_ocr=p.needs_ocr,
+            ocr_applied=p.ocr_applied,
         )
         for p in rows
     ]

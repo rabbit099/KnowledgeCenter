@@ -87,5 +87,5 @@ def test_literal_document_number(db: Conn) -> None:
 # A word only in an e-mail attachment: test_corpus.py ("PR-88/2026", "klimatyzatory").
 
 
-@pytest.mark.skip(reason="needs OCR (Phase 4): the scanned page has no text yet")
+@pytest.mark.skip(reason="OCR golden cases on synthetic scans come in Phase 4, stage C")
 def test_word_only_on_scanned_page() -> None: ...

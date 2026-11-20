@@ -100,11 +100,19 @@ def _current_attempt(db: Session, claim: Claim) -> Version | None:
     return version
 
 
-def finish(db: Session, claim: Claim, *, needs_ocr: bool, page_count: int | None) -> bool:
+def finish(
+    db: Session,
+    claim: Claim,
+    *,
+    needs_ocr: bool,
+    page_count: int | None,
+    ocr_applied: bool = False,
+) -> bool:
     version = _current_attempt(db, claim)
     if version is None:
         return False
     version.processing_status = NEEDS_OCR if needs_ocr else DONE
+    version.ocr_applied = ocr_applied  # some text of this version comes from OCR (Phase 4)
     version.processing_error = None
     version.processed_at = _now()
     version.page_count = page_count
