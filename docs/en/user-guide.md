@@ -1,10 +1,23 @@
-# Search — guide for users and administrators
+# User guide — uploading and searching
 
 > Applies to: v0.4.1 · Last reviewed: 2026-11-20
 
-How to find documents, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
+How to upload documents, how to find them, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
 
 ## For users
+
+### Uploading documents
+
+"Moje dokumenty" → "Wgraj dokumenty" (needs the permission to upload; Publisher and Admin have it).
+
+1. Choose one or more files (PDF, DOCX, DOC, TXT, EML, MSG) in the file field, or drag them onto the field "…albo przeciągnij pliki tutaj". The page lists the chosen files and warns before sending when there are too many (at most 50 at once), when they are together too large (at most 500 MB), or when a file is above 50 MB (that one will be refused). The numbers are the defaults; the administrator may set others, and the form shows the current ones.
+2. "Tytuł" applies only when you upload one file; several files get their file names as titles (an e-mail: its subject).
+3. Click "Wgraj". One file: you land on its page ("Plik został wgrany…"). Several files: you land on "Moje dokumenty" with the table "Wynik wgrywania": for each file "wgrano" (link to the document), "możliwy duplikat" or "odrzucono" with the reason (too large, wrong type, empty, more files than allowed), and a summary like "Wgrano: 10 · pominięto: 1".
+4. A possible duplicate is a file whose content is identical to a document you can already see. It is not uploaded until you decide: "Wgraj mimo to" uploads it, "Pomiń" drops it. You decide per file; the other files are already uploaded and nothing has to be chosen again. Undecided files are removed after 24 hours.
+5. A refused file never stops the others. Upload it again after fixing the reason.
+6. Every new document is a draft that only you and administrators see; processing (text extraction, OCR of scans) runs in the background.
+
+Uploading also works with JavaScript switched off (without dragging and without the checks before sending).
 
 ### Searching
 

@@ -1,10 +1,23 @@
-# Wyszukiwanie — przewodnik dla użytkowników i administratora
+# Przewodnik użytkownika — wgrywanie i wyszukiwanie
 
 > Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
 
-Jak znajdować dokumenty, co wyszukiwanie potrafi, a czego nie, kto widzi co i co uruchamia administrator. Szczegóły techniczne (indeksy, ranking, pomiary): [search.md](search.md).
+Jak wgrywać dokumenty, jak je znajdować, co wyszukiwanie potrafi, a czego nie, kto widzi co i co uruchamia administrator. Szczegóły techniczne (indeksy, ranking, pomiary): [search.md](search.md).
 
 ## Dla użytkowników
+
+### Wgrywanie dokumentów
+
+„Moje dokumenty” → „Wgraj dokumenty” (wymaga uprawnienia do wgrywania; mają je Publikujący i Administrator).
+
+1. Wybierz jeden albo kilka plików (PDF, DOCX, DOC, TXT, EML, MSG) w polu plików albo przeciągnij je na pole „…albo przeciągnij pliki tutaj”. Strona pokazuje listę wybranych plików i ostrzega przed wysłaniem, gdy jest ich za dużo (naraz najwyżej 50), gdy są razem za duże (najwyżej 500 MB) albo gdy któryś plik ma ponad 50 MB (ten zostanie odrzucony). To wartości domyślne; administrator może ustawić inne, a formularz pokazuje obowiązujące.
+2. „Tytuł” działa tylko przy wgrywaniu jednego pliku; przy kilku plikach tytułem jest nazwa pliku (mail: jego temat).
+3. Kliknij „Wgraj”. Jeden plik: przechodzisz na jego stronę („Plik został wgrany…”). Kilka plików: przechodzisz do „Moje dokumenty” z tabelą „Wynik wgrywania”: przy każdym pliku „wgrano” (odnośnik do dokumentu), „możliwy duplikat” albo „odrzucono” z powodem (za duży, zły typ, pusty, więcej plików niż dozwolone) oraz podsumowanie, np. „Wgrano: 10 · pominięto: 1”.
+4. Możliwy duplikat to plik o treści identycznej z dokumentem, który już widzisz. Nie jest wgrywany, dopóki nie zdecydujesz: „Wgraj mimo to” go wgrywa, „Pomiń” go odrzuca. Decydujesz dla każdego pliku osobno; pozostałe pliki są już wgrane i nic nie trzeba wybierać ponownie. Pliki bez decyzji są usuwane po 24 godzinach.
+5. Odrzucony plik nigdy nie zatrzymuje pozostałych. Wgraj go ponownie po usunięciu przyczyny.
+6. Każdy nowy dokument jest szkicem, który widzisz tylko Ty i administratorzy; przetwarzanie (wyciąganie tekstu, OCR skanów) odbywa się w tle.
+
+Wgrywanie działa także z wyłączonym JavaScriptem (bez przeciągania i bez sprawdzania przed wysłaniem).
 
 ### Wyszukiwanie
 

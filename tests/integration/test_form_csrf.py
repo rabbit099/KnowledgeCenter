@@ -139,15 +139,27 @@ def cases(app: FastAPI) -> dict[str, Callable[[], Case]]:
         db.flush()
         role_id, doomed_id, mapping_id = role.id, doomed.id, mapping.id
     up = login(app, publisher)
+    text = f"tekst testowy {tag}".encode()  # unique: earlier cases publish their documents
     response = up.post(
         "/documents/upload",
-        files={"file": ("a.txt", b"tekst testowy", "text/plain")},
+        files={"file": ("a.txt", text, "text/plain")},
         headers={"HX-Request": "true", "X-CSRF-Token": csrf(up, "/documents/upload")},
         follow_redirects=False,
     )
     doc_id = uuid.UUID(response.headers["hx-redirect"].split("/")[2].split("?")[0])
     with app.state.session_factory() as db:
         version_id = db.scalar(select(Document.latest_version_id).where(Document.id == doc_id))
+    # Two files, the first identical to a.txt: held as a possible duplicate (row 0).
+    batch = up.post(
+        "/documents/upload",
+        files=[
+            ("files", ("kopia.txt", text, "text/plain")),
+            ("files", ("nowy.txt", uuid.uuid4().hex.encode(), "text/plain")),
+        ],
+        headers={"HX-Request": "true", "X-CSRF-Token": csrf(up, "/documents/upload")},
+        follow_redirects=False,
+    )
+    batch_id = batch.headers["hx-redirect"].split("batch=")[1]
     app.state.publisher = publisher
     return {
         "/login": lambda: Case(
@@ -188,6 +200,9 @@ def cases(app: FastAPI) -> dict[str, Callable[[], Case]]:
         ),
         "/admin/audit/export": lambda: Case("/admin/audit", "/admin/audit/export"),
         "/documents/upload": lambda: Case("/documents/upload", "/documents/upload"),
+        "/documents/upload/batches/{batch_id}/{row}": lambda: Case(
+            f"/documents?batch={batch_id}", f"/documents/upload/batches/{batch_id}/0"
+        ),
         "/ingestion/versions/{version_id}/reprocess": lambda: Case(
             f"/ingestion/versions/{version_id}/parts", f"/ingestion/versions/{version_id}/reprocess"
         ),
@@ -217,6 +232,7 @@ ROUTES = [
     "/admin/ad-groups/{mapping_id}/delete",
     "/admin/audit/export",
     "/documents/upload",
+    "/documents/upload/batches/{batch_id}/{row}",
     "/ingestion/versions/{version_id}/reprocess",
     "/documents/{document_id}/lifecycle",
     "/logout",
@@ -232,6 +248,7 @@ def test_form_submits_with_the_token_it_renders(
         c = client(app)
     elif route in (
         "/documents/upload",
+        "/documents/upload/batches/{batch_id}/{row}",
         "/ingestion/versions/{version_id}/reprocess",
         "/documents/{document_id}/lifecycle",
     ):

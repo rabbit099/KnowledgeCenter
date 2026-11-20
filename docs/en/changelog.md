@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 
 ### Changed
 - Ghostscript removed from the worker image (not needed, ADR-031).
+- Upload takes several files at once ("Wgraj dokumenty", drag and drop), works without JavaScript, and shows a result per file with a summary; a file identical to a document you can see waits for "Wgraj mimo to" / "Pomiń" instead of being uploaded with a warning (ADR-032). New settings `UPLOAD_MAX_FILES` (50), `UPLOAD_MAX_TOTAL_MB` (500), `UPLOAD_BATCH_HOURS` (24); default `MAX_REQUEST_MB` 51 → 501 (operators: raise it in `.env` to `UPLOAD_MAX_TOTAL_MB` + 1, otherwise the total is capped at `MAX_REQUEST_MB` − 1). The proxy answers an oversized request with a readable Polish page.
 
 ## [0.4.1] - 2026-11-20
 

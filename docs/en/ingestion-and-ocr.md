@@ -20,9 +20,13 @@ Attachments of EML/MSG that are themselves supported files are extracted recursi
 
 ## Upload validation (in `app`)
 
-Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `documents.upload`). Uploading needs JavaScript: HTMX sends the CSRF token in the `X-CSRF-Token` header (the CSRF middleware does not read multipart bodies); without JavaScript the page shows a `<noscript>` notice.
+Page "Moje dokumenty" → "Wgraj dokumenty" (`/documents/upload`, permission `documents.upload`). One form takes several files (ADR-032); each file goes through the steps below **on its own** (own transaction, audit entry and event), so a refused or failing file never stops the others. The form is a plain multipart POST and works without JavaScript: the CSRF token is its **first** field, which the CSRF middleware reads from the beginning of the body (the files stream on untouched); HTMX sends it in the `X-CSRF-Token` header as well. A small script (`static/js/upload.js`) adds drag and drop and checks the limits before sending.
 
-1. Size: the request is refused early when `Content-Length` exceeds `MAX_UPLOAD_MB` (default 50), and the copy stops as soon as the real size passes it (HTTP 413, "Plik jest większy niż dozwolony rozmiar."). The proxy refuses bodies above `MAX_REQUEST_MB` (default 51: the file plus multipart overhead); keep it one MB above `MAX_UPLOAD_MB`.
+Limits of one form: at most `UPLOAD_MAX_FILES` files (default 50; further files are refused per file, more than 50 above the limit refuse the whole form) and `UPLOAD_MAX_TOTAL_MB` together (default 500, capped at `MAX_REQUEST_MB` − 1; a larger `Content-Length` refuses the form with "Pliki są razem większe niż dozwolony rozmiar (… MB). Wgraj je w kilku częściach."). The proxy cuts bodies above `MAX_REQUEST_MB` (default 501) and answers with a Polish page instead of an empty error. The files are spooled by Starlette to the app container's temporary directory: keep `UPLOAD_MAX_TOTAL_MB` of free disk there.
+
+Results: one file uploaded → its document page, as before; one file refused → the form with the message, as before; otherwise the browser goes to "Moje dokumenty" with the table "Wynik wgrywania" (per file: uploaded, possible duplicate, skipped, refused with the reason) and a summary. The table is a small JSON file `/data/storage/.batches/<random id>.json` readable only by the uploader, kept `UPLOAD_BATCH_HOURS` (default 24) and removed at a later upload.
+
+1. Size: the request is refused early when `Content-Length` exceeds `MAX_UPLOAD_MB` (default 50), and the copy stops as soon as the real size passes it (HTTP 413, "Plik jest większy niż dozwolony rozmiar."; with several files: that file is refused, the others continue).
 2. The body is parsed by Starlette (at most 1 MB in memory, the rest in a temporary spool file, never the whole file in memory); the file is copied in 1 MB chunks to `/data/storage/.incoming/` while SHA-256 and the size are computed.
 3. Type **by content**, never by extension or `Content-Type` (ADR-021): the extension must be in the allow-list (pdf, docx, doc, txt, eml, msg) **and** match the detected type:
 
@@ -43,7 +47,7 @@ Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `doc
    - for EML and MSG without a typed title, processing replaces it with the subject of the message (same cleaning); until then, or when the subject is empty, the file name stays.
 
    Upper and lower case are never changed anywhere: the title shows the case of what was typed, of the file name or of the subject. The origin is kept in `doc_documents.title_source` (`user`, `filename`, `subject`), so a typed title is never replaced.
-6. Duplicates: the document page shows "Możliwy duplikat" with links when another document **visible to the uploader** has a version with the same SHA-256. Other people's drafts are never compared, so the warning reveals nothing. The upload is not blocked; removing a duplicate comes with the lifecycle (Phase 5).
+6. Duplicates: when another document **visible to the uploader** has a version with the same SHA-256, the file is not stored yet but **held** (`/data/storage/.batches/<id>/<n>.part`, same volume) as "możliwy duplikat" with links to those documents; the uploader chooses "Wgraj mimo to" (the held file is stored and steps 4, 5, 7 run; the document page then shows "Możliwy duplikat" as before) or "Pomiń" (the held file is deleted). Each decision is a POST to `/documents/upload/batches/<id>/<n>` (CSRF, permission `documents.upload`, only the uploader's own batch; a second decision is a no-op). Other people's drafts are never compared, so the hold reveals nothing.
 7. Audit `document.upload` with the document id, `version_id`, `sha256`, `size_bytes` and `kind` (no file name, no content). After the commit the event `document.version.uploaded` is published and the `ingestion` module enqueues processing.
 8. Virus scan: a step of the processing pipeline, disabled by default ([Virus scan hook](#virus-scan-hook)); ClamAV is not wired in Phase 2.
 
@@ -149,7 +153,7 @@ Known limits to tell users: quality depends on the scan; handwriting is not supp
 
 | Limit | Default | Setting |
 |---|---|---|
-| Max upload size | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
+| Max upload size per file; files and total size of one form | 50 MB; 50 files, 500 MB (proxy: `MAX_REQUEST_MB` 501) | `MAX_UPLOAD_MB`; `UPLOAD_MAX_FILES`, `UPLOAD_MAX_TOTAL_MB` |
 | Max e-mail attachment depth (EML, MSG, attached messages) | 3 | `INGEST_MAX_DEPTH` |
 | Max parts (chunks) per version | 2000 | `INGEST_MAX_PARTS` |
 | Max extracted text per version | 50 MB (characters) | `INGEST_MAX_TEXT_MB` |

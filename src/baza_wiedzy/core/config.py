@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_MODULES = ("documents", "ingestion", "search")
@@ -60,9 +60,15 @@ class Settings(BaseSettings):
     ldap_connect_timeout_seconds: int = 5
     ldap_receive_timeout_seconds: int = 10
     ldap_page_size: int = 500
-    # Documents: largest accepted file (the proxy's MAX_REQUEST_MB must be a little larger) and
-    # the storage volume (originals, .incoming/ for uploads in progress).
+    # Documents: largest accepted file, files and total size of one upload form (several files
+    # at once; capped at MAX_REQUEST_MB - 1), the proxy's request limit (must exceed the file
+    # limit: checked at start), how long files waiting for a duplicate decision are kept, and the
+    # storage volume (originals, .incoming/ uploads in progress, .batches/ upload results).
     max_upload_mb: int = 50
+    upload_max_files: int = 50
+    upload_max_total_mb: int = 500
+    max_request_mb: int = 501
+    upload_batch_hours: int = 24
     storage_dir: str = "/data/storage"
     # Ingestion (worker): attempts per version (transient errors only: database, Redis, time
     # limit), exponential delay between attempts, time limit of one attempt, and the age after
@@ -131,6 +137,22 @@ class Settings(BaseSettings):
     worker_heartbeat_seconds: int = 15
     # Comma-separated in the environment: ENABLED_MODULES=documents,ingestion,search
     enabled_modules: Annotated[tuple[str, ...], NoDecode] = DEFAULT_MODULES
+
+    @model_validator(mode="after")
+    def _upload_limits(self) -> Settings:
+        if self.upload_max_files < 1:
+            raise ValueError("UPLOAD_MAX_FILES must be at least 1")
+        if self.upload_max_total_mb < self.max_upload_mb:
+            raise ValueError("UPLOAD_MAX_TOTAL_MB must be at least MAX_UPLOAD_MB")
+        if self.max_request_mb <= self.max_upload_mb:
+            raise ValueError("MAX_REQUEST_MB (proxy) must be larger than MAX_UPLOAD_MB")
+        return self
+
+    @property
+    def upload_total_mb(self) -> int:
+        """Total size of one upload form actually accepted: UPLOAD_MAX_TOTAL_MB, but never more
+        than the proxy lets through (an older .env with MAX_REQUEST_MB=51 keeps working)."""
+        return min(self.upload_max_total_mb, self.max_request_mb - 1)
 
     @field_validator("enabled_modules", mode="before")
     @classmethod

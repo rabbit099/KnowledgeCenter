@@ -1,9 +1,20 @@
-{% if error %}<p class="fail" role="alert">{{ _(error) }}</p>{% endif %}
-<form class="stack" hx-post="/documents/upload" hx-encoding="multipart/form-data" hx-target="#upload-area" hx-swap="innerHTML" hx-disabled-elt="button">
-  <label>{{ _("File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)", mb=max_mb) }}
-    <input type="file" name="file" required accept=".pdf,.docx,.doc,.txt,.eml,.msg">
+{% from "admin/_macros.html" import csrf with context %}
+{% if error %}<p class="fail" role="alert">{{ _(error, **(error_values or {})) }}</p>{% endif %}
+{# Plain multipart POST (works without JavaScript); the CSRF token must stay the FIRST field. #}
+<form id="upload-form" class="stack" method="post" action="/documents/upload" enctype="multipart/form-data"
+      hx-post="/documents/upload" hx-encoding="multipart/form-data" hx-target="#upload-area" hx-swap="innerHTML" hx-disabled-elt="button"
+      data-max-files="{{ max_files }}" data-max-file-mb="{{ max_mb }}" data-max-total-mb="{{ max_total_mb }}"
+      data-msg-files="{{ _('Too many files in one upload: at most %(n)s. Upload them in several parts.', n=max_files) }}"
+      data-msg-total="{{ _('The files are together larger than the allowed size (%(mb)s MB). Upload them in several parts.', mb=max_total_mb) }}"
+      data-msg-file="{{ _('Larger than %(mb)s MB, will be refused:', mb=max_mb) }}">
+  {{ csrf() }}
+  <label>{{ _("Files (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB each, at most %(n)s files and %(total)s MB at once)", mb=max_mb, n=max_files, total=max_total_mb) }}
+    <input type="file" name="files" multiple required accept=".pdf,.docx,.doc,.txt,.eml,.msg">
   </label>
-  <label>{{ _("Title (optional; by default the file name)") }}
+  <div class="dropzone" hidden>{{ _("…or drag files here") }}</div>
+  <ul class="upload-files" hidden></ul>
+  <p class="fail upload-check" role="alert" hidden></p>
+  <label>{{ _("Title (optional, only when uploading one file; by default the file name)") }}
     <input type="text" name="title" maxlength="300">
   </label>
   <button type="submit">{{ _("Upload") }}</button>

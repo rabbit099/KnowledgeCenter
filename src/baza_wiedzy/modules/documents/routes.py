@@ -2,12 +2,15 @@
 (publish, unpublish, archive, restore; ordinary POST forms, work without JavaScript) and the
 download of the original (ADR-025).
 
-Upload works only with JavaScript (HTMX sends the CSRF token in a header; multipart bodies are
-not read by the CSRF middleware); without JavaScript the page says so in <noscript>.
+Upload takes several files at once and works without JavaScript too (plain multipart POST; the
+CSRF token is the first form field, see core/auth/csrf.py); HTMX and a small script (drag and
+drop, limits checked before sending) only improve it. Results per file: batches.py, ADR-032.
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
@@ -17,6 +20,7 @@ from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from baza_wiedzy.core.audit.service import Actor
 from baza_wiedzy.core.auth.deps import Db, require_any_permission, require_permission, require_user
@@ -24,7 +28,7 @@ from baza_wiedzy.core.auth.routes import client_ip
 from baza_wiedzy.core.events import DOCUMENT_PUBLISHED, DOCUMENT_VERSION_UPLOADED
 from baza_wiedzy.core.permissions.service import CurrentUser
 from baza_wiedzy.core.web.i18n import N_
-from baza_wiedzy.modules.documents import download, lifecycle, upload
+from baza_wiedzy.modules.documents import batches, download, filenames, lifecycle, upload
 from baza_wiedzy.modules.documents.filetypes import UnsupportedFile
 from baza_wiedzy.modules.documents.models import DONE, PENDING, PROCESSING
 from baza_wiedzy.modules.documents.services import api
@@ -37,7 +41,16 @@ Lister = Annotated[
     CurrentUser, Depends(require_any_permission("documents.upload", "documents.read_drafts"))
 ]
 AnyUser = Annotated[CurrentUser, Depends(require_user)]
-MULTIPART_OVERHEAD = 64 * 1024  # headers of the multipart body around the file
+MB = 1024 * 1024
+MULTIPART_OVERHEAD = 64 * 1024  # headers of the multipart body around the files
+EXTRA_FILES = 50  # files beyond UPLOAD_MAX_FILES still parsed, only to be listed as refused
+TOTAL_TOO_LARGE = N_(
+    "The files are together larger than the allowed size (%(mb)s MB). Upload them in several parts."
+)
+TOO_MANY_FILES = N_("Too many files in one upload: at most %(n)s. Upload them in several parts.")
+MORE_THAN_LIMIT = N_("More files than one upload accepts (%(n)s); upload this one again.")
+SAVE_FAILED = N_("The file could not be saved. Try again.")
+log = logging.getLogger(__name__)
 
 
 def _render(
@@ -63,6 +76,7 @@ def my_documents(
     scope: str = "own",
     page: str = "1",
     author: str = "",
+    batch: str = "",
 ) -> Response:
     scope = "all" if scope == "all" and user.can("documents.read_drafts") else "own"
     show_authors = api.can_see_authors(user)
@@ -85,17 +99,45 @@ def my_documents(
         "busy": busy,
         "show_authors": show_authors,
         "owners": api.visible_owners(db, user) if show_authors else [],
+        "batch": _batch_view(request, db, user, batch) if batch else None,
     }
     partial = request.headers.get("hx-request") == "true"
     template = "documents/_table.html" if partial else "documents/list.html"
     return _render(request, template, context)
 
 
+def _upload_context(settings: Any, **extra: Any) -> dict[str, Any]:
+    return {
+        "max_mb": settings.max_upload_mb,
+        "max_files": settings.upload_max_files,
+        "max_total_mb": settings.upload_total_mb,
+        **extra,
+    }
+
+
+def _batch_view(
+    request: Request, db: Db, user: CurrentUser, batch_id: str
+) -> dict[str, Any] | None:
+    """Rows of the user's own upload batch with the counts, or None (unknown or someone else's)."""
+    store = batches.BatchStore(request.app.state.settings.storage_dir)
+    rows = store.load(batch_id, user.id)
+    if rows is None:
+        return None
+    for row in rows:
+        if row["status"] == batches.HELD:
+            row["duplicates"] = api.visible_duplicates(db, user, row["sha256"])
+    counts = {
+        status: sum(1 for row in rows if row["status"] == status)
+        for status in (batches.UPLOADED, batches.HELD, batches.SKIPPED, batches.REJECTED)
+    }
+    hours = request.app.state.settings.upload_batch_hours
+    return {"id": batch_id, "rows": rows, "counts": counts, "hours": hours}
+
+
 @router.get("/upload", include_in_schema=False)
 def upload_form(request: Request, user: Uploader) -> Response:
-    return _render(
-        request, "documents/upload.html", {"max_mb": request.app.state.settings.max_upload_mb}
-    )
+    context = _upload_context(request.app.state.settings)
+    return _render(request, "documents/upload.html", context)
 
 
 async def _chunks(file: UploadFile) -> AsyncIterator[bytes]:
@@ -103,59 +145,205 @@ async def _chunks(file: UploadFile) -> AsyncIterator[bytes]:
         yield chunk
 
 
+def _redirect(request: Request, target: str) -> Response:
+    if request.headers.get("hx-request") == "true":
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
+
+
+def _rejected(name: str, reason: str, *, too_large: bool = False, **values: Any) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": batches.REJECTED,
+        "reason": reason,
+        "values": values,
+        "too_large": too_large,
+    }
+
+
 @router.post("/upload", include_in_schema=False)
 async def upload_file(request: Request, db: Db, user: Uploader) -> Response:
+    """One or more files (field "files"; "file" still accepted). Each file is checked, stored,
+    audited and announced on its own: a refused file never stops the others (ADR-032)."""
     settings = request.app.state.settings
-    max_bytes = settings.max_upload_mb * 1024 * 1024
+    max_bytes = settings.max_upload_mb * MB
+    limit = settings.upload_max_files
 
-    def error(message: str, status: int) -> Response:
-        context = {"error": message, "max_mb": settings.max_upload_mb}
+    def error(message: str, status: int, **values: Any) -> Response:
+        context = _upload_context(settings, error=message, error_values=values)
         return _render(request, "documents/_upload_form.html", context, status)
 
     declared = request.headers.get("content-length")
-    if declared and declared.isdigit() and int(declared) > max_bytes + MULTIPART_OVERHEAD:
-        return error(N_("The file is larger than the allowed size."), 413)
+    total_limit = settings.upload_total_mb * MB + MULTIPART_OVERHEAD
+    if declared and declared.isdigit() and int(declared) > total_limit:
+        return error(TOTAL_TOO_LARGE, 413, mb=settings.upload_total_mb)
     storage = get_storage(request.app.state)
     storage.cleanup_incoming()  # orphans of interrupted uploads (older than an hour)
-    form = await request.form(max_files=1, max_fields=5)
-    file = form.get("file")
-    if not isinstance(file, UploadFile) or not file.filename:
+    store = batches.BatchStore(settings.storage_dir)
+    store.cleanup(settings.upload_batch_hours * 3600)
+    try:
+        form = await request.form(max_files=limit + EXTRA_FILES, max_fields=10)
+    except StarletteHTTPException:
+        return error(TOO_MANY_FILES, 413, n=limit)
+    files = [
+        item
+        for field in ("files", "file")
+        for item in form.getlist(field)
+        if isinstance(item, UploadFile) and item.filename
+    ]
+    if not files:
         return error(N_("Choose a file to upload."), 422)
+    title = str(form.get("title") or "") if len(files) == 1 else ""
+    actor = Actor(user.id, user.username)
+    batch_id = store.new_id()
+    rows: list[dict[str, Any]] = []
+    try:
+        for index, file in enumerate(files):
+            raw_name = file.filename or ""
+            if index >= limit:
+                rows.append(_rejected(filenames.sanitize(raw_name), MORE_THAN_LIMIT, n=limit))
+                continue
+            rows.append(
+                await _upload_one(
+                    request, db, user, actor, store, batch_id, index, file, max_bytes, title
+                )
+            )
+    finally:
+        for file in files:
+            await file.close()
+    if len(rows) == 1 and rows[0]["status"] == batches.UPLOADED:
+        return _redirect(request, f"/documents/{rows[0]['document_id']}?done=uploaded")
+    if len(rows) == 1 and rows[0]["status"] == batches.REJECTED:
+        status = 413 if rows[0]["too_large"] else 422
+        return error(rows[0]["reason"], status, **rows[0]["values"])
+    store.save(batch_id, user.id, rows)
+    return _redirect(request, f"/documents?batch={batch_id}")
+
+
+async def _upload_one(
+    request: Request,
+    db: Db,
+    user: CurrentUser,
+    actor: Actor,
+    store: batches.BatchStore,
+    batch_id: str,
+    index: int,
+    file: UploadFile,
+    max_bytes: int,
+    title: str,
+) -> dict[str, Any]:
+    raw_name = file.filename or ""
+    storage = get_storage(request.app.state)
+    received: upload.Received | None = None
     try:
         received = await upload.receive(_chunks(file), storage, max_bytes)
-        title = str(form.get("title") or "")
-        actor = Actor(user.id, user.username)
 
-        def save() -> upload.Uploaded:
+        def save() -> dict[str, Any]:
+            filename, _kind = upload.check(received, raw_name)
+            if api.visible_duplicates(db, user, received.sha256):
+                os.replace(received.path, store.held_path(batch_id, index))
+                return {
+                    "name": filename,
+                    "status": batches.HELD,
+                    "sha256": received.sha256,
+                    "size": received.size,
+                    "title": title,
+                }
             done = upload.create(
                 db,
                 storage,
                 received,
                 actor=actor,
-                raw_filename=file.filename or "",
+                raw_filename=raw_name,
                 title=title,
                 ip=client_ip(request),
             )
             db.commit()
-            return done
+            return {
+                "name": filename,
+                "status": batches.UPLOADED,
+                "document_id": str(done.document.id),
+                "version_id": str(done.version.id),
+            }
 
-        result = await run_in_threadpool(save)
+        row = await run_in_threadpool(save)
     except upload.UploadTooLarge as exc:
-        return error(exc.message, 413)
+        return _rejected(filenames.sanitize(raw_name), exc.message, too_large=True)
     except UnsupportedFile as exc:
-        return error(exc.message, 422)
-    finally:
-        await file.close()
+        return _rejected(filenames.sanitize(raw_name), exc.message)
+    except Exception as exc:  # one broken file never stops the others
+        if received is not None:
+            received.path.unlink(missing_ok=True)  # not yet stored: nothing else refers to it
+        await run_in_threadpool(db.rollback)
+        log.error("upload of one file failed: %s", type(exc).__name__)
+        return _rejected(filenames.sanitize(raw_name), SAVE_FAILED)
+    if row["status"] == batches.UPLOADED:
+        _announce(request, row)
+    return row
+
+
+def _announce(request: Request, row: dict[str, Any]) -> None:
     # After the commit: ingestion (if enabled) enqueues processing. If this is lost (Redis
     # down), the version stays "pending" and the worker re-enqueues it at start.
     request.app.state.events.publish(
         DOCUMENT_VERSION_UPLOADED,
-        {"document_id": str(result.document.id), "version_id": str(result.version.id)},
+        {"document_id": row["document_id"], "version_id": row["version_id"]},
     )
-    target = f"/documents/{result.document.id}?done=uploaded"
-    if request.headers.get("hx-request") == "true":
-        return Response(status_code=204, headers={"HX-Redirect": target})
-    return RedirectResponse(target, status_code=303)
+
+
+@router.post("/upload/batches/{batch_id}/{row}", include_in_schema=False)
+def decide_duplicate(
+    request: Request,
+    db: Db,
+    user: Uploader,
+    batch_id: str,
+    row: int,
+    decision: Annotated[str, Form()] = "",
+) -> Response:
+    """ "Wgraj mimo to" (keep) or "Pomiń" (skip) for a file held as a possible duplicate."""
+    if decision not in ("keep", "skip"):
+        raise HTTPException(status_code=422)
+    settings = request.app.state.settings
+    store = batches.BatchStore(settings.storage_dir)
+    uploaded: dict[str, Any] | None = None
+    with store.locked(batch_id, user.id) as found:
+        if found is None:
+            raise HTTPException(status_code=404)
+        rows, save = found
+        if not 0 <= row < len(rows):
+            raise HTTPException(status_code=404)
+        entry = rows[row]
+        if entry["status"] == batches.HELD:  # otherwise decided already (another tab): no-op
+            held = store.held_path(batch_id, row)
+            if decision == "skip" or not held.exists():
+                held.unlink(missing_ok=True)
+                entry["status"] = batches.SKIPPED
+            else:
+                received = upload.Received(path=held, size=entry["size"], sha256=entry["sha256"])
+                try:
+                    done = upload.create(
+                        db,
+                        get_storage(request.app.state),
+                        received,
+                        actor=Actor(user.id, user.username),
+                        raw_filename=entry["name"],
+                        title=entry.get("title", ""),
+                        ip=client_ip(request),
+                    )
+                    db.commit()
+                except UnsupportedFile as exc:
+                    entry.update(_rejected(entry["name"], exc.message))
+                else:
+                    entry.update(
+                        status=batches.UPLOADED,
+                        document_id=str(done.document.id),
+                        version_id=str(done.version.id),
+                    )
+                    uploaded = entry
+            save()
+    if uploaded is not None:
+        _announce(request, uploaded)
+    return RedirectResponse(f"/documents?batch={batch_id}", status_code=303)
 
 
 def _document_key(document_id: str) -> uuid.UUID:

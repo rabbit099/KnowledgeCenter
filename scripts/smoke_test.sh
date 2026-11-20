@@ -55,6 +55,10 @@ APP_DB_PASSWORD=$(secret)
 REDIS_PASSWORD=$(secret)
 DB_MEMORY_LIMIT=1g
 POSTGRES_MAX_CONNECTIONS=20
+# Small upload limits, so that the limits of the proxy and of the application can be hit.
+MAX_UPLOAD_MB=2
+UPLOAD_MAX_TOTAL_MB=3
+MAX_REQUEST_MB=4
 ENV
 
 compose() { docker compose -p "$PROJECT" -f docker-compose.yml --env-file "$ENV_FILE" "$@"; }
@@ -270,6 +274,44 @@ if compose logs --no-color worker 2>&1 | grep -qi "odbioru\|chłodniczych"; then
     echo "FAILED: recognised text appears in the worker log"; exit 1
 fi
 echo "    worker log: no recognised text"
+
+echo "==> Several files in one form without JavaScript (token as the first field), limits"
+MULTI_A="$(mktemp)"; MULTI_B="$(mktemp)"; BIG="$(mktemp)"; HUGE="$(mktemp)"; HEADERS="$(mktemp)"
+printf 'Pierwszy plik z wielu: umowa najmu.\n' > "$MULTI_A"
+printf 'Drugi plik z wielu: protokół.\n' > "$MULTI_B"
+TOKEN="$(token /documents/upload)"
+expect "two files, plain form" 303 "$(status -D "$HEADERS" -X POST "$BASE/documents/upload" \
+    -F "csrf_token=$TOKEN" -F "files=@$MULTI_A;filename=smoke-a.txt;type=text/plain" \
+    -F "files=@$MULTI_B;filename=smoke-b.txt;type=text/plain")"
+BATCH="$(sed -n 's/^[Ll]ocation: \(\/documents?batch=[0-9a-f]*\).*/\1/p' "$HEADERS" | tr -d '\r')"
+case "$(curl -sk -c "$JAR" -b "$JAR" "$BASE$BATCH")" in
+    *"Wgrano: 2"*) echo "    result table: Wgrano: 2" ;;
+    *) echo "FAILED: no result table with \"Wgrano: 2\" after a plain multi-file form"; exit 1 ;;
+esac
+expect "plain form with the token after the files" 403 "$(status -X POST "$BASE/documents/upload" \
+    -F "files=@$MULTI_A;filename=smoke-c.txt;type=text/plain" -F "csrf_token=$TOKEN")"
+head -c $((3 * 1024 * 1024 + 300 * 1024)) /dev/zero | tr '\0' 'a' > "$BIG"   # 3.3 MB: app limit 3
+page="$(curl -sk -c "$JAR" -b "$JAR" -w '%{http_code}' -X POST "$BASE/documents/upload" \
+    -H "HX-Request: true" -H "X-CSRF-Token: $TOKEN" -F "files=@$BIG;filename=big.txt")"
+case "$page" in
+    *"razem większe niż dozwolony rozmiar (3 MB)"*413) echo "    3.3 MB form: refused by the application with a message (413)" ;;
+    *) echo "FAILED: a form above UPLOAD_MAX_TOTAL_MB is not refused readably"; exit 1 ;;
+esac
+head -c $((5 * 1024 * 1024)) /dev/zero | tr '\0' 'a' > "$HUGE"   # 5 MB: proxy limit 4
+page="$(curl -sk -c "$JAR" -b "$JAR" -w '%{http_code}' -X POST "$BASE/documents/upload" \
+    -H "X-CSRF-Token: $TOKEN" -F "files=@$HUGE;filename=huge.txt")"
+case "$page" in
+    *"razem większe niż dozwolony rozmiar"*413) echo "    5 MB form with Content-Length: refused by the application with a message (413)" ;;
+    *) echo "FAILED: a 5 MB form is not refused readably: ${page: -60}"; exit 1 ;;
+esac
+# Without Content-Length (chunked): the application or, past MAX_REQUEST_MB, the proxy's own page.
+page="$(curl -sk -c "$JAR" -b "$JAR" -w '%{http_code}' -X POST "$BASE/documents/upload" \
+    -H "Transfer-Encoding: chunked" -H "X-CSRF-Token: $TOKEN" -F "files=@$HUGE;filename=huge.txt")"
+case "$page" in
+    *"razem większe niż dozwolony rozmiar"*413|*"Za duże żądanie"*413) echo "    5 MB chunked form: readable message (413)" ;;
+    *) echo "FAILED: an oversized chunked form gives no readable message: ${page: -60}"; exit 1 ;;
+esac
+rm -f "$MULTI_A" "$MULTI_B" "$BIG" "$HUGE" "$HEADERS"
 upload_and_wait "$SAMPLE_TXT" "smoke Łódź.txt" text/plain
 TXT_DOC="$LAST_DOC"
 
@@ -333,5 +375,5 @@ echo "    proxy, app, worker, db logs: no search phrase; proxy log: no file name
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR) processed to \"ready\", publish, search and download, no search phrase in logs, logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR) processed to \"ready\", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout"
 exit 0

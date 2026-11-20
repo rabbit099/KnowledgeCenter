@@ -11,6 +11,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 
 ### Zmieniono
 - Ghostscript usunięty z obrazu workera (niepotrzebny, ADR-031).
+- Wgrywanie przyjmuje kilka plików naraz („Wgraj dokumenty”, przeciąganie), działa bez JavaScriptu i pokazuje wynik każdego pliku z podsumowaniem; plik identyczny z dokumentem, który widzisz, czeka na „Wgraj mimo to” / „Pomiń” zamiast być wgrywany z ostrzeżeniem (ADR-032). Nowe ustawienia `UPLOAD_MAX_FILES` (50), `UPLOAD_MAX_TOTAL_MB` (500), `UPLOAD_BATCH_HOURS` (24); domyślne `MAX_REQUEST_MB` 51 → 501 (operatorzy: podnieś je w `.env` do `UPLOAD_MAX_TOTAL_MB` + 1, inaczej łączny limit to `MAX_REQUEST_MB` − 1). Proxy odpowiada na za duże żądanie czytelną polską stroną.
 
 ## [0.4.1] - 2026-11-20
 

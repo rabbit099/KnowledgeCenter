@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 11:37+0100\n"
+"POT-Creation-Date: 2026-11-20 14:47+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -71,6 +71,9 @@ msgstr ""
 
 #, python-format
 msgid "%(where)s: text encoding %(enc)s"
+msgstr ""
+
+msgid "A file with identical content already exists in:"
 msgstr ""
 
 msgid "A new document is a draft: only you and administrators can see it."
@@ -250,11 +253,19 @@ msgstr ""
 msgid "File"
 msgstr ""
 
-#, python-format
-msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
+msgid "File type"
 msgstr ""
 
-msgid "File type"
+#, python-format
+msgid ""
+"Files (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB each, at most %(n)s files and %(total)s MB "
+"at once)"
+msgstr ""
+
+#, python-format
+msgid ""
+"Files waiting for a decision are kept for %(hours)s hours; then they are removed without "
+"uploading."
 msgstr ""
 
 msgid "Filter"
@@ -304,6 +315,10 @@ msgid "Job queue"
 msgstr ""
 
 msgid "Language of the text"
+msgstr ""
+
+#, python-format
+msgid "Larger than %(mb)s MB, will be refused:"
 msgstr ""
 
 msgid "Last login"
@@ -370,6 +385,10 @@ msgstr ""
 msgid "Modules"
 msgstr ""
 
+#, python-format
+msgid "More files than one upload accepts (%(n)s); upload this one again."
+msgstr ""
+
 msgid "My documents"
 msgstr ""
 
@@ -413,6 +432,9 @@ msgid "No users match the filter."
 msgstr ""
 
 msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
+msgstr ""
+
+msgid "Not uploaded: identical content already exists."
 msgstr ""
 
 msgid "Notes"
@@ -512,6 +534,9 @@ msgstr ""
 msgid "Restore"
 msgstr ""
 
+msgid "Result"
+msgstr ""
+
 msgid "Result pages"
 msgstr ""
 
@@ -574,6 +599,9 @@ msgid "Show archived documents"
 msgstr ""
 
 msgid "Size"
+msgstr ""
+
+msgid "Skip"
 msgstr ""
 
 msgid "Some systems are not working."
@@ -686,6 +714,9 @@ msgstr ""
 msgid "The file could not be processed because of an internal error. Details are in the log."
 msgstr ""
 
+msgid "The file could not be saved. Try again."
+msgstr ""
+
 msgid "The file has more parts than the allowed limit."
 msgstr ""
 
@@ -705,6 +736,10 @@ msgid "The file unpacks to much more data than allowed (possible archive bomb)."
 msgstr ""
 
 msgid "The file was uploaded. Processing runs in the background."
+msgstr ""
+
+#, python-format
+msgid "The files are together larger than the allowed size (%(mb)s MB). Upload them in several parts."
 msgstr ""
 
 msgid ""
@@ -783,13 +818,17 @@ msgstr ""
 msgid "Title"
 msgstr ""
 
-msgid "Title (optional; by default the file name)"
+msgid "Title (optional, only when uploading one file; by default the file name)"
 msgstr ""
 
 msgid "To"
 msgstr ""
 
 msgid "Too many failed attempts. Try again in a few minutes."
+msgstr ""
+
+#, python-format
+msgid "Too many files in one upload: at most %(n)s. Upload them in several parts."
 msgstr ""
 
 msgid "Type"
@@ -811,16 +850,23 @@ msgstr ""
 msgid "Upload"
 msgstr ""
 
-msgid "Upload a document"
+msgid "Upload anyway"
+msgstr ""
+
+msgid "Upload documents"
 msgstr ""
 
 msgid "Upload documents and new versions (they start as drafts)"
 msgstr ""
 
+msgid "Upload result"
+msgstr ""
+
 msgid "Uploaded"
 msgstr ""
 
-msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
+#, python-format
+msgid "Uploaded: %(n)s"
 msgstr ""
 
 msgid "Uploading..."
@@ -942,6 +988,9 @@ msgstr ""
 msgid "page %(n)s"
 msgstr ""
 
+msgid "possible duplicate"
+msgstr ""
+
 msgid "processing"
 msgstr ""
 
@@ -949,6 +998,13 @@ msgid "published"
 msgstr ""
 
 msgid "ready"
+msgstr ""
+
+msgid "refused"
+msgstr ""
+
+#, python-format
+msgid "refused: %(n)s"
 msgstr ""
 
 msgid "relevance"
@@ -962,15 +1018,32 @@ msgstr ""
 msgid "since %(when)s"
 msgstr ""
 
+msgid "skipped"
+msgstr ""
+
+#, python-format
+msgid "skipped: %(n)s"
+msgstr ""
+
 msgid "system"
 msgstr ""
 
 msgid "text from OCR"
 msgstr ""
 
+msgid "uploaded"
+msgstr ""
+
 msgid "waiting"
 msgstr ""
 
+#, python-format
+msgid "waiting for your decision (possible duplicates): %(n)s"
+msgstr ""
+
 msgid "yes"
+msgstr ""
+
+msgid "…or drag files here"
 msgstr ""
 

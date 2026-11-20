@@ -79,3 +79,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .pagination [aria-current="page"] { font-weight: 700; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #1f5fae; outline-offset: 2px; }
 .badge-ocr { background: #e3ecfa; color: #1f4f8a; }
+.badge-ok { background: #d9f2e1; color: var(--ok); }
+.badge-warn { background: #fff1cc; color: #5c4400; }
+.badge-fail { background: #f9dedc; color: var(--fail); }
+.upload-batch { margin-bottom: 1.5rem; }
+.upload-batch .actions { display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.dropzone { border: 2px dashed #9aa6b8; border-radius: 0.5rem; padding: 1.25rem; text-align: center; color: #3d4757; }
+.dropzone.dragover { background: #eef3fb; border-color: #1f4f8a; }
+.upload-files { margin: 0; padding-left: 1.2rem; font-size: 0.9rem; }

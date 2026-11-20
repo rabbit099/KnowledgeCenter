@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 11:37+0100\n"
+"POT-Creation-Date: 2026-11-20 14:47+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -76,6 +76,9 @@ msgstr "%(where)s: pominięto, nieobsługiwany typ pliku"
 #, python-format
 msgid "%(where)s: text encoding %(enc)s"
 msgstr "%(where)s: kodowanie tekstu %(enc)s"
+
+msgid "A file with identical content already exists in:"
+msgstr "Plik o identycznej treści już istnieje w:"
 
 msgid "A new document is a draft: only you and administrators can see it."
 msgstr "Nowy dokument jest szkicem: widzisz go tylko ty i administratorzy."
@@ -256,12 +259,22 @@ msgstr "Wyodrębniony tekst"
 msgid "File"
 msgstr "Plik"
 
-#, python-format
-msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
-msgstr "Plik (PDF, DOCX, DOC, TXT, EML, MSG; do %(mb)s MB)"
-
 msgid "File type"
 msgstr "Typ pliku"
+
+#, python-format
+msgid ""
+"Files (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB each, at most %(n)s files and %(total)s MB "
+"at once)"
+msgstr ""
+"Pliki (PDF, DOCX, DOC, TXT, EML, MSG; każdy do %(mb)s MB, naraz najwyżej %(n)s plików i %(total)s"
+" MB)"
+
+#, python-format
+msgid ""
+"Files waiting for a decision are kept for %(hours)s hours; then they are removed without "
+"uploading."
+msgstr "Pliki czekające na decyzję są przechowywane przez %(hours)s godz.; potem są usuwane bez wgrania."
 
 msgid "Filter"
 msgstr "Filtruj"
@@ -312,6 +325,10 @@ msgstr "Kolejka zadań"
 
 msgid "Language of the text"
 msgstr "Język tekstu"
+
+#, python-format
+msgid "Larger than %(mb)s MB, will be refused:"
+msgstr "Większe niż %(mb)s MB, zostaną odrzucone:"
 
 msgid "Last login"
 msgstr "Ostatnie logowanie"
@@ -383,6 +400,10 @@ msgstr "Moduł"
 msgid "Modules"
 msgstr "Moduły"
 
+#, python-format
+msgid "More files than one upload accepts (%(n)s); upload this one again."
+msgstr "Więcej plików, niż przyjmuje jedno wgranie (%(n)s); wgraj ten plik ponownie."
+
 msgid "My documents"
 msgstr "Moje dokumenty"
 
@@ -427,6 +448,9 @@ msgstr "Żaden użytkownik nie pasuje do filtra."
 
 msgid "Not a valid group DN. Example: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
 msgstr "To nie jest poprawny DN grupy. Przykład: CN=BazaWiedzy-Readers,OU=Groups,DC=firma,DC=local"
+
+msgid "Not uploaded: identical content already exists."
+msgstr "Nie wgrano: identyczna treść już istnieje."
 
 msgid "Notes"
 msgstr "Uwagi"
@@ -531,6 +555,9 @@ msgstr "Żądanie odrzucone"
 msgid "Restore"
 msgstr "Przywróć"
 
+msgid "Result"
+msgstr "Wynik"
+
 msgid "Result pages"
 msgstr "Strony wyników"
 
@@ -597,6 +624,9 @@ msgstr "Pokaż zarchiwizowane"
 
 msgid "Size"
 msgstr "Rozmiar"
+
+msgid "Skip"
+msgstr "Pomiń"
 
 msgid "Some systems are not working."
 msgstr "Niektóre usługi nie działają."
@@ -718,6 +748,9 @@ msgstr "Plik zawiera więcej tekstu, niż pozwala limit."
 msgid "The file could not be processed because of an internal error. Details are in the log."
 msgstr "Nie udało się przetworzyć pliku z powodu błędu wewnętrznego. Szczegóły są w logu."
 
+msgid "The file could not be saved. Try again."
+msgstr "Nie udało się zapisać pliku. Spróbuj ponownie."
+
 msgid "The file has more parts than the allowed limit."
 msgstr "Plik ma więcej części, niż pozwala limit."
 
@@ -738,6 +771,10 @@ msgstr "Po rozpakowaniu plik zajmuje znacznie więcej, niż pozwala limit (możl
 
 msgid "The file was uploaded. Processing runs in the background."
 msgstr "Plik został wgrany. Przetwarzanie trwa w tle."
+
+#, python-format
+msgid "The files are together larger than the allowed size (%(mb)s MB). Upload them in several parts."
+msgstr "Pliki są razem większe niż dozwolony rozmiar (%(mb)s MB). Wgraj je w kilku częściach."
 
 msgid ""
 "The form could not be accepted because its security token is missing or has expired, for example "
@@ -828,14 +865,18 @@ msgstr ""
 msgid "Title"
 msgstr "Tytuł"
 
-msgid "Title (optional; by default the file name)"
-msgstr "Tytuł (opcjonalnie; domyślnie nazwa pliku)"
+msgid "Title (optional, only when uploading one file; by default the file name)"
+msgstr "Tytuł (opcjonalny, tylko przy wgrywaniu jednego pliku; domyślnie nazwa pliku)"
 
 msgid "To"
 msgstr "Do"
 
 msgid "Too many failed attempts. Try again in a few minutes."
 msgstr "Zbyt wiele nieudanych prób. Spróbuj ponownie za kilka minut."
+
+#, python-format
+msgid "Too many files in one upload: at most %(n)s. Upload them in several parts."
+msgstr "Za dużo plików w jednym wgraniu: najwyżej %(n)s. Wgraj je w kilku częściach."
 
 msgid "Type"
 msgstr "Typ"
@@ -856,17 +897,24 @@ msgstr "Cofnij publikację"
 msgid "Upload"
 msgstr "Wgraj"
 
-msgid "Upload a document"
-msgstr "Wgraj dokument"
+msgid "Upload anyway"
+msgstr "Wgraj mimo to"
+
+msgid "Upload documents"
+msgstr "Wgraj dokumenty"
 
 msgid "Upload documents and new versions (they start as drafts)"
 msgstr "Wgrywanie dokumentów i nowych wersji (zaczynają jako szkice)"
 
+msgid "Upload result"
+msgstr "Wynik wgrywania"
+
 msgid "Uploaded"
 msgstr "Wgrano"
 
-msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
-msgstr "Wgrywanie wymaga JavaScriptu. Włącz JavaScript w przeglądarce i odśwież stronę."
+#, python-format
+msgid "Uploaded: %(n)s"
+msgstr "Wgrano: %(n)s"
 
 msgid "Uploading..."
 msgstr "Wgrywanie…"
@@ -989,6 +1037,9 @@ msgstr "jeszcze nie (czeka na pierwsze logowanie)"
 msgid "page %(n)s"
 msgstr "strona %(n)s"
 
+msgid "possible duplicate"
+msgstr "możliwy duplikat"
+
 msgid "processing"
 msgstr "przetwarzanie"
 
@@ -997,6 +1048,13 @@ msgstr "opublikowany"
 
 msgid "ready"
 msgstr "gotowe"
+
+msgid "refused"
+msgstr "odrzucono"
+
+#, python-format
+msgid "refused: %(n)s"
+msgstr "odrzucono: %(n)s"
 
 msgid "relevance"
 msgstr "trafności"
@@ -1009,17 +1067,34 @@ msgstr "wymaga: %(codes)s"
 msgid "since %(when)s"
 msgstr "od %(when)s"
 
+msgid "skipped"
+msgstr "pominięto"
+
+#, python-format
+msgid "skipped: %(n)s"
+msgstr "pominięto: %(n)s"
+
 msgid "system"
 msgstr "systemowa"
 
 msgid "text from OCR"
 msgstr "tekst z OCR"
 
+msgid "uploaded"
+msgstr "wgrano"
+
 msgid "waiting"
 msgstr "oczekuje"
 
+#, python-format
+msgid "waiting for your decision (possible duplicates): %(n)s"
+msgstr "czeka na Twoją decyzję (możliwe duplikaty): %(n)s"
+
 msgid "yes"
 msgstr "tak"
+
+msgid "…or drag files here"
+msgstr "…albo przeciągnij pliki tutaj"
 
 #~ msgid ""
 #~ "Processing has not finished with all text read: "
@@ -1037,4 +1112,16 @@ msgstr "tak"
 
 #~ msgid "The company knowledge base is being prepared. Document search will be available here soon."
 #~ msgstr "Firmowa baza wiedzy jest w przygotowaniu. Wkrótce będzie tu dostępne wyszukiwanie dokumentów."
+
+#~ msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
+#~ msgstr "Plik (PDF, DOCX, DOC, TXT, EML, MSG; do %(mb)s MB)"
+
+#~ msgid "Title (optional; by default the file name)"
+#~ msgstr "Tytuł (opcjonalnie; domyślnie nazwa pliku)"
+
+#~ msgid "Upload a document"
+#~ msgstr "Wgraj dokument"
+
+#~ msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
+#~ msgstr "Wgrywanie wymaga JavaScriptu. Włącz JavaScript w przeglądarce i odśwież stronę."
 

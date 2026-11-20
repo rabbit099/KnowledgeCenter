@@ -20,9 +20,13 @@ Załączniki EML/MSG, które same są obsługiwanymi plikami, są wyciągane rek
 
 ## Walidacja uploadu (w `app`)
 
-Strona „Moje dokumenty” → „Wgraj dokument” (`/documents/upload`, uprawnienie `documents.upload`). Wgrywanie wymaga JavaScriptu: HTMX wysyła token CSRF w nagłówku `X-CSRF-Token` (middleware CSRF nie czyta ciał multipart); bez JavaScriptu strona pokazuje komunikat w `<noscript>`.
+Strona „Moje dokumenty” → „Wgraj dokumenty” (`/documents/upload`, uprawnienie `documents.upload`). Jeden formularz przyjmuje kilka plików (ADR-032); każdy plik przechodzi poniższe kroki **osobno** (własna transakcja, wpis audytu i zdarzenie), więc odrzucony albo wadliwy plik nigdy nie zatrzymuje pozostałych. Formularz to zwykły POST multipart i działa bez JavaScriptu: token CSRF jest jego **pierwszym** polem, które middleware CSRF czyta z początku ciała (pliki płyną dalej nietknięte); HTMX wysyła go także w nagłówku `X-CSRF-Token`. Mały skrypt (`static/js/upload.js`) dodaje przeciąganie i sprawdza limity przed wysłaniem.
 
-1. Rozmiar: żądanie jest odrzucane wcześnie, gdy `Content-Length` przekracza `MAX_UPLOAD_MB` (domyślnie 50), a kopiowanie przerywa się, gdy tylko faktyczny rozmiar go przekroczy (HTTP 413, „Plik jest większy niż dozwolony rozmiar.”). Proxy odrzuca ciała większe niż `MAX_REQUEST_MB` (domyślnie 51: plik plus narzut multipart); trzymaj go o jeden MB powyżej `MAX_UPLOAD_MB`.
+Limity jednego formularza: najwyżej `UPLOAD_MAX_FILES` plików (domyślnie 50; kolejne są odrzucane pojedynczo, ponad 50 powyżej limitu odrzuca cały formularz) i razem `UPLOAD_MAX_TOTAL_MB` (domyślnie 500, najwyżej `MAX_REQUEST_MB` − 1; większy `Content-Length` odrzuca formularz komunikatem „Pliki są razem większe niż dozwolony rozmiar (… MB). Wgraj je w kilku częściach.”). Proxy ucina ciała większe niż `MAX_REQUEST_MB` (domyślnie 501) i odpowiada polską stroną zamiast pustego błędu. Starlette buforuje pliki w katalogu tymczasowym kontenera app: zapewnij tam `UPLOAD_MAX_TOTAL_MB` wolnego miejsca.
+
+Wyniki: jeden plik wgrany → strona dokumentu, jak dotąd; jeden plik odrzucony → formularz z komunikatem, jak dotąd; w pozostałych przypadkach przeglądarka przechodzi do „Moje dokumenty” z tabelą „Wynik wgrywania” (dla każdego pliku: wgrano, możliwy duplikat, pominięto, odrzucono z powodem) i podsumowaniem. Tabela to mały plik JSON `/data/storage/.batches/<losowy id>.json`, czytelny tylko dla wgrywającego, trzymany `UPLOAD_BATCH_HOURS` (domyślnie 24) i usuwany przy późniejszym wgraniu.
+
+1. Rozmiar: żądanie jest odrzucane wcześnie, gdy `Content-Length` przekracza `MAX_UPLOAD_MB` (domyślnie 50), a kopiowanie przerywa się, gdy tylko faktyczny rozmiar go przekroczy (HTTP 413, „Plik jest większy niż dozwolony rozmiar.”; przy kilku plikach: ten plik jest odrzucany, pozostałe idą dalej).
 2. Ciało parsuje Starlette (najwyżej 1 MB w pamięci, reszta w tymczasowym pliku buforowym, nigdy cały plik w pamięci); plik jest kopiowany porcjami po 1 MB do `/data/storage/.incoming/`, a w trakcie liczone są SHA-256 i rozmiar.
 3. Typ **po zawartości**, nigdy po rozszerzeniu ani `Content-Type` (ADR-021): rozszerzenie musi być na liście dozwolonych (pdf, docx, doc, txt, eml, msg) **i** zgadzać się z wykrytym typem:
 
@@ -43,7 +47,7 @@ Strona „Moje dokumenty” → „Wgraj dokument” (`/documents/upload`, upraw
    - dla EML i MSG bez wpisanego tytułu przetwarzanie zastępuje go tematem wiadomości (z tym samym czyszczeniem); do tego czasu, albo gdy temat jest pusty, zostaje nazwa pliku.
 
    Wielkość liter nigdy nie jest zmieniana: tytuł ma wielkość liter tego, co wpisano, nazwy pliku albo tematu. Pochodzenie tytułu jest zapisane w `doc_documents.title_source` (`user`, `filename`, `subject`), więc wpisany tytuł nigdy nie zostaje zastąpiony.
-6. Duplikaty: strona dokumentu pokazuje „Możliwy duplikat” z odnośnikami, gdy inny dokument **widoczny dla wgrywającego** ma wersję o tym samym SHA-256. Cudze szkice nigdy nie są porównywane, więc ostrzeżenie niczego nie zdradza. Wgranie nie jest blokowane; usuwanie duplikatu dojdzie z cyklem życia (Faza 5).
+6. Duplikaty: gdy inny dokument **widoczny dla wgrywającego** ma wersję o tym samym SHA-256, plik nie jest jeszcze zapisywany, tylko **wstrzymany** (`/data/storage/.batches/<id>/<n>.part`, ten sam wolumen) jako „możliwy duplikat” z odnośnikami do tych dokumentów; wgrywający wybiera „Wgraj mimo to” (wstrzymany plik jest zapisywany i wykonują się kroki 4, 5, 7; strona dokumentu pokazuje potem „Możliwy duplikat” jak dotąd) albo „Pomiń” (wstrzymany plik jest usuwany). Każda decyzja to POST na `/documents/upload/batches/<id>/<n>` (CSRF, uprawnienie `documents.upload`, tylko własna partia wgrywającego; druga decyzja niczego nie zmienia). Cudze szkice nigdy nie są porównywane, więc wstrzymanie niczego nie zdradza.
 7. Audyt `document.upload` z identyfikatorem dokumentu, `version_id`, `sha256`, `size_bytes` i `kind` (bez nazwy pliku i treści). Po zatwierdzeniu publikowane jest zdarzenie `document.version.uploaded`, a moduł `ingestion` kolejkuje przetwarzanie.
 8. Skanowanie antywirusowe: krok pipeline przetwarzania, domyślnie wyłączony ([Hook skanowania antywirusowego](#hook-skanowania-antywirusowego)); ClamAV nie jest podłączany w Fazie 2.
 
@@ -149,7 +153,7 @@ Znane ograniczenia do przekazania użytkownikom: jakość zależy od skanu; pism
 
 | Limit | Domyślnie | Ustawienie |
 |---|---|---|
-| Maksymalny rozmiar uploadu | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
+| Maksymalny rozmiar pliku; pliki i łączny rozmiar jednego formularza | 50 MB; 50 plików, 500 MB (proxy: `MAX_REQUEST_MB` 501) | `MAX_UPLOAD_MB`; `UPLOAD_MAX_FILES`, `UPLOAD_MAX_TOTAL_MB` |
 | Maksymalna głębokość załączników maila (EML, MSG, załączone wiadomości) | 3 | `INGEST_MAX_DEPTH` |
 | Maksymalna liczba części (kawałków) na wersję | 2000 | `INGEST_MAX_PARTS` |
 | Maksymalna ilość wyciągniętego tekstu na wersję | 50 MB (znaków) | `INGEST_MAX_TEXT_MB` |

@@ -78,7 +78,7 @@ baza-wiedzy/
 │   │   ├── admin/         # admin panel skeleton
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
-│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, services/api.py, storage
+│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, batches.py (multi-upload results), services/api.py, storage
 │       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
 │       └── search/        # module.py, models.py, backend.py (SearchBackend), postgres.py (queries, ranking), identifiers.py, indexer.py, snippets.py, routes, services/api.py
 ├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py; search_corpus.py: golden corpus + make probki)
