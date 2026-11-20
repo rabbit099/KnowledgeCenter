@@ -3,7 +3,7 @@
 One part per page (origin "strona N"). A page with fewer than OCR_MIN_CHARS non-space
 characters that contains an image is a scan. Scans are recognised by OCR (ocr.py, Phase 4,
 ADR-031) and stored with `ocr_applied`; a page from which OCR gets fewer than OCR_MIN_CHARS
-characters is noted as unreadable. When OCR is off, the PDF has more scanned pages than
+characters is noted: "no text" at 0 characters, otherwise "very little text (N characters)". When OCR is off, the PDF has more scanned pages than
 OCR_MAX_PAGES, or OCR fails (time limit, crash), the scans stay parts marked `needs_ocr` (with
 whatever little text they have) and the version ends as "wymaga OCR"; the text pages are
 searchable either way, and the document never fails because of OCR. Works the same for a PDF
@@ -108,13 +108,19 @@ def extract(path: Path, ctx: Context) -> None:
         kept.append((number, text, needs_ocr))
     recognised = _recognise(path, [n for n, _, scan in kept if scan], ctx)
     unreadable: list[int] = []
+    little: list[dict[str, int]] = []
     for number, text, needs_ocr in kept:
         if needs_ocr and number in recognised:
             ocr_text = recognised[number]
-            if _letters(ocr_text) < ctx.limits.ocr_min_chars:
+            found = _letters(ocr_text)
+            if found == 0:
                 unreadable.append(number)
+            elif found < ctx.limits.ocr_min_chars:
+                little.append({"page": number, "chars": found})
             ctx.add_text(ocr_text, page_no=number, ocr_applied=True)
         else:
             ctx.add_text(text, page_no=number, needs_ocr=needs_ocr)
     if unreadable:
         ctx.note("ocr_unreadable", pages=unreadable)
+    if little:
+        ctx.note("ocr_little_text", pages=little)

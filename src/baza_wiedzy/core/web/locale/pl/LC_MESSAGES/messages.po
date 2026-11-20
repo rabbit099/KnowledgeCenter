@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 14:47+0100\n"
+"POT-Creation-Date: 2026-11-20 15:09+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -15,6 +15,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid " (handwriting, a picture or a very poor scan)"
+msgstr " (pismo odręczne, obraz albo bardzo słaby skan)"
 
 #, python-format
 msgid "%(n)s characters"
@@ -28,9 +31,16 @@ msgstr[1] "%(num)d części"
 msgstr[2] "%(num)d części"
 
 #, python-format
-msgid "%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet"
-msgstr ""
-"%(where)s: %(n)s zeskanowanych stron, więcej niż obsługuje OCR (%(limit)s); nie da się ich "
+msgid "%(where)s: %(num)d scanned page, more than OCR handles (%(limit)s); not searchable yet"
+msgid_plural "%(where)s: %(num)d scanned pages, more than OCR handles (%(limit)s); not searchable yet"
+msgstr[0] ""
+"%(where)s: %(num)d zeskanowana strona, więcej niż obsługuje OCR (%(limit)s); nie da się jej "
+"jeszcze wyszukać"
+msgstr[1] ""
+"%(where)s: %(num)d zeskanowane strony, więcej niż obsługuje OCR (%(limit)s); nie da się ich "
+"jeszcze wyszukać"
+msgstr[2] ""
+"%(where)s: %(num)d zeskanowanych stron, więcej niż obsługuje OCR (%(limit)s); nie da się ich "
 "jeszcze wyszukać"
 
 #, python-format
@@ -38,12 +48,21 @@ msgid "%(where)s: OCR failed; the scanned pages are not searchable yet"
 msgstr "%(where)s: OCR się nie powiódł; zeskanowanych stron nie da się jeszcze wyszukać"
 
 #, python-format
-msgid ""
-"%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor"
-" scan)"
-msgstr ""
-"%(where)s: OCR nie znalazł (prawie) żadnego tekstu na stronach %(pages)s (pismo odręczne, obraz "
-"albo bardzo słaby skan)"
+msgid "%(where)s: OCR found no text on page %(pages)s (handwriting, a picture or a very poor scan)"
+msgid_plural "%(where)s: OCR found no text on pages %(pages)s (handwriting, a picture or a very poor scan)"
+msgstr[0] ""
+"%(where)s: OCR nie znalazł żadnego tekstu na stronie %(pages)s (pismo odręczne, obraz albo bardzo"
+" słaby skan)"
+msgstr[1] ""
+"%(where)s: OCR nie znalazł żadnego tekstu na stronach %(pages)s (pismo odręczne, obraz albo "
+"bardzo słaby skan)"
+msgstr[2] ""
+"%(where)s: OCR nie znalazł żadnego tekstu na stronach %(pages)s (pismo odręczne, obraz albo "
+"bardzo słaby skan)"
+
+#, python-format
+msgid "%(where)s: OCR found very little text:"
+msgstr "%(where)s: OCR znalazł bardzo mało tekstu:"
 
 #, python-format
 msgid "%(where)s: OCR took longer than the time limit; the scanned pages are not searchable yet"
@@ -1037,6 +1056,13 @@ msgstr "jeszcze nie (czeka na pierwsze logowanie)"
 msgid "page %(n)s"
 msgstr "strona %(n)s"
 
+#, python-format
+msgid "page %(page)s (%(num)d character)"
+msgid_plural "page %(page)s (%(num)d characters)"
+msgstr[0] "strona %(page)s (%(num)d znak)"
+msgstr[1] "strona %(page)s (%(num)d znaki)"
+msgstr[2] "strona %(page)s (%(num)d znaków)"
+
 msgid "possible duplicate"
 msgstr "możliwy duplikat"
 
@@ -1124,4 +1150,18 @@ msgstr "…albo przeciągnij pliki tutaj"
 
 #~ msgid "Uploading needs JavaScript. Enable JavaScript in the browser and reload the page."
 #~ msgstr "Wgrywanie wymaga JavaScriptu. Włącz JavaScript w przeglądarce i odśwież stronę."
+
+#~ msgid "%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet"
+#~ msgstr ""
+#~ "%(where)s: %(n)s zeskanowanych stron, więcej niż obsługuje"
+#~ " OCR (%(limit)s); nie da się ich jeszcze wyszukać"
+
+#~ msgid ""
+#~ "%(where)s: OCR found (almost) no text on page(s) "
+#~ "%(pages)s (handwriting, a picture or a very poor "
+#~ "scan)"
+#~ msgstr ""
+#~ "%(where)s: OCR nie znalazł (prawie) żadnego tekstu "
+#~ "na stronach %(pages)s (pismo odręczne, obraz albo "
+#~ "bardzo słaby skan)"
 

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 14:47+0100\n"
+"POT-Creation-Date: 2026-11-20 15:09+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,9 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
+
+msgid " (handwriting, a picture or a very poor scan)"
+msgstr ""
 
 #, python-format
 msgid "%(n)s characters"
@@ -28,17 +31,23 @@ msgstr[0] ""
 msgstr[1] ""
 
 #, python-format
-msgid "%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet"
-msgstr ""
+msgid "%(where)s: %(num)d scanned page, more than OCR handles (%(limit)s); not searchable yet"
+msgid_plural "%(where)s: %(num)d scanned pages, more than OCR handles (%(limit)s); not searchable yet"
+msgstr[0] ""
+msgstr[1] ""
 
 #, python-format
 msgid "%(where)s: OCR failed; the scanned pages are not searchable yet"
 msgstr ""
 
 #, python-format
-msgid ""
-"%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor"
-" scan)"
+msgid "%(where)s: OCR found no text on page %(pages)s (handwriting, a picture or a very poor scan)"
+msgid_plural "%(where)s: OCR found no text on pages %(pages)s (handwriting, a picture or a very poor scan)"
+msgstr[0] ""
+msgstr[1] ""
+
+#, python-format
+msgid "%(where)s: OCR found very little text:"
 msgstr ""
 
 #, python-format
@@ -987,6 +996,12 @@ msgstr ""
 #, python-format
 msgid "page %(n)s"
 msgstr ""
+
+#, python-format
+msgid "page %(page)s (%(num)d character)"
+msgid_plural "page %(page)s (%(num)d characters)"
+msgstr[0] ""
+msgstr[1] ""
 
 msgid "possible duplicate"
 msgstr ""

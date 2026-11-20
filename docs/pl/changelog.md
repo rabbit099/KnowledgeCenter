@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Dodano
+- Adnotacje OCR odróżniają „brak tekstu” (0 znaków) od „bardzo mało tekstu (N znaków)” i używają polskich form liczby mnogiej.
 - OCR zeskanowanych stron PDF (polski + angielski), także w załącznikach maili; etykieta „tekst z OCR” i ostrzeżenie o numerach na stronie dokumentu; ustawienia `OCR_*`; migracja `ingestion_0002` (`ing_parts.ocr_applied`).
 
 ### Zmieniono

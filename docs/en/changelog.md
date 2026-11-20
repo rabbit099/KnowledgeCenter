@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- OCR notes distinguish "no text" (0 characters) from "very little text (N znaków)" and use the Polish plural forms.
 - OCR of scanned PDF pages (Polish + English), also in e-mail attachments; label "tekst z OCR" and a warning about numbers on the document page; `OCR_*` settings; migration `ingestion_0002` (`ing_parts.ocr_applied`).
 
 ### Changed

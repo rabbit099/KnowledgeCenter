@@ -27,8 +27,9 @@
 {%- elif note.code == "skipped" -%}{{ _("%(where)s: skipped, unsupported file type", where=where) }}
 {%- elif note.code == "ocr_failed" and note.reason == "timeout" -%}{{ _("%(where)s: OCR took longer than the time limit; the scanned pages are not searchable yet", where=where) }}
 {%- elif note.code == "ocr_failed" -%}{{ _("%(where)s: OCR failed; the scanned pages are not searchable yet", where=where) }}
-{%- elif note.code == "ocr_too_many_pages" -%}{{ _("%(where)s: %(n)s scanned pages, more than OCR handles (%(limit)s); they are not searchable yet", where=where, n=note.pages, limit=note.limit) }}
-{%- elif note.code == "ocr_unreadable" -%}{{ _("%(where)s: OCR found (almost) no text on page(s) %(pages)s (handwriting, a picture or a very poor scan)", where=where, pages=note.pages|join(", ")) }}
+{%- elif note.code == "ocr_too_many_pages" -%}{{ ngettext("%(where)s: %(num)d scanned page, more than OCR handles (%(limit)s); not searchable yet", "%(where)s: %(num)d scanned pages, more than OCR handles (%(limit)s); not searchable yet", note.pages, where=where, limit=note.limit) }}
+{%- elif note.code == "ocr_unreadable" -%}{{ ngettext("%(where)s: OCR found no text on page %(pages)s (handwriting, a picture or a very poor scan)", "%(where)s: OCR found no text on pages %(pages)s (handwriting, a picture or a very poor scan)", note.pages|length, where=where, pages=note.pages|join(", ")) }}
+{%- elif note.code == "ocr_little_text" -%}{{ _("%(where)s: OCR found very little text:", where=where) }} {% for item in note.pages %}{{ ngettext("page %(page)s (%(num)d character)", "page %(page)s (%(num)d characters)", item.chars, page=item.page) }}{% if not loop.last %}, {% endif %}{% endfor %}{{ _(" (handwriting, a picture or a very poor scan)") }}
 {%- elif note.code == "failed" -%}{{ _("%(where)s: skipped, the file is damaged or unreadable", where=where) }}
 {%- else -%}{{ where }}: {{ note.code }}{%- endif -%}
 {%- endmacro %}
