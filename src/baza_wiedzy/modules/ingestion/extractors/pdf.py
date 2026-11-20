@@ -3,8 +3,8 @@
 One part per page (origin "strona N"). A page with fewer than OCR_MIN_CHARS non-space
 characters that contains an image is a scan. Scans are recognised by OCR (ocr.py, Phase 4,
 ADR-031) and stored with `ocr_applied`; a page from which OCR gets fewer than OCR_MIN_CHARS
-characters is noted: "no text" at 0 characters, otherwise "very little text (N characters)". When OCR is off, the PDF has more scanned pages than
-OCR_MAX_PAGES, or OCR fails (time limit, crash), the scans stay parts marked `needs_ocr` (with
+characters is noted: "no text" at 0 characters, otherwise "very little text (N characters)".
+When OCR is off, the PDF has more scanned pages than OCR_MAX_PAGES, or OCR fails (time limit, crash), the scans stay parts marked `needs_ocr` (with
 whatever little text they have) and the version ends as "wymaga OCR"; the text pages are
 searchable either way, and the document never fails because of OCR. Works the same for a PDF
 attached to an e-mail. A page with no text and no image (blank) is skipped.
