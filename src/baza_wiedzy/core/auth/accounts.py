@@ -114,3 +114,38 @@ def ensure_local_admin(
         details={"username": user.username, "revoked_sessions": revoked},
     )
     return BreakGlassResult(user=user, created=created, revoked_sessions=revoked)
+
+
+def reset_local_password(
+    db: Session, username: str, normalized_password: str, passwords: Passwords
+) -> tuple[User, int]:
+    """Set a new password for a LOCAL account (operator, CLI); returns (user, revoked sessions).
+
+    The caller has checked the password policy. Active Directory accounts are refused: their
+    password lives in AD. The account's state and roles are not changed (unlike the break-glass
+    `create-admin`). All sessions of the account are revoked; the audit entry
+    `user.password_reset_cli` never contains the password or its hash. There is deliberately no
+    reset by e-mail: company accounts are in AD, local accounts are few (ADR-029).
+    """
+    user = find_user(db, username)
+    if user is None:
+        raise AccountError(f"No user {username!r}.")
+    if user.source != SOURCE_LOCAL:
+        raise AccountError(
+            f"{user.username!r} is an Active Directory account: its password is managed in "
+            "Active Directory, not here. Nothing was changed."
+        )
+    now = datetime.now(UTC)
+    user.password_hash = passwords.hash(normalized_password)
+    user.password_changed_at = now
+    user.updated_at = now
+    revoked = revoke_sessions(db, user)
+    record(
+        db,
+        "user.password_reset_cli",
+        CLI_ACTOR,
+        entity_type="user",
+        entity_id=user.id,
+        details={"username": user.username, "revoked_sessions": revoked},
+    )
+    return user, revoked

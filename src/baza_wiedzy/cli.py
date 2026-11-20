@@ -107,6 +107,91 @@ def _create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _users_list(_: argparse.Namespace) -> int:
+    """Login, source, active, roles, last login: nothing secret (no hashes, e-mails or DNs)."""
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import func, select
+
+    from baza_wiedzy.core.admin.users import roles_of
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.models import User
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    warsaw = ZoneInfo("Europe/Warsaw")
+    engine = make_engine(Settings())
+    try:
+        with make_session_factory(engine)() as db:
+            users = list(db.scalars(select(User).order_by(func.lower(User.username))))
+            roles = roles_of(db, [u.id for u in users])
+    finally:
+        engine.dispose()
+    rows = [("LOGIN", "SOURCE", "ACTIVE", "ROLES", "LAST LOGIN (Europe/Warsaw)")]
+    for user in users:
+        names = ", ".join(role.name for role, _ in roles.get(user.id, [])) or "-"
+        last = (
+            user.last_login_at.astimezone(warsaw).strftime("%Y-%m-%d %H:%M")
+            if user.last_login_at
+            else "never"
+        )
+        rows.append((user.username, user.source, "yes" if user.is_active else "no", names, last))
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    for row in rows:
+        print("  ".join(value.ljust(widths[i]) for i, value in enumerate(row[:4])) + "  " + row[4])
+    print(f"{len(users)} user(s).")
+    return 0
+
+
+def _users_set_password(args: argparse.Namespace) -> int:
+    import redis
+
+    from baza_wiedzy.core.auth.accounts import AccountError, find_user, reset_local_password
+    from baza_wiedzy.core.auth.passwords import PasswordPolicyError, Passwords, check_policy
+    from baza_wiedzy.core.auth.ratelimit import Limits, LoginLimiter
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.models import SOURCE_LOCAL
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    settings = Settings()
+    engine = make_engine(settings)
+    try:
+        # Refuse an unknown or AD account before asking for a password.
+        with make_session_factory(engine)() as db:
+            user = find_user(db, args.username)
+            if user is None:
+                raise AccountError(f"No user {args.username!r}.")
+            if user.source != SOURCE_LOCAL:
+                raise AccountError(
+                    f"{user.username!r} is an Active Directory account: its password is "
+                    "managed in Active Directory, not here. Nothing was changed."
+                )
+        try:
+            password = check_policy(
+                _read_new_password(args.password_stdin),
+                min_length=settings.local_password_min_length,
+                max_length=settings.local_password_max_length,
+            )
+        except PasswordPolicyError as exc:
+            raise _CliError(f"{exc} Nothing was changed.") from exc
+        passwords = Passwords(
+            max_concurrent=settings.argon2_max_concurrent,
+            max_length=settings.local_password_max_length,
+        )
+        with make_session_factory(engine).begin() as db:
+            user, revoked = reset_local_password(db, args.username, password, passwords)
+    finally:
+        engine.dispose()
+    try:
+        client = redis.Redis.from_url(settings.redis_url, socket_timeout=3)
+        removed = LoginLimiter(client, Limits(0, 0, 0, 0, 0)).unlock(username=user.username)
+        client.close()
+        locks = f"login locks cleared ({removed} key(s))"
+    except redis.RedisError:
+        locks = "login locks NOT cleared (Redis unreachable; run `baza-wiedzy unlock-login`)"
+    print(f"Password changed for {user.username!r}; {revoked} session(s) revoked; {locks}.")
+    return 0
+
+
 def _unlock_login(args: argparse.Namespace) -> int:
     import redis
 
@@ -454,6 +539,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--password", action="store_true", help="also test the user's password (asked)"
     )
     ad_check.set_defaults(handler=_ad_check)
+
+    users_cmd = commands.add_parser("users", help="list users; set the password of a local account")
+    users_actions = users_cmd.add_subparsers(dest="users_command", metavar="ACTION", required=True)
+    users_list = users_actions.add_parser(
+        "list", help="login, source (local/ad), active, roles, last login"
+    )
+    users_list.set_defaults(handler=_users_list)
+    set_password = users_actions.add_parser(
+        "set-password",
+        help="new password for a LOCAL account (asked twice; never an argument); revokes sessions",
+    )
+    set_password.add_argument("username")
+    set_password.add_argument(
+        "--password-stdin", action="store_true", help="read the password from one line of stdin"
+    )
+    set_password.set_defaults(handler=_users_set_password)
 
     user_active = commands.add_parser(
         "user-active", help="activate or deactivate a user (the last active admin is protected)"
