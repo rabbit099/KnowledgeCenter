@@ -1,6 +1,6 @@
 # Module: ingestion
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-18
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 ## Scope
 

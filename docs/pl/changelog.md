@@ -1,10 +1,12 @@
 # Dziennik zmian
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
+> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-20
 
 ### Added
 - Publikowanie (Faza 3, etap A; przeniesione z Fazy 5, ADR-025): przyciski „Publikuj”, „Cofnij publikację”, „Archiwizuj” i „Przywróć” na stronie dokumentu (zwykłe formularze, bez JavaScriptu). Własne dokumenty wymagają `documents.publish`; cudze `documents.publish_any` (publikacja, cofnięcie) albo `documents.edit_any` (archiwizacja, przywrócenie). Przywrócenie prowadzi do szkicu. Publikacja jest dozwolona przy każdym statusie przetwarzania; strona ostrzega, gdy treści nie można wyszukać albo tylko częściowo. Strona wyświetlona, zanim ktoś inny zmienił stan, nie wykona akcji (409). Audyt `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (tylko identyfikatory i stany). Migracja `documents_0004` (`published_at`, `published_by`, `archived_at`, warunek, że opublikowany dokument wskazuje swoją wersję). „Moje dokumenty” mają kolumnę stanu.

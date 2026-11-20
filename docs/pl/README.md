@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-18
+> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 

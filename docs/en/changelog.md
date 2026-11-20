@@ -1,10 +1,12 @@
 # Changelog
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-18
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-20
 
 ### Added
 - Publishing (Phase 3, stage A; moved from Phase 5, ADR-025): buttons "Publikuj", "Cofnij publikację", "Archiwizuj" and "Przywróć" on the document page (plain forms, no JavaScript needed). Own documents need `documents.publish`; other people's need `documents.publish_any` (publish, unpublish) or `documents.edit_any` (archive, restore). Restoring leads to a draft. Publication is allowed in every processing status; the page warns when the content cannot be found by search, or only partly. A page shown before someone else changed the status cannot apply an action (409). Audited as `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (identifiers and statuses only). Migration `documents_0004` (`published_at`, `published_by`, `archived_at`, check that a published document names its version). "Moje dokumenty" has a status column.
