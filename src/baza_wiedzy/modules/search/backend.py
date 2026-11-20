@@ -61,7 +61,7 @@ class SearchHit:
     status: str
     kind: str
     filename: str
-    owner_name: str
+    owner_name: str | None  # None unless the user may see authors (ADR-030)
     doc_date: datetime
     score: float
     snippet: Markup | None = None

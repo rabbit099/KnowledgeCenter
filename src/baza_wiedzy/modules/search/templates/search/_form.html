@@ -22,12 +22,14 @@
           {% for code in languages %}<option value="{{ code }}"{% if filters.lang == code %} selected{% endif %}>{{ lang_labels[code] }}</option>{% endfor %}
         </select>
       </label>
+      {% if show_authors %}
       <label>{{ _("Author") }}
         <select name="author">
           <option value="">{{ _("anyone") }}</option>
           {% for owner_id, name in owners %}<option value="{{ owner_id }}"{% if filters.author == owner_id|string %} selected{% endif %}>{{ name }}</option>{% endfor %}
         </select>
       </label>
+      {% endif %}
       <label>{{ _("Date from") }} <input type="date" name="from" value="{{ filters['from'] }}"></label>
       <label>{{ _("Date to") }} <input type="date" name="to" value="{{ filters.to }}"></label>
       <label>{{ _("Sort by") }}

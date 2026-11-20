@@ -13,6 +13,14 @@
     </select>
   </label>
   {% endif %}
+  {% if show_authors %}
+  <label>{{ _("Author") }}
+    <select name="author">
+      <option value="">{{ _("anyone") }}</option>
+      {% for owner_id, name in owners %}<option value="{{ owner_id }}"{% if filters.author == owner_id|string %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
   <button type="submit">{{ _("Filter") }}</button>
 </form>
 <div id="documents-table">{% include "documents/_table.html" %}</div>

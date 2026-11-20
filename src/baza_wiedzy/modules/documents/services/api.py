@@ -12,9 +12,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, null, or_, select
 from sqlalchemy.orm import Session
 
+from baza_wiedzy.core.db.models import User
 from baza_wiedzy.core.permissions.service import CurrentUser
 from baza_wiedzy.core.web.pagination import Page
 from baza_wiedzy.modules.documents.filenames import sanitize as sanitize_filename
@@ -58,6 +59,7 @@ from baza_wiedzy.modules.documents.storage import LocalStorage
 from baza_wiedzy.modules.documents.visibility import visibility_clause
 
 __all__ = [
+    "AUTHOR_PERMISSIONS",
     "DONE",
     "FAILED",
     "KIND_GROUPS",
@@ -77,6 +79,7 @@ __all__ = [
     "Version",
     "apply_subject_title",
     "can_reprocess",
+    "can_see_authors",
     "claim",
     "detect_kind",
     "email_metadata_of",
@@ -115,16 +118,41 @@ def versions_of(db: Session, document: Document) -> list[Version]:
     )
 
 
+AUTHOR_PERMISSIONS = ("documents.read_drafts", "documents.publish_any", "documents.edit_any")
+
+
+def can_see_authors(user: CurrentUser) -> bool:
+    """Who sees the author of other people's documents (list column, search results, author
+    filter): the roles that work with other people's documents. publish_any and edit_any
+    require read_drafts (ADR-025), so in practice: holders of documents.read_drafts, and Admin.
+    Everyone else never gets author names, and an author parameter is ignored (ADR-030)."""
+    return any(user.can(code) for code in AUTHOR_PERMISSIONS)
+
+
 def list_documents(
-    db: Session, user: CurrentUser, *, q: str = "", scope: str = "own", page: int = 1
+    db: Session,
+    user: CurrentUser,
+    *,
+    q: str = "",
+    scope: str = "own",
+    page: int = 1,
+    owner_id: uuid.UUID | None = None,
 ) -> Page[Any]:
-    """Rows of (Document, latest Version). scope: own (default) or all (every visible one)."""
+    """Rows of (Document, latest Version, author name or None). scope: own (default) or all
+    (every visible one). Author names and the owner filter only for can_see_authors(user)."""
+    show_authors = can_see_authors(user)
+    author = func.coalesce(User.display_name, User.username) if show_authors else null()
     query = (
-        select(Document, Version)
+        select(Document, Version, author.label("author"))
         .join(Version, Version.id == Document.latest_version_id)
         .where(visibility_clause(user))
         .order_by(Document.created_at.desc(), Document.id)
     )
+    if show_authors:
+        query = query.join(User, User.id == Document.owner_id)
+        if owner_id is not None:
+            query = query.where(Document.owner_id == owner_id)
+            scope = "all"
     if scope != "all":
         query = query.where(Document.owner_id == user.id)
     if q:

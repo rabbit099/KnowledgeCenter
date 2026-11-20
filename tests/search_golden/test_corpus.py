@@ -15,6 +15,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import pytest
@@ -44,6 +45,7 @@ class Corpus:
     rt: runtime.Runtime
     clients: dict[str, TestClient]
     ids: dict[str, uuid.UUID]  # corpus key -> document id
+    users: dict[str, Any]  # ANNA, BARTEK, "reader", "admin" -> User
 
     def search(self, who: str, **params: str | list[str]) -> httpx.Response:
         response: httpx.Response = self.clients[who].get("/search", params=params)
@@ -117,7 +119,7 @@ def corpus(migrated: Settings) -> Iterator[Corpus]:
                 if doc.state == ARCHIVED:
                     _act(owner, doc_id, "archive", "published")
                 ids[doc.key] = doc_id
-            yield Corpus(app=app, rt=rt, clients=clients, ids=ids)
+            yield Corpus(app=app, rt=rt, clients=clients, ids=ids, users=users)
         finally:
             runtime.install(None)
             rt.close()
@@ -185,7 +187,7 @@ def test_filters(corpus: Corpus) -> None:
     assert "faktura-0043" not in corpus.found("reader", q="faktura", to="2026-11-03")
     with corpus.rt.session_factory() as db:
         bartek = db.scalar(select(Document.owner_id).where(Document.id == corpus.ids["aneks"]))
-    by_bartek = corpus.found("reader", q="umowa", author=str(bartek))
+    by_bartek = corpus.found("admin", q="umowa", author=str(bartek))  # author filter: ADR-030
     assert by_bartek == ["aneks"]
     english = corpus.found("reader", q="backups", lang="en")
     assert english == ["backup-policy"]
@@ -314,3 +316,82 @@ def test_home_page_has_the_search_form(corpus: Corpus) -> None:
     assert 'action="/search"' in page and 'for="home-q"' in page
     assert "w przygotowaniu" not in page
     assert 'href="/search"' in page  # menu item
+
+
+# --- authors (ADR-030): only roles that work with other people's documents see them --------
+
+
+def _names(corpus: Corpus) -> tuple[str, str]:
+    return corpus.users[ANNA].username, corpus.users[BARTEK].username
+
+
+def test_admin_sees_the_author_column_and_filters_by_author(corpus: Corpus) -> None:
+    anna, bartek = _names(corpus)
+    admin = corpus.clients["admin"]
+    page = admin.get("/documents", params={"scope": "all"}).text
+    assert "<th>Autor</th>" in page and anna in page and bartek in page
+    only_bartek = admin.get("/documents", params={"author": str(corpus.users[BARTEK].id)}).text
+    assert bartek in only_bartek and f"/documents/{corpus.ids['aneks']}" in only_bartek
+    assert f"/documents/{corpus.ids['umowa-serwisowa']}" not in only_bartek
+    found = corpus.found("admin", q="umowa", author=str(corpus.users[BARTEK].id))
+    assert found == ["aneks"]
+    assert anna in corpus.search("admin", q="umowa").text
+
+
+def test_others_never_see_authors_and_the_author_parameter_changes_nothing(
+    corpus: Corpus,
+) -> None:
+    anna, _ = _names(corpus)
+    for who in ("reader", BARTEK):
+        plain = corpus.search(who, q="umowa").text
+        filtered = corpus.search(who, q="umowa", author=str(corpus.users[ANNA].id)).text
+        for page in (plain, filtered):
+            assert anna not in page and "Autor" not in page
+            assert str(corpus.users[ANNA].id) not in page  # not even in a select or attribute
+        assert corpus.found(who, q="umowa") == corpus.found(
+            who, q="umowa", author=str(corpus.users[BARTEK].id)
+        )
+    publisher = corpus.clients[BARTEK]
+    own = publisher.get("/documents").text
+    asked = publisher.get("/documents", params={"author": str(corpus.users[ANNA].id)}).text
+    for page in (own, asked):
+        assert "<th>Autor</th>" not in page and anna not in page
+        assert f"/documents/{corpus.ids['aneks']}" in page  # still the own documents
+
+
+def test_startup_indexing_runs_in_one_worker_process_only(
+    corpus: Corpus, migrated: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    import psycopg
+
+    from baza_wiedzy.modules.search import indexer
+
+    caplog.set_level("INFO")
+    victim = corpus.ids["recepcja"]
+    with corpus.rt.session_factory.begin() as db:
+        db.execute(delete(SearchPart).where(SearchPart.document_id == victim))
+        db.execute(delete(SearchDocument).where(SearchDocument.document_id == victim))
+    url = migrated.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(url, autocommit=True) as other_process:
+        other_process.execute("SELECT pg_advisory_lock(%s)", (indexer.STARTUP_LOCK,))
+        indexer.on_worker_start(corpus.rt)  # the lock is taken: skip, do nothing
+        assert "runs in another worker process; skipped here" in caplog.text
+        assert corpus.found("reader", q="501222333") == []
+    indexer.on_worker_start(corpus.rt)  # lock free again: this process indexes
+    assert "indexed 1 version(s) missing from the index" in caplog.text
+    assert corpus.found("reader", q="501222333") == ["recepcja"]
+
+
+def test_a_document_without_text_says_so_and_is_found_by_title(corpus: Corpus) -> None:
+    """A 3-byte file (only a UTF-8 BOM) processes to "gotowe" with no parts: processing worked,
+    there is simply no text. The parts panel says so instead of showing an empty preview."""
+    owner = corpus.clients[ANNA]
+    doc_id, version_id = _upload(owner, "pusty.txt", b"\xef\xbb\xbf", "Pustostanowy wykaz")
+    assert pipeline.process(corpus.rt, version_id) == pipeline.Outcome.DONE
+    with corpus.rt.session_factory() as db:
+        version = db.get(Version, version_id)
+    assert version is not None and version.processing_status == "done"
+    panel = owner.get(f"/ingestion/versions/{version_id}/parts", headers={"HX-Request": "true"})
+    assert "Dokument nie zawiera tekstu" in panel.text
+    assert "Nie wyodrębniono tekstu" not in panel.text
+    assert f"/documents/{doc_id}" in corpus.search(ANNA, q="pustostanowy").text

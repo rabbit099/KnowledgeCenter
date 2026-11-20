@@ -56,12 +56,36 @@ def _page(value: str) -> int:
 
 @router.get("", include_in_schema=False)
 def my_documents(
-    request: Request, db: Db, user: Lister, q: str = "", scope: str = "own", page: str = "1"
+    request: Request,
+    db: Db,
+    user: Lister,
+    q: str = "",
+    scope: str = "own",
+    page: str = "1",
+    author: str = "",
 ) -> Response:
     scope = "all" if scope == "all" and user.can("documents.read_drafts") else "own"
-    result = api.list_documents(db, user, q=q.strip(), scope=scope, page=_page(page))
-    busy = any(version.processing_status in (PENDING, PROCESSING) for _, version in result.items)
-    context = {"result": result, "filters": {"q": q, "scope": scope}, "busy": busy}
+    show_authors = api.can_see_authors(user)
+    owner_id = None
+    if show_authors and author:  # ignored for everyone else (no hint that the account exists)
+        try:
+            owner_id = uuid.UUID(author)
+        except ValueError:
+            owner_id = None
+    result = api.list_documents(
+        db, user, q=q.strip(), scope=scope, page=_page(page), owner_id=owner_id
+    )
+    busy = any(row[1].processing_status in (PENDING, PROCESSING) for row in result.items)
+    filters = {"q": q, "scope": "all" if owner_id else scope}
+    if owner_id:
+        filters["author"] = str(owner_id)
+    context = {
+        "result": result,
+        "filters": filters,
+        "busy": busy,
+        "show_authors": show_authors,
+        "owners": api.visible_owners(db, user) if show_authors else [],
+    }
     partial = request.headers.get("hx-request") == "true"
     template = "documents/_table.html" if partial else "documents/list.html"
     return _render(request, template, context)

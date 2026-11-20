@@ -69,8 +69,9 @@ def search_page(
     settings = request.app.state.settings
     kinds = tuple(k for k in (kind or []) if k in documents.KIND_GROUPS)
     language = lang if lang in LANGUAGES else None
-    try:
-        owner_id = uuid.UUID(author) if author else None
+    show_authors = documents.can_see_authors(user)
+    try:  # ignored for users who may not see authors (no hint that an account exists)
+        owner_id = uuid.UUID(author) if author and show_authors else None
     except ValueError:
         owner_id = None
     day_from, day_to = _day(since), _day(until)
@@ -94,7 +95,8 @@ def search_page(
         "filters": filters,
         "kind_groups": list(documents.KIND_GROUPS),
         "languages": LANGUAGES,
-        "owners": documents.visible_owners(db, user),
+        "owners": documents.visible_owners(db, user) if show_authors else [],
+        "show_authors": show_authors,
         "may_see_archived": may_see_archived(user),
         "result": None,
         "problem": None,

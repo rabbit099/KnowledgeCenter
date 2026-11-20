@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy import (
@@ -101,6 +102,8 @@ class PostgresBackend:
     # --- public ------------------------------------------------------------------------
 
     def search(self, db: Session, user: CurrentUser, request: SearchRequest) -> SearchPage:
+        if request.owner_id is not None and not documents.can_see_authors(user):
+            request = replace(request, owner_id=None)  # the author filter is not theirs (ADR-030)
         query = normalise(request.query)
         settings = self.settings
         if len(query) < settings.search_min_query_chars:
@@ -361,6 +364,7 @@ class PostgresBackend:
     def _details(
         self, db: Session, user: CurrentUser, request: SearchRequest, q: Any, rows: list[Any]
     ) -> list[SearchHit]:
+        show_authors = documents.can_see_authors(user)
         ids = [row.document_id for row in rows]
         scope = documents.search_scope(
             user, documents.ScopeFilters(include_archived=request.include_archived)
@@ -409,7 +413,7 @@ class PostgresBackend:
                     status=doc.status,
                     kind=doc.kind,
                     filename=doc.filename,
-                    owner_name=doc.owner_name,
+                    owner_name=doc.owner_name if show_authors else None,
                     doc_date=doc.doc_date,
                     score=float(row.score or 0.0),
                     snippet=to_html(part.snippet) if part is not None and part.snippet else None,
