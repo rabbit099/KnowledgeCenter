@@ -277,6 +277,7 @@ def roles_list(
     context = {
         "result": result,
         "counts": roles.user_counts(db, [r.id for r in result.items]),
+        "inconsistent": roles.inconsistent_roles(db, request.app.state.permission_requirements),
         "filters": {"q": q},
         "done": request.query_params.get("done"),
     }
@@ -293,7 +294,14 @@ def _role_form(
     values: dict[str, Any] | None = None,
 ) -> Response:
     codes = roles.stored_codes(db, role) if role else set()
+    requirements = request.app.state.permission_requirements
     context = {
+        "requirements": requirements,
+        "stored_missing": (
+            roles.missing_requirements(codes, requirements)
+            if role is not None and role.system_key != SYSTEM_ROLE_ADMIN
+            else {}
+        ),
         "role": role,
         "is_admin_role": role is not None and role.system_key == SYSTEM_ROLE_ADMIN,
         "catalog": _catalog(request),
@@ -334,6 +342,7 @@ def role_create(
             codes=set(codes or []),
             catalog=request.app.state.permission_catalog,
             ip=client_ip(request),
+            requirements=request.app.state.permission_requirements,
         )
         db.commit()
     except AdminError as exc:
@@ -369,6 +378,7 @@ def role_update(
             codes=set(codes or []),
             catalog=request.app.state.permission_catalog,
             ip=client_ip(request),
+            requirements=request.app.state.permission_requirements,
         )
         db.commit()
     except AdminError as exc:

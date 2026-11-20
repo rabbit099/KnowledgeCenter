@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -13,6 +13,7 @@ Polish version of this documentation: [`../pl/`](../pl/README.md).
 | [architecture.md](architecture.md) | Services, data flow, technology stack |
 | [data-model.md](data-model.md) | Database tables, relations, indexes |
 | [search.md](search.md) | How search works: Polish/English indexing, ranking, snippets |
+| [user-guide.md](user-guide.md) | Search for users and administrators: syntax, inflection, numbers and codes, limits, visibility, privacy, operator commands |
 | [ingestion-and-ocr.md](ingestion-and-ocr.md) | Upload pipeline, text extraction per format, OCR |
 | [auth-and-permissions.md](auth-and-permissions.md) | Active Directory login, roles, permission catalog, audit |
 | [deployment-operations.md](deployment-operations.md) | Installation, configuration, updates, rollback, backup, monitoring |
@@ -46,22 +47,34 @@ Tick items when they are finished and documented.
 - [x] Language detection per part
 
 ### Phase 3 — Search
-- [ ] Indexing in `pl`, `english`, `simple_unaccent`
-- [ ] Search UI (HTMX), snippets, filters, pagination
-- [ ] Metadata search with `pg_trgm`
-- [ ] Golden search tests and performance test (20,000 documents)
-- [ ] Index the text parts of versions in "wymaga OCR" (`needs_ocr`) too: their text pages are already extracted
-- [ ] `search` reads parts through `ingestion.services.api` and declares `requires=("documents", "ingestion")` (ADR-020)
+- [x] Publish, unpublish, archive, restore (moved from Phase 5; ADR-025), role rule "publish_any and edit_any require read_drafts"
+- [x] Download of the original with safe headers, audited
+- [x] No search phrases, file names or tokens in any log (proxy, app, database errors)
+- [x] Synthetic Polish-English search corpus for golden tests and `make probki`
+- [x] Indexing in `pl`, `english`, `simple_unaccent`, identifiers as extra tokens (ADR-026)
+- [x] Search UI (plain GET form, no JavaScript needed), snippets, filters, sorting, pagination (ADR-027)
+- [x] Metadata search with weights and `pg_trgm` near matches
+- [x] Golden search tests on the synthetic corpus (in CI)
+- [x] Performance test (20,000 and 100,000 documents, `make perf`, manual): p95 329 ms at 20,000 (ADR-028)
+- [x] Local relevance check with own documents (`make relevance`, never in the repository)
+- [x] Search guide for users and administrators (`user-guide.md`); author column and filter for editors (ADR-030); `users list` / `users set-password` (ADR-029)
+- [x] Index the text parts of versions in "wymaga OCR" (`needs_ocr`) too: their text pages are already extracted
+- [x] `search` reads parts through `ingestion.services.api` and declares `requires=("documents", "ingestion")` (ADR-020)
+- [x] `search-check`, `reindex-search`, indexing of missing versions at worker start
 
 ### Phase 4 — OCR
 - [x] Detection of pages without text (Phase 2: pages marked, version "wymaga OCR")
 - [ ] OCRmyPDF (`pol+eng`) for the marked pages of `needs_ocr` versions, then `done`
 - [ ] Derived searchable PDF, `ocr_applied` flag, timeouts and limits
+- [ ] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search then replaces the rows of the version; no change in search needed)
 
 ### Phase 5 — Document lifecycle
-- [ ] Draft / published / archived, versions, publishing a chosen version
-- [ ] Categories
-- [ ] Preview in the browser (stretch goal)
+- [ ] Versions, publishing a chosen version (draft / published / archived: Phase 3)
+- [ ] Categories, and the category filter in search
+- [ ] Preview in the browser (stretch goal; ADR-025: separate origin or a careful CSP assessment)
+- [ ] Editing the title or metadata reindexes `srch_documents` of the version (an event or a call through `search`)
+- [ ] Remove index rows of versions that are neither the latest nor the published one
+- [ ] Duplicate handling
 
 ### Phase 6 — Operations
 - [ ] Release workflow (tags → GHCR)
@@ -77,3 +90,7 @@ Tick items when they are finished and documented.
 - [ ] Separate database roles (schema owner for migrations vs application role without ownership rights) and `REVOKE UPDATE, DELETE, TRUNCATE` on `audit_log`
 - [ ] Remove the `exclude-newer-package` exception for `opentelemetry-api` at the monthly dependency review once `exclude-newer` is past 2026-10-30 (ADR-015)
 - [ ] On the server: the worker has no internet access (`make smoke` network check, or the command in deployment-operations.md, Security notes)
+- [ ] Search relevance with the owner's real (non-confidential) documents and typical queries (locally, never committed)
+- [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); failed versions findable by title (a dictionary without diacritics was evaluated and rejected, ADR-028)
+- [ ] Search under concurrency: fewer relations per statement or PostgreSQL 18, if more than ~10 searches/s are needed (ADR-028); memory settings before 100,000 documents
+- [ ] Delete or shorten old proxy logs from before 0.4.0 if they may contain CSRF tokens (changelog 0.4.0, Security)

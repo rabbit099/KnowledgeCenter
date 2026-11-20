@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -71,7 +71,7 @@ Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się 
 
 Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu i trzyma go w pamięci: około 27–30 MB na połączenie (zmierzone w spike'u, zob. [search.md](search.md)). Dlatego limit połączeń jest ustawiony jawnie, a limit pamięci `db` z niego wynika:
 
-- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 1 na proces workera, plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 1 + 6 = 28, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
+- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 6 = 30, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
 - Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
 - Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
 - Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
@@ -157,9 +157,9 @@ Później `update.sh` z `SKIP_PULL=1` (Faza 6). Wymaganie: Docker Engine z magaz
 
 ### Po zmianie konfiguracji wyszukiwania
 
-Uruchom `docker compose exec app baza-wiedzy reindex-search` (zobacz [search.md](search.md)).
+Uruchom `docker compose exec app baza-wiedzy reindex-search --all` (zobacz [search.md](search.md#reindeksacja)); wypisuje `Indexed N version(s); removed 0 orphaned; took T s.`, potem sprawdź `docker compose exec app baza-wiedzy search-check` (`Search index OK.`).
 
-Dotyczy to każdej zmiany polskiego słownika, listy stop words lub konfiguracji wyszukiwania tekstowego, także nowego obrazu `db` z inną wersją `hunspell-pl` albo `polish.stop` (dziennik zmian wtedy o tym informuje). Istniejące wartości `tsv_*` zostały wyliczone starym słownikiem i nie będą pasować do zapytań przetworzonych nowym, dopóki nie przebudujesz indeksu. Restart `db` zrywa też wszystkie połączenia, więc każde połączenie załaduje nowy słownik przy pierwszym użyciu.
+Dotyczy to każdej zmiany polskiego słownika, listy stop words, konfiguracji wyszukiwania tekstowego lub reguł identyfikatorów w `search/identifiers.py`, także nowego obrazu `db` z inną wersją `hunspell-pl` albo `polish.stop` (dziennik zmian wtedy o tym informuje). Istniejące wartości `tsv_*` zostały wyliczone starym słownikiem i nie będą pasować do zapytań przetworzonych nowym, dopóki nie przebudujesz indeksu. Restart `db` zrywa też wszystkie połączenia, więc każde połączenie załaduje nowy słownik przy pierwszym użyciu.
 
 ## Backup
 
@@ -246,12 +246,20 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `reprocess --stuck` | zawieszone i oczekujące wersje z powrotem do kolejki (bez audytu) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `search-check` | porównaj indeks wyszukiwania z wyodrębnionym tekstem (tylko identyfikatory; kod 1 przy różnicy) | `Extracted versions: 26` … `Search index OK.` |
+| `reindex-search --missing` | zaindeksuj to, co zgłasza `search-check`, usuń osierocone wiersze | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
+| `reindex-search --all` | przebuduj cały indeks (po zmianie słownika albo konfiguracji) | ta sama linia z sumą |
+| `reindex-search --document ID` | jeden dokument ponownie | ta sama linia |
 
-Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`).
+**Wyszukiwanie.** Po aktualizacji do 0.4.0 jeden proces workera przy pierwszym starcie indeksuje wszystkie wcześniej przetworzone dokumenty (linia logu `search: indexed N version(s) missing from the index`; pozostałe procesy logują `search: startup indexing runs in another worker process; skipped here`; dla 200 dokumentów kilka sekund); `search-check` musi potem wypisać `Search index OK.`. Nowe dokumenty są indeksowane zaraz po przetworzeniu. Publikacja, cofnięcie publikacji, archiwizacja i przywrócenie nie wymagają reindeksu. Każde wyszukiwanie zapisuje w logu jedną linię z samymi licznikami (`search: results=… duration_ms=…`), nigdy frazy. Wyszukiwanie wolniejsze niż `SEARCH_TIMEOUT_MS` jest pokazywane według daty zamiast trafności (`fallback=yes` w logu); jeśli zdarza się często, zobacz uwagi o wydajności w [search.md](search.md#cel-wydajnościowy).
+
+Próbki do ręcznego sprawdzenia serwera albo nowej wersji: `make probki DIR=<katalog>` na komputerze deweloperskim (oczekiwane wyniki w `OCZEKIWANE.txt`; próbki wyszukiwania w `wyszukiwanie/` z `OCZEKIWANE-wyszukiwanie.txt`).
 
 ## Polecenia dla programisty
 
 Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa). Python 3.12 i środowisko wirtualne zarządza `uv`; uruchom raz `uv sync --all-extras` (dodatek `worker` zawiera parsery dokumentów potrzebne testom i sprawdzaniu typów; `make lint` i `make test` dodają go same).
+
+**Dane testowe.** Dane w repozytorium są wyłącznie syntetyczne. Numery telefonów z puli 600 100 xxx, adresy e-mail i hosty w domenach zarezerwowanych (example.com, example.org), NIP-y i numery umów wymyślone. Żadnych nazw firm, numerów ani fragmentów z prawdziwych dokumentów. Prawdziwe dokumenty i zapytania do testu trafności zostają poza repozytorium (`make relevance DIR=… QUERIES=…` poza drzewem repo).
 
 | Polecenie | Co robi |
 |---|---|
@@ -260,7 +268,7 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint-workflows` | Tylko sprawdzenie workflowów przez actionlint |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego pliku TXT (204) i oczekiwanie, aż worker go przetworzy („gotowe”, najwyżej 2 minuty), strona części 200, wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (około minuty przy zbuforowanych warstwach) |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprawdza izolację sieci (worker sięga do db i redis, do niczego poza nimi), potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (około 1–2 minut przy zbuforowanych warstwach) |
 | `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (Faza 2): `… passed, 2 skipped`. Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
@@ -268,7 +276,9 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
-| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; działa w obrazie testowym (LibreOffice dla DOC) |
+| `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (26 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
+| `make perf N=20000` | Wydajność wyszukiwania na N syntetycznych dokumentach (ręcznie, nigdy w CI; około 10 minut dla 20 000, godzina dla 100 000): jednorazowy PostgreSQL z ustawieniami produkcyjnymi (`docker-compose.perf.yml`), pełne indeksowanie prawdziwym indekserem, rozmiary, p50/p95 zapytań, `EXPLAIN (ANALYZE, BUFFERS)`, 10 równoczesnych wyszukiwań, ocena słownika bez polskich znaków. Wyniki w `perf-results/perf-N.md` i `.json` (ignorowane przez git); aktualne liczby są w [search.md](search.md#cel-wydajnościowy) |
+| `make relevance DIR=<dokumenty> QUERIES=<plik> AS=<użytkownik> [TOP=5] [ONLY=1]` | Ocena trafności na własnych dokumentach i zapytaniach na **lokalnym stosie deweloperskim** (najpierw `make up`; użytkownik musi istnieć i móc wgrywać). Wgrywa każdy plik z DIR jako szkic tego użytkownika (ponownie tylko nowe), czeka na przetworzenie, wykonuje każde zapytanie z pliku jako ten użytkownik i drukuje pierwsze TOP wyników z wynikiem, tytułem, nazwą pliku, miejscem trafienia i fragmentem; `ONLY=1` ukrywa inne dokumenty widoczne dla użytkownika. Plik zapytań: UTF-8, jedno zapytanie w linii, komentarze `#`, opcjonalnie `zapytanie => fragment oczekiwanego tytułu albo nazwy pliku` (OK/MISSING). **Repozytorium jest publiczne: DIR i QUERIES muszą być poza nim** (inaczej odmowa; typowe nazwy są w `.gitignore`); nigdy nie commituj, nie wklejaj ani nie załączaj wyniku. Szczegóły: [search.md](search.md#testy-wzorcowe-golden) |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
@@ -288,6 +298,8 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 
 | Objaw | Prawdopodobna przyczyna | Co sprawdzić |
 |---|---|---|
+| Dokument jest „gotowe”, ale nie jest znajdowany | Niezaindeksowany (zdarzenie nie zostało dostarczone) albo użytkownik nie może go widzieć (cudzy szkic, zarchiwizowany, przetwarzanie zakończone błędem) | `docker compose exec app baza-wiedzy search-check`; potem `reindex-search --missing`; niedostarczone zdarzenia: `docker compose exec app baza-wiedzy events redeliver`, `docker compose logs worker \| grep outbox` |
+| Wyszukiwanie pokazuje „Wyszukiwanie trwało zbyt długo” albo „posortowane według daty” | Bardzo ogólne zapytanie przekroczyło `SEARCH_TIMEOUT_MS` | Normalne dla pojedynczych bardzo częstych słów; częste przy zwykłych zapytaniach: obciążenie bazy (`docker compose exec db psql -U postgres -c 'SELECT count(*) FROM pg_stat_activity'`), pamięć `db`; zobacz [search.md](search.md#cel-wydajnościowy) |
 | Wgrane pliki zostają w stanie „oczekuje” (`pending`) | Worker lub Redis nie działa albo zadanie przepadło, gdy Redis był niedostępny | `docker compose ps`, `docker compose logs worker redis`; gdy oba działają, restart workera (`docker compose restart worker`) albo `docker compose exec app baza-wiedzy reprocess --stuck` kolejkuje oczekujące wersje ponownie |
 | Dokument wisi w stanie „przetwarzanie” | Worker został zabity w trakcie próby (limit pamięci, restart) | Odczekaj `INGEST_STALE_MINUTES` i zrestartuj workera albo `docker compose exec app baza-wiedzy reprocess --stuck`; w logu workera jest identyfikator wersji (`docker compose logs worker \| grep <id wersji>`) |
 | „błąd”: „Nie rozpoznano kodowania tekstu…” | TXT w stronie kodowej innej niż UTF-8, Windows-1250, ISO-8859-2 (na przykład DOS CP852) | Zapisz plik w UTF-8 i wgraj go ponownie (ADR-022) |
@@ -317,6 +329,7 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 - `worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
 - Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
+- Logi nigdy nie zawierają wyszukiwanych fraz, treści dokumentów, nazw plików ani tematów maili (ADR-025): log proxy usuwa parametry zapytania, `Referer`, `HX-Current-URL`, cele przekierowań, `Content-Disposition` i `X-CSRF-Token`; log dostępu aplikacji usuwa parametry zapytania; błędy bazy są logowane tylko z typem i SQLSTATE. Żądanie wygląda więc w logu proxy jak `"uri":"/documents?[removed]"`. Jeśli dodajesz własne zbieranie logów (na przykład kolejne proxy przed tym), skonfiguruj to samo; `make smoke` to sprawdza. Przeglądarki zapisują adresy wyszukiwań we własnej historii; to jest poza serwerem.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.
 - Regularnie aktualizuj obrazy bazowe (nowe wydanie je przebudowuje).
 - Nie dawaj aplikacji dostępu do `docker.sock`; aktualizacje robi się z hosta.

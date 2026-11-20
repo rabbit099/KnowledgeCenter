@@ -84,9 +84,8 @@ def test_literal_document_number(db: Conn) -> None:
     assert "doc_number_other" not in found
 
 
-@pytest.mark.skip(reason="needs e-mail extraction (Phase 2)")
-def test_word_only_in_email_attachment() -> None: ...
+# A word only in an e-mail attachment: test_corpus.py ("PR-88/2026", "klimatyzatory").
 
 
-@pytest.mark.skip(reason="needs OCR ingestion (Phase 2)")
+@pytest.mark.skip(reason="needs OCR (Phase 4): the scanned page has no text yet")
 def test_word_only_on_scanned_page() -> None: ...

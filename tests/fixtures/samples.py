@@ -82,10 +82,11 @@ def email_message(
     attachments: list[tuple[str, bytes, str]] | None = None,
     nested: list[EmailMessage] | None = None,
     date: datetime | None = None,
+    sender: str = "Anna Przykładowa <anna@example.com>",
 ) -> EmailMessage:
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = "Anna Przykładowa <anna@example.com>"
+    message["From"] = sender
     message["To"] = "Biuro <biuro@example.com>, Jan Testowy <jan@example.com>"
     message["Cc"] = "archiwum@example.com"
     message["Date"] = format_datetime(date or datetime(2026, 10, 14, 9, 30, tzinfo=UTC))

@@ -150,7 +150,7 @@ wheels = [
 
 [[package]]
 name = "baza-wiedzy"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -160,6 +160,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "jinja2" },
     { name = "ldap3" },
+    { name = "markupsafe" },
     { name = "olefile" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -202,6 +203,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
     { name = "ldap3", specifier = ">=2.9" },
     { name = "lingua-language-detector", marker = "extra == 'worker'", specifier = ">=2.0" },
+    { name = "markupsafe", specifier = ">=3.0.4" },
     { name = "ocrmypdf", marker = "extra == 'worker'", specifier = ">=16" },
     { name = "olefile", specifier = ">=0.46" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

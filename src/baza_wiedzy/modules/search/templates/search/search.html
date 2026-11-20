@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Search") }} · {{ app_name }}{% endblock %}
+{% block content %}
+<h1>{{ _("Search") }}</h1>
+{% include "search/_form.html" %}
+{% if problem %}
+<p class="fail" role="alert">{{ _(problem[0], **problem[1]) }}</p>
+{% elif result %}
+<section aria-labelledby="results-heading">
+  <h2 id="results-heading" class="visually-hidden">{{ _("Results") }}</h2>
+  <p role="status" aria-live="polite">{% if result.total %}{{ ngettext("Found %(num)d document.", "Found %(num)d documents.", result.total) }}{% else %}{{ _("No documents found.") }}{% endif %}</p>
+  {% if result.notice %}<p class="warn" role="note">{{ _(result.notice) }}</p>{% endif %}
+  {% if result.by_date_fallback %}<p class="warn" role="note">{{ _("The query is very general: the results are sorted by date instead of relevance. Add a word to get more relevant results.") }}</p>{% endif %}
+  {% if result.hits %}
+  <ol class="results" start="{{ (result.page - 1) * result.size + 1 }}">
+    {% for hit in result.hits %}{% include "search/_hit.html" %}{% endfor %}
+  </ol>
+  {% include "search/_pages.html" %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

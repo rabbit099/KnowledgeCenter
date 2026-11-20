@@ -1,10 +1,39 @@
 # Dziennik zmian
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-20
+
+### Added
+- Publikowanie (Faza 3, etap A; przeniesione z Fazy 5, ADR-025): przyciski „Publikuj”, „Cofnij publikację”, „Archiwizuj” i „Przywróć” na stronie dokumentu (zwykłe formularze, bez JavaScriptu). Własne dokumenty wymagają `documents.publish`; cudze `documents.publish_any` (publikacja, cofnięcie) albo `documents.edit_any` (archiwizacja, przywrócenie). Przywrócenie prowadzi do szkicu. Publikacja jest dozwolona przy każdym statusie przetwarzania; strona ostrzega, gdy treści nie można wyszukać albo tylko częściowo. Strona wyświetlona, zanim ktoś inny zmienił stan, nie wykona akcji (409). Audyt `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (tylko identyfikatory i stany). Migracja `documents_0004` (`published_at`, `published_by`, `archived_at`, warunek, że opublikowany dokument wskazuje swoją wersję). „Moje dokumenty” mają kolumnę stanu.
+- Pobieranie oryginału („Pobierz oryginał”, `/documents/<id>/download`) dla każdego, kto widzi dokument: zawsze zapis do pliku (`application/octet-stream`, `attachment`, `nosniff`, `CSP sandbox`, `private, no-store`), nazwa pliku w ASCII i dokładna w UTF-8. Audyt `document.download`.
+- `make probki` zapisuje też syntetyczny korpus wyszukiwania (`wyszukiwanie/`, 26 dokumentów polskich i angielskich) z `OCZEKIWANE-wyszukiwanie.txt` (docelowy stan każdego pliku, zapytania i oczekiwane dokumenty); ten sam korpus zasila testy golden wyszukiwania.
+- Wyszukiwanie (Faza 3, etap B; ADR-026, ADR-027): strona „Szukaj” (`/search`, uprawnienie `documents.read`) i pole wyszukiwania na stronie głównej zamiast komunikatu „w przygotowaniu”; zwykły formularz GET działający bez JavaScriptu. Polska odmiana, angielski, zapytania bez polskich znaków, `"frazy"`, `-wykluczenie` (całego dokumentu) i `or`; numery i kody znajdowane z separatorami i bez (NIP, numery umów, telefony z +48 i bez, kody typu IT-002, adresy e-mail, domeny, adresy IP); literówki w tytułach, nazwach plików, tematach i nadawcach maili są tolerowane. Wyniki grupowane po dokumencie z podświetlonym fragmentem i jego miejscem („strona 7”, „załącznik: … › strona 2”), szkice oznaczone „szkic”, zarchiwizowane ukryte bez „Pokaż zarchiwizowane”; filtry typu pliku, języka, autora i dat; sortowanie według trafności albo daty; 20 na stronę, najwyżej 50 stron; dokładna liczba znalezionych dokumentów. Widoczność w SQL z `documents` (Czytelnik nigdy nie znajduje szkiców ani zarchiwizowanych). Limit czasu `SEARCH_TIMEOUT_MS` z wynikami według daty dla bardzo ogólnych zapytań. Nowe zmienne `SEARCH_MIN_QUERY_CHARS`, `SEARCH_MAX_QUERY_CHARS`, `SEARCH_PAGE_SIZE`, `SEARCH_MAX_PAGES`, `SEARCH_TIMEOUT_MS`, `SEARCH_TRIGRAM_THRESHOLD`.
+- Indeks wyszukiwania: tabele `srch_parts` i `srch_documents` (migracja `search_0002`), wypełniane po zdarzeniu `document.version.extracted`, a dla dokumentów przetworzonych przed tą wersją przy pierwszym starcie workera; polecenia `baza-wiedzy search-check` i `baza-wiedzy reindex-search --all | --missing | --document ID | --version ID`. Moduł `search` wymaga teraz `ingestion`.
+- `make perf N=<dokumenty>` (ręcznie, nigdy w CI): wydajność wyszukiwania na syntetycznym korpusie z produkcyjnymi ustawieniami bazy — czas pełnego indeksowania i dokumenty na minutę, rozmiary indeksu, p50/p95 zapytań, `EXPLAIN (ANALYZE, BUFFERS)`, 10 równoczesnych wyszukiwań, ocena słownika Hunspell bez polskich znaków (`docker-compose.perf.yml`, wyniki w `perf-results/`).
+- `make relevance DIR=… QUERIES=… AS=<użytkownik>`: lokalna ocena trafności na własnych dokumentach i zapytaniach na stosie deweloperskim (wgrywa szkice tego użytkownika, drukuje pierwsze wyniki z wynikiem, tytułem, miejscem i fragmentem, opcjonalne oczekiwania); odmawia ścieżek wewnątrz repozytorium (jest publiczne); typowe nazwy takich katalogów i plików są w `.gitignore`.
+- Kolumna „Autor” i filtr autora w „Moich dokumentach” oraz autor w wynikach wyszukiwania tylko dla użytkowników pracujących z cudzymi dokumentami (`documents.read_drafts`, `documents.publish_any` albo `documents.edit_any`; ADR-030); pozostali nie dostają nazwisk autorów, a parametr autora w adresie jest ignorowany.
+- `baza-wiedzy users list` (login, źródło, aktywność, role, ostatnie logowanie; bez hashy i e-maili) oraz `baza-wiedzy users set-password <login>` dla kont lokalnych (pytanie dwa razy albo `--password-stdin`, nigdy jako argument; unieważnia sesje, czyści blokady logowania, audyt `user.password_reset_cli`; odmowa dla kont Active Directory). Bez resetu hasła mailem (ADR-029).
+- Przewodnik dla użytkowników i administratora: [user-guide.md](user-guide.md) (składnia wyszukiwania, odmiana, numery i kody, ograniczenia, np. brak synonimów, widoczność, prywatność, polecenia operatora).
+
+### Changed
+- Właściciel dokumentu widzi go we wszystkich stanach, także zarchiwizowanym (Czytelnicy nadal nigdy nie widzą zarchiwizowanych).
+- Edytor ról wymaga `documents.read_drafts` obok `documents.publish_any` i `documents.edit_any` („wymaga: …” w macierzy, odmowa zapisu z komunikatem); role zapisane wcześniej bez niego są oznaczane jako „niespójna” i nie są zmieniane automatycznie.
+- `make smoke` publikuje plik, znajduje go przez stronę wyszukiwania (forma odmieniona i bez polskich znaków), pobiera go oraz sprawdza, że wyszukiwana fraza nie trafia do żadnego logu (proxy, app, worker, db), a log proxy nie zawiera nazwy pliku ani tokenu CSRF.
+- Worker używa dwóch połączeń z bazą na proces (`DB_POOL_SIZE=2` w `docker-compose.yml`): indeksowanie wyszukiwania działa, gdy dostarczanie z outboxu trzyma swoje połączenie; przy jednym zdarzenie nigdy nie było dostarczane. Budżet połączeń w deployment-operations.md jest zaktualizowany (30 z domyślnych 40).
+- Wyszukiwanie jest szybsze (ADR-028): przy 20 000 dokumentów p95 1032 → 329 ms; alternatywy identyfikatorów tylko gdy różnią się od zapytania, ranking najpierw w języku części, dopasowanie w wąskim zmaterializowanym kroku, wykluczenia przez indeksy GIN, `work_mem` 16 MB na wyszukiwanie. `markupsafe` zadeklarowany wprost w `pyproject.toml` (już zablokowany przez Jinja2, ADR-015).
+- Dokument bez żadnego tekstu (np. pusty TXT) pokazuje w panelu tekstu „Dokument nie zawiera tekstu” zamiast samego „Nie wyodrębniono tekstu”; jego stan pozostaje „gotowe” (przetwarzanie się udało) i jest znajdowany po tytule i nazwie pliku.
+- Indeksowanie wyszukiwania przy starcie workera działa tylko w jednym procesie workera (blokada doradcza); pozostałe logują, że je pomijają.
+- `make relevance ONLY=1` liczy tylko dokumenty badanego zestawu („N document(s) from the set, +M outside it”).
+
+### Security
+- Żadnych wyszukiwanych fraz, nazw plików ani tokenów w logach (ADR-025): log proxy (dostępu i własny Caddy) usuwa parametry zapytania, `Referer`, `HX-Current-URL`, `Location`, `HX-Redirect` i `Content-Disposition` (nazwy pobieranych plików); log dostępu aplikacji usuwa parametry zapytania; wyjątki bazy danych są logowane bez komunikatu (PostgreSQL cytuje w nim błędną wartość), a SQLAlchemy ukrywa parametry.
+- **Token CSRF w logu proxy (naprawione)**: od Fazy 1 (wersje 0.2.0, 0.2.1 i 0.3.0) log dostępu Caddy zapisywał nagłówek żądania `X-CSRF-Token` każdego żądania HTMX (wgrywanie, panel wyodrębnionego tekstu). Token należy do jednej sesji i jest bezużyteczny po wylogowaniu albo wygaśnięciu, ale kto mógł czytać log, mógł podrobić żądanie w wciąż otwartej sesji. Dla operatora: stare logi proxy (`docker compose logs proxy`, najwyżej 5 × 10 MB na kontener) mogą zawierać takie tokeny; traktuj je jako poufne albo usuń je po aktualizacji przez `docker compose up -d --force-recreate proxy` (odtworzenie kontenera usuwa jego stare pliki logów).
+- Odpowiedzi ustawiające własne nagłówki bezpieczeństwa (pobieranie) je zachowują; żaden nagłówek nie jest wysyłany dwa razy.
 
 ## [0.3.0] - 2026-11-17
 

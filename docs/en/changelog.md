@@ -1,10 +1,39 @@
 # Changelog
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-20
+
+### Added
+- Publishing (Phase 3, stage A; moved from Phase 5, ADR-025): buttons "Publikuj", "Cofnij publikację", "Archiwizuj" and "Przywróć" on the document page (plain forms, no JavaScript needed). Own documents need `documents.publish`; other people's need `documents.publish_any` (publish, unpublish) or `documents.edit_any` (archive, restore). Restoring leads to a draft. Publication is allowed in every processing status; the page warns when the content cannot be found by search, or only partly. A page shown before someone else changed the status cannot apply an action (409). Audited as `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (identifiers and statuses only). Migration `documents_0004` (`published_at`, `published_by`, `archived_at`, check that a published document names its version). "Moje dokumenty" has a status column.
+- Download of the original ("Pobierz oryginał", `/documents/<id>/download`) for everyone who can see the document: always saved as a file (`application/octet-stream`, `attachment`, `nosniff`, `CSP sandbox`, `private, no-store`), the file name in ASCII and exact UTF-8. Audited as `document.download`.
+- `make probki` also writes the synthetic search corpus (`wyszukiwanie/`, 26 Polish and English documents) with `OCZEKIWANE-wyszukiwanie.txt` (target state of each file, queries and expected documents); the same corpus feeds the golden search tests.
+- Search (Phase 3, stage B; ADR-026, ADR-027): page "Szukaj" (`/search`, permission `documents.read`) and a search field on the start page instead of the "being prepared" message; a plain GET form that works without JavaScript. Polish inflection, English, queries without diacritics, `"phrases"`, `-exclusion` (of the whole document) and `or`; numbers and codes found with or without separators (tax numbers, contract numbers, phone numbers with or without +48, codes such as IT-002, e-mail addresses, domains, IP addresses); typos in titles, file names, e-mail subjects and senders tolerated. Results grouped by document with a highlighted fragment and where it is ("strona 7", "załącznik: … › strona 2"), drafts marked "szkic", archived hidden unless "Pokaż zarchiwizowane"; filters for file type, language, author and dates; sorting by relevance or date; 20 per page, at most 50 pages; exact number of documents found. Visibility in SQL from `documents` (a Reader never finds drafts or archived documents). Time limit `SEARCH_TIMEOUT_MS` with results by date for very general queries. New variables `SEARCH_MIN_QUERY_CHARS`, `SEARCH_MAX_QUERY_CHARS`, `SEARCH_PAGE_SIZE`, `SEARCH_MAX_PAGES`, `SEARCH_TIMEOUT_MS`, `SEARCH_TRIGRAM_THRESHOLD`.
+- Search index: tables `srch_parts` and `srch_documents` (migration `search_0002`), filled by the event `document.version.extracted` and, for documents processed before this version, at the first worker start; commands `baza-wiedzy search-check` and `baza-wiedzy reindex-search --all | --missing | --document ID | --version ID`. The `search` module now requires `ingestion`.
+- `make perf N=<documents>` (manual, never in CI): search performance on a synthetic corpus with the production database settings — full index time and documents per minute, index sizes, query p50/p95, `EXPLAIN (ANALYZE, BUFFERS)`, 10 concurrent searches, evaluation of a Hunspell dictionary without diacritics (`docker-compose.perf.yml`, results in `perf-results/`).
+- `make relevance DIR=… QUERIES=… AS=<user>`: local relevance check with your own documents and queries on the development stack (uploads drafts of that user, prints the first results with score, title, location and fragment, optional expectations); refuses paths inside the repository (it is public); typical names of such directories and files are in `.gitignore`.
+- "Autor" column and author filter in "Moje dokumenty", and the author in search results, only for users who work with other people's documents (`documents.read_drafts`, `documents.publish_any` or `documents.edit_any`; ADR-030); for everyone else no author names, and an author parameter in the address is ignored.
+- `baza-wiedzy users list` (login, source, active, roles, last login; no hashes or e-mails) and `baza-wiedzy users set-password <login>` for local accounts (asked twice or `--password-stdin`, never an argument; revokes sessions, clears login locks, audited as `user.password_reset_cli`; refused for Active Directory accounts). No password reset by e-mail (ADR-029).
+- Guide for users and administrators: [user-guide.md](user-guide.md) (search syntax, inflection, numbers and codes, limits such as no synonyms, visibility, privacy, operator commands).
+
+### Changed
+- The owner of a document sees it in every state, archived included (Readers still never see archived documents).
+- The role editor requires `documents.read_drafts` next to `documents.publish_any` and `documents.edit_any` ("wymaga: …" in the matrix, refused save with a message); roles saved earlier without it are marked "niespójna" and are not changed automatically.
+- `make smoke` also publishes a file, finds it through the search page (inflected form and without diacritics), downloads it and checks that a search phrase reaches no log (proxy, app, worker, db) and that the proxy log holds no file name or CSRF token.
+- The worker uses two database connections per process (`DB_POOL_SIZE=2` in `docker-compose.yml`): the search indexing runs while the outbox delivery holds its connection; with one the event was never delivered. The connection budget in deployment-operations.md is updated (30 of the default 40).
+- Search is faster (ADR-028): at 20,000 documents p95 1,032 → 329 ms; identifier alternatives only when they differ from the query, ranking in the part's language first, matching in a narrow materialised step, exclusions through the GIN indexes, `work_mem` 16 MB per search. `markupsafe` declared directly in `pyproject.toml` (already locked through Jinja2, ADR-015).
+- A document without any text (e.g. an empty TXT) says "Dokument nie zawiera tekstu" in the text panel instead of a bare "Nie wyodrębniono tekstu"; its status stays "gotowe" (processing worked) and it is found by title and file name.
+- The search indexing at worker start runs in one worker process only (advisory lock); the others log that they skip it.
+- `make relevance ONLY=1` counts only documents of the tested set ("N document(s) from the set, +M outside it").
+
+### Security
+- No search phrases, file names or tokens in logs (ADR-025): the proxy log (access and Caddy's own) drops query strings, `Referer`, `HX-Current-URL`, `Location`, `HX-Redirect` and `Content-Disposition` (names of downloaded files); the application access log drops query strings; database exceptions are logged without their message (PostgreSQL quotes the offending value) and SQLAlchemy hides bound parameters.
+- **CSRF token in the proxy log (fixed)**: since Phase 1 (versions 0.2.0, 0.2.1 and 0.3.0) the Caddy access log recorded the request header `X-CSRF-Token` of every HTMX request (uploads, the extracted-text panel). The token belongs to one session and is useless after logout or expiry, but whoever could read the log could forge a request in a still open session. Operators: old proxy logs (`docker compose logs proxy`, at most 5 × 10 MB per container) may contain such tokens; treat them as confidential, or remove them after the update with `docker compose up -d --force-recreate proxy` (recreating the container discards its old log files).
+- Responses that set their own security headers (downloads) keep them; no header is sent twice.
 
 ## [0.3.0] - 2026-11-17
 

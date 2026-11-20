@@ -1,11 +1,9 @@
 """Public interface of the documents module (the only part other modules may import).
 
-Visibility (CLAUDE.md 6, ADR-013): every query that returns documents or versions applies
-`visibility_clause(user)` in SQL, never a filter on results.
-
-    draft      -> owner, holders of documents.read_drafts (Admin has every permission)
-    published  -> holders of documents.read
-    archived   -> holders of documents.edit_any
+Visibility (CLAUDE.md 6, ADR-013, ADR-025): every query that returns documents or versions
+applies `visibility_clause(user)` in SQL, never a filter on results (rules in visibility.py:
+the owner sees own documents in every state; drafts: documents.read_drafts; published:
+documents.read; archived: documents.edit_any).
 """
 
 from __future__ import annotations
@@ -14,9 +12,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, false, func, or_, select
+from sqlalchemy import func, null, or_, select
 from sqlalchemy.orm import Session
 
+from baza_wiedzy.core.db.models import User
 from baza_wiedzy.core.permissions.service import CurrentUser
 from baza_wiedzy.core.web.pagination import Page
 from baza_wiedzy.modules.documents.filenames import sanitize as sanitize_filename
@@ -48,22 +47,39 @@ from baza_wiedzy.modules.documents.processing import (
     retry_later,
     save_email_metadata,
 )
+from baza_wiedzy.modules.documents.scope import (
+    KIND_GROUPS,
+    IndexMetadata,
+    ScopeFilters,
+    index_metadata,
+    search_scope,
+    visible_owners,
+)
 from baza_wiedzy.modules.documents.storage import LocalStorage
+from baza_wiedzy.modules.documents.visibility import visibility_clause
 
 __all__ = [
+    "AUTHOR_PERMISSIONS",
     "DONE",
     "FAILED",
+    "KIND_GROUPS",
     "NEEDS_OCR",
     "PENDING",
     "PROCESSING",
+    "STATUS_ARCHIVED",
+    "STATUS_DRAFT",
+    "STATUS_PUBLISHED",
     "Claim",
     "Document",
     "EmailMetadata",
+    "IndexMetadata",
     "ProcessingBusy",
+    "ScopeFilters",
     "UnsupportedFile",
     "Version",
     "apply_subject_title",
     "can_reprocess",
+    "can_see_authors",
     "claim",
     "detect_kind",
     "email_metadata_of",
@@ -72,6 +88,7 @@ __all__ = [
     "get_visible_document",
     "get_visible_version",
     "ids_with_status",
+    "index_metadata",
     "list_documents",
     "original_path",
     "recover_stuck",
@@ -79,24 +96,12 @@ __all__ = [
     "retry_later",
     "sanitize_filename",
     "save_email_metadata",
+    "search_scope",
     "versions_of",
     "visibility_clause",
     "visible_duplicates",
+    "visible_owners",
 ]
-
-
-def visibility_clause(user: CurrentUser) -> ColumnElement[bool]:
-    """SQL condition on doc_documents: which documents this user may see."""
-    rules: list[ColumnElement[bool]] = [
-        and_(Document.status == STATUS_DRAFT, Document.owner_id == user.id)
-    ]
-    if user.can("documents.read_drafts"):
-        rules.append(Document.status == STATUS_DRAFT)
-    if user.can("documents.read"):
-        rules.append(Document.status == STATUS_PUBLISHED)
-    if user.can("documents.edit_any"):
-        rules.append(Document.status == STATUS_ARCHIVED)
-    return or_(*rules) if rules else false()
 
 
 def get_visible_document(db: Session, user: CurrentUser, document_id: uuid.UUID) -> Document | None:
@@ -113,16 +118,41 @@ def versions_of(db: Session, document: Document) -> list[Version]:
     )
 
 
+AUTHOR_PERMISSIONS = ("documents.read_drafts", "documents.publish_any", "documents.edit_any")
+
+
+def can_see_authors(user: CurrentUser) -> bool:
+    """Who sees the author of other people's documents (list column, search results, author
+    filter): the roles that work with other people's documents. publish_any and edit_any
+    require read_drafts (ADR-025), so in practice: holders of documents.read_drafts, and Admin.
+    Everyone else never gets author names, and an author parameter is ignored (ADR-030)."""
+    return any(user.can(code) for code in AUTHOR_PERMISSIONS)
+
+
 def list_documents(
-    db: Session, user: CurrentUser, *, q: str = "", scope: str = "own", page: int = 1
+    db: Session,
+    user: CurrentUser,
+    *,
+    q: str = "",
+    scope: str = "own",
+    page: int = 1,
+    owner_id: uuid.UUID | None = None,
 ) -> Page[Any]:
-    """Rows of (Document, latest Version). scope: own (default) or all (every visible one)."""
+    """Rows of (Document, latest Version, author name or None). scope: own (default) or all
+    (every visible one). Author names and the owner filter only for can_see_authors(user)."""
+    show_authors = can_see_authors(user)
+    author = func.coalesce(User.display_name, User.username) if show_authors else null()
     query = (
-        select(Document, Version)
+        select(Document, Version, author.label("author"))
         .join(Version, Version.id == Document.latest_version_id)
         .where(visibility_clause(user))
         .order_by(Document.created_at.desc(), Document.id)
     )
+    if show_authors:
+        query = query.join(User, User.id == Document.owner_id)
+        if owner_id is not None:
+            query = query.where(Document.owner_id == owner_id)
+            scope = "all"
     if scope != "all":
         query = query.where(Document.owner_id == user.id)
     if q:

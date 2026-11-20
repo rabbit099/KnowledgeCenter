@@ -107,6 +107,91 @@ def _create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _users_list(_: argparse.Namespace) -> int:
+    """Login, source, active, roles, last login: nothing secret (no hashes, e-mails or DNs)."""
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import func, select
+
+    from baza_wiedzy.core.admin.users import roles_of
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.models import User
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    warsaw = ZoneInfo("Europe/Warsaw")
+    engine = make_engine(Settings())
+    try:
+        with make_session_factory(engine)() as db:
+            users = list(db.scalars(select(User).order_by(func.lower(User.username))))
+            roles = roles_of(db, [u.id for u in users])
+    finally:
+        engine.dispose()
+    rows = [("LOGIN", "SOURCE", "ACTIVE", "ROLES", "LAST LOGIN (Europe/Warsaw)")]
+    for user in users:
+        names = ", ".join(role.name for role, _ in roles.get(user.id, [])) or "-"
+        last = (
+            user.last_login_at.astimezone(warsaw).strftime("%Y-%m-%d %H:%M")
+            if user.last_login_at
+            else "never"
+        )
+        rows.append((user.username, user.source, "yes" if user.is_active else "no", names, last))
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    for row in rows:
+        print("  ".join(value.ljust(widths[i]) for i, value in enumerate(row[:4])) + "  " + row[4])
+    print(f"{len(users)} user(s).")
+    return 0
+
+
+def _users_set_password(args: argparse.Namespace) -> int:
+    import redis
+
+    from baza_wiedzy.core.auth.accounts import AccountError, find_user, reset_local_password
+    from baza_wiedzy.core.auth.passwords import PasswordPolicyError, Passwords, check_policy
+    from baza_wiedzy.core.auth.ratelimit import Limits, LoginLimiter
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.core.db.models import SOURCE_LOCAL
+    from baza_wiedzy.core.db.session import make_engine, make_session_factory
+
+    settings = Settings()
+    engine = make_engine(settings)
+    try:
+        # Refuse an unknown or AD account before asking for a password.
+        with make_session_factory(engine)() as db:
+            user = find_user(db, args.username)
+            if user is None:
+                raise AccountError(f"No user {args.username!r}.")
+            if user.source != SOURCE_LOCAL:
+                raise AccountError(
+                    f"{user.username!r} is an Active Directory account: its password is "
+                    "managed in Active Directory, not here. Nothing was changed."
+                )
+        try:
+            password = check_policy(
+                _read_new_password(args.password_stdin),
+                min_length=settings.local_password_min_length,
+                max_length=settings.local_password_max_length,
+            )
+        except PasswordPolicyError as exc:
+            raise _CliError(f"{exc} Nothing was changed.") from exc
+        passwords = Passwords(
+            max_concurrent=settings.argon2_max_concurrent,
+            max_length=settings.local_password_max_length,
+        )
+        with make_session_factory(engine).begin() as db:
+            user, revoked = reset_local_password(db, args.username, password, passwords)
+    finally:
+        engine.dispose()
+    try:
+        client = redis.Redis.from_url(settings.redis_url, socket_timeout=3)
+        removed = LoginLimiter(client, Limits(0, 0, 0, 0, 0)).unlock(username=user.username)
+        client.close()
+        locks = f"login locks cleared ({removed} key(s))"
+    except redis.RedisError:
+        locks = "login locks NOT cleared (Redis unreachable; run `baza-wiedzy unlock-login`)"
+    print(f"Password changed for {user.username!r}; {revoked} session(s) revoked; {locks}.")
+    return 0
+
+
 def _unlock_login(args: argparse.Namespace) -> int:
     import redis
 
@@ -328,6 +413,88 @@ def _events_redeliver(_: argparse.Namespace) -> int:
     return 0 if delivery.failed == 0 else 1
 
 
+def _search_runtime() -> Runtime:
+    rt = _cli_runtime()
+    if "search" not in rt.registry:
+        rt.close()
+        raise _CliError("The search module is not enabled (ENABLED_MODULES).")
+    return rt
+
+
+def _reindex_search(args: argparse.Namespace) -> int:
+    import time
+    import uuid
+
+    from baza_wiedzy.modules.documents.services import api as documents
+    from baza_wiedzy.modules.search import indexer
+
+    if not (args.all or args.missing or args.document or args.version):
+        raise _CliError("Give --all, --missing, --document ID or --version ID.")
+    rt = _search_runtime()
+    started = time.monotonic()
+    try:
+        with rt.session_factory() as db:
+            result = indexer.check(db)
+            targets: list[uuid.UUID] = []
+            if args.all:
+                targets = [*result.missing, *indexer.indexed_counts(db), *result.different]
+                targets = [v for v in dict.fromkeys(targets) if v not in result.orphaned]
+            elif args.missing:
+                targets = [*result.missing, *result.different]
+            for raw in args.version or []:
+                targets.append(uuid.UUID(raw))
+            for raw in args.document or []:
+                document = db.get(documents.Document, uuid.UUID(raw))
+                if document is None:
+                    raise _CliError(f"No document with ID {raw}.")
+                targets.extend(v.id for v in documents.versions_of(db, document))
+        indexed = indexer.index_many(rt.session_factory, list(dict.fromkeys(targets)))
+        if (args.all or args.missing) and result.orphaned:
+            indexer.remove_orphans(rt.session_factory, result.orphaned)
+        if args.all:
+            with rt.engine.connect() as conn:  # rebuild the GIN indexes after a full rewrite
+                conn.exec_driver_sql("REINDEX TABLE srch_parts")
+                conn.exec_driver_sql("REINDEX TABLE srch_documents")
+                conn.commit()
+    except ValueError as exc:
+        raise _CliError(f"Not an ID: {exc}.") from exc
+    finally:
+        rt.close()
+    removed = len(result.orphaned) if args.all or args.missing else 0
+    took = time.monotonic() - started
+    print(f"Indexed {indexed} version(s); removed {removed} orphaned; took {took:.1f} s.")
+    return 0
+
+
+def _search_check(_: argparse.Namespace) -> int:
+    from baza_wiedzy.modules.search import indexer
+
+    rt = _search_runtime()
+    try:
+        with rt.session_factory() as db:
+            result = indexer.check(db)
+    finally:
+        rt.close()
+    print(f"Extracted versions: {result.versions}")
+    for label, ids in (
+        ("not indexed", result.missing),
+        ("different number of parts", result.different),
+        ("indexed but no longer extracted", result.orphaned),
+    ):
+        print(f"  {label}: {len(ids)}")
+        for version_id in ids[:20]:
+            print(f"    {version_id}")
+        if len(ids) > 20:
+            print(f"    ... and {len(ids) - 20} more")
+    if result.ok:
+        print("Search index OK.")
+        return 0
+    print(
+        "Search index differs from the extracted text: run `baza-wiedzy reindex-search --missing`."
+    )
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baza-wiedzy")
     parser.add_argument("--version", action="version", version=__version__)
@@ -373,6 +540,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     ad_check.set_defaults(handler=_ad_check)
 
+    users_cmd = commands.add_parser("users", help="list users; set the password of a local account")
+    users_actions = users_cmd.add_subparsers(dest="users_command", metavar="ACTION", required=True)
+    users_list = users_actions.add_parser(
+        "list", help="login, source (local/ad), active, roles, last login"
+    )
+    users_list.set_defaults(handler=_users_list)
+    set_password = users_actions.add_parser(
+        "set-password",
+        help="new password for a LOCAL account (asked twice; never an argument); revokes sessions",
+    )
+    set_password.add_argument("username")
+    set_password.add_argument(
+        "--password-stdin", action="store_true", help="read the password from one line of stdin"
+    )
+    set_password.set_defaults(handler=_users_set_password)
+
     user_active = commands.add_parser(
         "user-active", help="activate or deactivate a user (the last active admin is protected)"
     )
@@ -409,6 +592,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         "redeliver", help="deliver events that were not delivered yet; remove old delivered ones"
     )
     redeliver.set_defaults(handler=_events_redeliver)
+
+    reindex = commands.add_parser(
+        "reindex-search",
+        help="rebuild the search index from the extracted text (after a dictionary change: --all)",
+    )
+    reindex.add_argument("--all", action="store_true", help="every extracted version")
+    reindex.add_argument(
+        "--missing", action="store_true", help="only what search-check reports (and orphans)"
+    )
+    reindex.add_argument("--document", action="append", metavar="ID", help="a document")
+    reindex.add_argument("--version", action="append", metavar="ID", help="a version")
+    reindex.set_defaults(handler=_reindex_search)
+
+    search_check = commands.add_parser(
+        "search-check",
+        help="compare the search index with the extracted text (exit 1 if different)",
+    )
+    search_check.set_defaults(handler=_search_check)
 
     worker_ping = commands.add_parser(
         "worker-ping", help="send a test job and wait until a worker has processed it"

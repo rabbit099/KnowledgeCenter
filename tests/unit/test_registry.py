@@ -47,6 +47,11 @@ def test_search_without_documents_gives_readable_error() -> None:
     assert "ENABLED_MODULES" in message
 
 
+def test_search_needs_ingestion_for_the_extracted_text() -> None:
+    with pytest.raises(ModuleDependencyError, match="'ingestion'"):
+        load_registry(["documents", "search"])
+
+
 def test_documents_alone_is_valid() -> None:
     assert load_registry(["documents"]).names == ("core", "documents")
 
@@ -97,11 +102,11 @@ def test_catalog_matches_documented_permissions() -> None:
 
 
 def test_menu_sections_order_and_availability() -> None:
-    registry = load_registry(["documents", "search"])
+    registry = load_registry(["documents", "ingestion", "search"])
     admin = [i.label for i in registry.menu("admin")]
     assert admin == ["Users", "Roles", "AD groups", "Audit log", "System"]
-    # Search has no pages yet (available=False); the documents module has "My documents".
-    assert [i.label for i in registry.menu("main")] == ["My documents"]
+    # Search (order 10) comes before "My documents" (order 20).
+    assert [i.label for i in registry.menu("main")] == ["Search", "My documents"]
     assert {i.section for i in registry.menu()} == {"admin", "main"}
 
 
@@ -185,3 +190,21 @@ def test_modules_subscribe_through_on_register() -> None:
     registry.register_events(bus, Settings(_env_file=None))  # type: ignore[call-arg]
     bus.publish("ping", {"x": "ok"})
     assert received == ["ok"]
+
+
+def test_permission_requirements_come_from_manifests() -> None:
+    registry = load_registry(Settings().enabled_modules)
+    requirements = registry.permission_requirements()
+    # Publishing or archiving other people's documents is useless without seeing their drafts
+    # (ADR-025): the role editor enforces these.
+    assert requirements["documents.publish_any"] == frozenset({"documents.read_drafts"})
+    assert requirements["documents.edit_any"] == frozenset({"documents.read_drafts"})
+    assert "documents.publish" not in requirements
+
+
+def test_permission_requiring_an_unknown_code_is_a_manifest_error() -> None:
+    perm = Permission("x.do", "d", requires=("x.missing",))
+    with pytest.raises(ModuleError, match=r"x\.missing"):
+        build_registry(
+            ["a"], available(manifest("a", permissions=(perm,)))
+        ).permission_requirements()

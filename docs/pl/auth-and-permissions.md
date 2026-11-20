@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.3.0 · Ostatnia aktualizacja: 2026-11-17
+> Dotyczy: v0.4.0 · Ostatnia aktualizacja: 2026-11-20
 
 ## Uwierzytelnianie
 
@@ -88,6 +88,8 @@ Zapisz w dzienniku eksploatacji datę, wynik każdego kroku i użyte wartości (
 - Zasady hasła: od 14 do 256 znaków (`LOCAL_PASSWORD_MIN_LENGTH`, `LOCAL_PASSWORD_MAX_LENGTH`), bez reguł złożoności, bez spacji na początku i końcu; Unicode jest normalizowany (NFKC). Przechowuj je w firmowym menedżerze haseł.
 - Haszowane Argon2id (domyślne argon2-cffi: 3 iteracje, 64 MiB, 4 wątki). Jednocześnie liczy się najwyżej `ARGON2_MAX_CONCURRENT` (domyślnie 3) hashy na proces, co ogranicza pamięć zużywaną przez serię prób logowania.
 - Przeznaczony na sytuacje awaryjne i pierwszą konfigurację. Akcje audytu: `cli.create_admin`, `cli.reset_password` (aktor `cli`).
+- **Pozostałe konta lokalne** (odzyskiwanie dostępu, ADR-029): `docker compose exec app baza-wiedzy users list` wypisuje login, źródło (`local`/`ad`), aktywność, role i ostatnie logowanie (Europe/Warsaw) — bez hashy, e-maili i DN. `docker compose exec app baza-wiedzy users set-password <login>` ustawia nowe hasło konta **lokalnego**: pytane dwa razy (albo `--password-stdin`), nigdy jako argument, ta sama polityka co wyżej; unieważnia wszystkie sesje konta, czyści jego blokady logowania i zapisuje `user.password_reset_cli` (bez hasła i hasha). Oczekiwany wynik: `Password changed for 'jan'; 2 session(s) revoked; login locks cleared (3 key(s)).` Nie aktywuje konta ani nie zmienia ról (do tego `user-active` i panel admina; admin awaryjny nadal używa `create-admin`). Dla konta AD odmawia: `error: 'jkowalski' is an Active Directory account: its password is managed in Active Directory, not here. Nothing was changed.`
+- Świadomie **nie ma resetu hasła mailem**: konta firmowe są w Active Directory (z własnymi procedurami haseł), a nieliczne konta lokalne resetuje operator na serwerze.
 
 ## Model uprawnień
 
@@ -112,6 +114,8 @@ Uprawnienia to stałe kody zdefiniowane w aplikacji. Role są zestawami uprawnie
 | `system.view` | Podgląd wersji, kolejki i stanu zdrowia |
 
 Katalog jest składany z manifestów włączonych modułów: rdzeń dostarcza `users.manage`, `roles.manage`, `audit.view`, `settings.manage` i `system.view`; moduł `documents` dostarcza `documents.*` oraz `categories.manage`. Uprawnień wyłączonego modułu nie ma w katalogu i są pomijane w rolach (zapisane przypisania zostają, nie są kasowane). Kody pozostają stałe w kodzie: moduł dodaje kody w swoim manifeście, admin nigdy ich nie wymyśla.
+
+**Uprawnienia wymagane** (ADR-025): manifest może zadeklarować, że kod wymaga w tej samej roli innego kodu. `documents.publish_any` i `documents.edit_any` wymagają `documents.read_drafts` (publikowanie czy archiwizowanie cudzych szkiców jest niemożliwe bez ich widzenia, a żaden z tych kodów sam szkiców nie pokazuje). Edytor ról pokazuje „wymaga: …” przy takim kodzie i odmawia zapisania roli bez wymaganego kodu („Uprawnienie X wymaga też Y.”). Role zapisane przed wprowadzeniem reguły nie są zmieniane automatycznie: lista ról oznacza je jako „niespójna”, a strona roli wymienia brakujące kody; dopóki nie zostaną poprawione, ich posiadacze po prostu nie widzą cudzych szkiców. Role domyślne spełniają wszystkie wymagania (test).
 
 ### Role domyślne
 
@@ -149,6 +153,8 @@ Wiersz poleceń (`docker compose exec app baza-wiedzy …`):
 | Polecenie | Cel |
 |---|---|
 | `create-admin <nazwa> [--password-stdin]` | Utworzenie lokalnego admina awaryjnego albo reset jego hasła |
+| `users list` | Login, źródło, aktywność, role, ostatnie logowanie każdego konta |
+| `users set-password <nazwa> [--password-stdin]` | Nowe hasło konta lokalnego; unieważnia sesje, czyści blokady logowania |
 | `user-active <nazwa> on\|off` | Aktywacja albo dezaktywacja użytkownika (te same zasady co w panelu; `off` unieważnia sesje). Przykład: `User 'jan' is now inactive, 2 session(s) revoked.` |
 | `unlock-login [--user <nazwa>] [--ip <adres>]` | Usunięcie blokad po nieudanych logowaniach |
 | `ad-check [--user <nazwa>] [--password]` | Test konfiguracji AD tylko do odczytu |
@@ -160,12 +166,27 @@ Jeśli żadne konto admina nie nadaje się do użycia, `create-admin` przywraca 
 | Stan dokumentu | Kto go widzi |
 |---|---|
 | Szkic | jego właściciel, posiadacze `documents.read_drafts`, Admin |
-| Opublikowany | każdy z `documents.read` |
-| Zarchiwizowany | posiadacze `documents.edit_any`, Admin |
+| Opublikowany | jego właściciel, każdy z `documents.read` |
+| Zarchiwizowany | jego właściciel, posiadacze `documents.edit_any`, Admin; nigdy Czytelnicy |
 
-Jest to wymuszane w SQL dla list, wyszukiwania i pobierania. Testy obejmują macierz rola × akcja.
+Właściciel widzi swoje dokumenty we wszystkich stanach. **Autorów** cudzych dokumentów (kolumna „Autor” w „Moich dokumentach”, autor w wynikach wyszukiwania, filtr autora) widzą tylko posiadacze `documents.read_drafts`, `documents.publish_any` albo `documents.edit_any` (ADR-030); dla pozostałych autor nie jest nawet odczytywany z bazy, a parametr `author` w adresie jest ignorowany, więc nikt nie może sondować kont. `documents.publish_any` i `documents.edit_any` same nie pokazują cudzych szkiców (wymagają `documents.read_drafts`, patrz wyżej). Jest to wymuszane w SQL dla list, strony dokumentu, wyszukiwania i pobierania (`documents/visibility.py`). Testy obejmują macierz rola × akcja.
 
 „Przetwórz ponownie”: właściciel z `documents.upload` dla własnych dokumentów, posiadacze `documents.edit_any` dla każdego dokumentu, który widzą; pozostali dostają 404 (dokument niewidoczny) albo 403. Wyodrębniony tekst i nagłówki maila widzi każdy, kto widzi dokument.
+
+### Publikowanie, archiwizacja i pobieranie
+
+Przyciski na stronie dokumentu (zwykłe formularze z polem CSRF; działają bez JavaScriptu). Użytkownik działa tylko na dokumentach, które widzi (w przeciwnym razie 404):
+
+| Akcja | Ze stanu → do stanu | Własny dokument | Cudzy dokument |
+|---|---|---|---|
+| Publikuj | szkic → opublikowany | `documents.publish` | `documents.publish_any` |
+| Cofnij publikację | opublikowany → szkic | `documents.publish` | `documents.publish_any` |
+| Archiwizuj | szkic lub opublikowany → zarchiwizowany | `documents.publish` | `documents.edit_any` |
+| Przywróć | zarchiwizowany → szkic | `documents.publish` | `documents.edit_any` |
+
+Dokument widoczny, ale brak uprawnienia: 403 z komunikatem. Jeśli stan zmienił się po wyświetleniu strony (ktoś inny wykonał akcję), akcja jest odrzucana kodem 409 „Stan dokumentu zmienił się w międzyczasie”. Publikacja nie zależy od przetwarzania: strona ostrzega, gdy treści nie można wyszukać albo tylko częściowo (przetwarzanie oczekuje, zakończyło się błędem albo „wymaga OCR”). Publikacja zapisuje opublikowaną wersję (bieżącą), czas i osobę; cofnięcie publikacji i przywrócenie je czyszczą; archiwizacja zachowuje opublikowaną wersję. Role domyślne: Publikujący publikuje, cofa publikację, archiwizuje i przywraca własne dokumenty; Admin wszystkie; Czytelnik żadnych.
+
+**Pobieranie** („Pobierz oryginał”, `/documents/<id>/download`): każdy, kto widzi dokument; opublikowana wersja dokumentów opublikowanych i zarchiwizowanych, najnowsza wersja szkiców. Odpowiedź ma zawsze `application/octet-stream` z `Content-Disposition: attachment` (przeglądarka zapisuje plik i nigdy nie wyświetla go w aplikacji), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` i `Cache-Control: private, no-store`; bez pobierania częściowego (Range). Nazwa pliku to oczyszczona nazwa z wgrania (z rozszerzeniem wykrytego typu, jeśli było inne), wysyłana jako zamiennik ASCII (`Łódź` → `Lodz`) i jako dokładna nazwa w UTF-8. Podgląd w przeglądarce: Faza 5.
 
 ## Log audytowy
 
@@ -180,10 +201,10 @@ Akcje zapisywane od Fazy 1:
 | Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
-| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń) |
+| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
-Kolejne akcje dokumentów (`reprocess`, `publish`, `download`, ...) dojdą razem z dalszymi fazami.
+Reset hasła z wiersza poleceń: `user.password_reset_cli` (`username`, `revoked_sessions`). Wyszukiwania nie są audytowane, a wyszukiwane frazy nigdy nie są zapisywane (ADR-025). Kolejne akcje dokumentów (`delete`, zmiany wersji) dojdą w Fazie 5.
 
 **Przeglądarka** `/admin/audit` (uprawnienie `audit.view`, menu „Dziennik audytu”): od najnowszych, 50 na stronę, filtry: zakres dat (dni lokalne, Europe/Warsaw), wykonawca (zawiera), akcja (dokładna nazwa albo prefiks zakończony kropką, np. `role.`), obiekt (typ lub identyfikator, zawiera). `details` jest pokazywane jako escapowane pary klucz–wartość (klucze zagnieżdżone jako `before.name`, listy po przecinku), nigdy jako surowy JSON.
 

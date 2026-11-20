@@ -1,6 +1,6 @@
 [project]
 name = "baza-wiedzy"
-version = "0.3.0"
+version = "0.4.0"
 description = "Internal company knowledge base with full-text search"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115",
     "jinja2>=3.1",
     "ldap3>=2.9",
+    "markupsafe>=3.0.4",
     "olefile>=0.46",
     "psycopg[binary]>=3.2",
     "pydantic>=2.9",
@@ -129,7 +130,7 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "search uses only the public API of documents"
+name = "search uses only the public APIs of documents and ingestion"
 type = "forbidden"
 source_modules = ["baza_wiedzy.modules.search"]
 forbidden_modules = ["baza_wiedzy.modules.documents", "baza_wiedzy.modules.ingestion"]
@@ -137,4 +138,5 @@ allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.documents.services.api",
+    "baza_wiedzy.modules.search.** -> baza_wiedzy.modules.ingestion.services.api",
 ]

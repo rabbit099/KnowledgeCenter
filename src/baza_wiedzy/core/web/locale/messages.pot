@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-17 13:54+0100\n"
+"POT-Creation-Date: 2026-11-20 09:52+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -109,7 +109,16 @@ msgstr ""
 msgid "Allowed"
 msgstr ""
 
+msgid "Apply"
+msgstr ""
+
+msgid "Archive"
+msgstr ""
+
 msgid "Audit log"
+msgstr ""
+
+msgid "Author"
 msgstr ""
 
 msgid "Back to my documents"
@@ -163,6 +172,15 @@ msgstr ""
 msgid "Date"
 msgstr ""
 
+msgid "Date from"
+msgstr ""
+
+msgid "Date to"
+msgstr ""
+
+msgid "Date: the sending date of an e-mail, otherwise the upload date."
+msgstr ""
+
 msgid "Deactivate (revokes all sessions)"
 msgstr ""
 
@@ -187,7 +205,16 @@ msgstr ""
 msgid "Display name (optional)"
 msgstr ""
 
+msgid "Document search is not available for your account."
+msgstr ""
+
+msgid "Download the original"
+msgstr ""
+
 msgid "E-mail"
+msgstr ""
+
+msgid "E-mail (EML, MSG)"
 msgstr ""
 
 msgid "Edit metadata, archive and restore documents of others"
@@ -209,8 +236,20 @@ msgstr ""
 msgid "File (PDF, DOCX, DOC, TXT, EML, MSG; up to %(mb)s MB)"
 msgstr ""
 
+msgid "File type"
+msgstr ""
+
 msgid "Filter"
 msgstr ""
+
+msgid "Filters and sorting"
+msgstr ""
+
+#, python-format
+msgid "Found %(num)d document."
+msgid_plural "Found %(num)d documents."
+msgstr[0] ""
+msgstr[1] ""
 
 msgid "From"
 msgstr ""
@@ -244,6 +283,9 @@ msgid "Invalid user name: use letters, digits and '.', '_', '@', '-' (up to 128)
 msgstr ""
 
 msgid "Job queue"
+msgstr ""
+
+msgid "Language of the text"
 msgstr ""
 
 msgid "Last login"
@@ -293,6 +335,9 @@ msgstr ""
 msgid "Mappings"
 msgstr ""
 
+msgid "Match in the title, file name or e-mail headers."
+msgstr ""
+
 msgid ""
 "Members of a mapped Active Directory group get the role at every login. Roles from groups are "
 "recalculated at each login; roles given in the application are kept."
@@ -323,6 +368,9 @@ msgid "New role"
 msgstr ""
 
 msgid "Next"
+msgstr ""
+
+msgid "No documents found."
 msgstr ""
 
 msgid "No documents yet."
@@ -359,6 +407,10 @@ msgid "Object"
 msgstr ""
 
 msgid "One of the selected roles does not exist any more."
+msgstr ""
+
+#, python-format
+msgid "Only the first %(n)s pages are shown; make the query more specific to see the rest."
 msgstr ""
 
 msgid "Open sessions"
@@ -402,10 +454,18 @@ msgstr ""
 msgid "Processing failed several times because of a temporary problem. Try again later."
 msgstr ""
 
+msgid ""
+"Processing has not finished with all text read: after publication the content cannot be found by "
+"search, or only partly. The document can be published anyway."
+msgstr ""
+
 msgid "Processing took longer than the time limit."
 msgstr ""
 
 msgid "Processing was interrupted too many times. Use “Process again” to retry."
+msgstr ""
+
+msgid "Publish"
 msgstr ""
 
 msgid "Publish and unpublish documents uploaded by others"
@@ -424,6 +484,15 @@ msgid "Remove"
 msgstr ""
 
 msgid "Request refused"
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "Result pages"
+msgstr ""
+
+msgid "Results"
 msgstr ""
 
 #, python-format
@@ -454,6 +523,9 @@ msgstr ""
 msgid "Search"
 msgstr ""
 
+msgid "Search in documents"
+msgstr ""
+
 msgid "Search in titles and file names"
 msgstr ""
 
@@ -466,13 +538,25 @@ msgstr ""
 msgid "See version, queue and health status"
 msgstr ""
 
+msgid ""
+"Several words: documents with all of them. \"Quotation marks\": exact phrase. A minus before a "
+"word (-draft): without it. or between words: either of them. Numbers and codes can be typed with "
+"or without separators."
+msgstr ""
+
 msgid "Show"
+msgstr ""
+
+msgid "Show archived documents"
 msgstr ""
 
 msgid "Size"
 msgstr ""
 
 msgid "Some systems are not working."
+msgstr ""
+
+msgid "Sort by"
 msgstr ""
 
 msgid "Source"
@@ -497,6 +581,9 @@ msgid "System status"
 msgstr ""
 
 msgid "Temporary problem; processing will be retried automatically."
+msgstr ""
+
+msgid "Text (TXT)"
 msgstr ""
 
 msgid ""
@@ -524,10 +611,20 @@ msgstr ""
 msgid "The account was deactivated and its sessions were revoked."
 msgstr ""
 
-msgid "The company knowledge base is being prepared. Document search will be available here soon."
+msgid "The content of the file does not match its extension, or the file is damaged."
 msgstr ""
 
-msgid "The content of the file does not match its extension, or the file is damaged."
+msgid ""
+"The content of this document cannot be found by search, or only partly: see the processing status"
+" below."
+msgstr ""
+
+msgid ""
+"The document contains no text. It can be downloaded; search finds it only by its title, file name"
+" and e-mail headers."
+msgstr ""
+
+msgid "The document does not exist or you cannot see it."
 msgstr ""
 
 msgid "The document is being processed right now; try again when it has finished."
@@ -536,7 +633,19 @@ msgstr ""
 msgid "The document is password protected. Upload a copy without a password."
 msgstr ""
 
+msgid "The document was archived."
+msgstr ""
+
+msgid "The document was published."
+msgstr ""
+
 msgid "The document was queued for processing again."
+msgstr ""
+
+msgid "The document was restored as a draft."
+msgstr ""
+
+msgid "The document was unpublished; it is a draft again."
 msgstr ""
 
 #, python-format
@@ -580,7 +689,29 @@ msgstr ""
 msgid "The group was not found in Active Directory."
 msgstr ""
 
+#, python-format
+msgid "The permission %(code)s also requires %(required)s."
+msgstr ""
+
+msgid "The query contains only very common words, which are not searched. Add a more specific word."
+msgstr ""
+
+#, python-format
+msgid "The query is too long (at most %(n)s characters)."
+msgstr ""
+
+msgid ""
+"The query is very general: the results are sorted by date instead of relevance. Add a word to get"
+" more relevant results."
+msgstr ""
+
 msgid "The role name must have 1 to 64 characters."
+msgstr ""
+
+msgid "The search took too long. Make the query more specific or use a filter."
+msgstr ""
+
+msgid "The status of the document has changed in the meantime. Check it and try again."
 msgstr ""
 
 msgid ""
@@ -609,6 +740,12 @@ msgstr ""
 msgid "This role is assigned to users; confirm to delete it."
 msgstr ""
 
+msgid ""
+"This role is inconsistent: it was saved before the permission requirements existed. Holders do "
+"not get the missing permissions automatically. Add them or remove the permission that needs them,"
+" then save."
+msgstr ""
+
 msgid "Time"
 msgstr ""
 
@@ -632,7 +769,17 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+#, python-format
+msgid "Type at least %(n)s characters."
+msgstr ""
+
+msgid "Unknown action."
+msgstr ""
+
 msgid "Unknown permission code."
+msgstr ""
+
+msgid "Unpublish"
 msgstr ""
 
 msgid "Upload"
@@ -672,6 +819,12 @@ msgstr ""
 msgid "Warning: every member of this group will become an administrator with all permissions."
 msgstr ""
 
+msgid "Word (DOC, DOCX)"
+msgstr ""
+
+msgid "You are not allowed to do this with this document."
+msgstr ""
+
 msgid "You cannot deactivate your own account."
 msgstr ""
 
@@ -693,6 +846,15 @@ msgstr ""
 msgid "all documents I can see"
 msgstr ""
 
+msgid "any"
+msgstr ""
+
+msgid "anyone"
+msgstr ""
+
+msgid "archived"
+msgstr ""
+
 #, python-format
 msgid "attachment: %(name)s"
 msgstr ""
@@ -707,6 +869,9 @@ msgstr ""
 msgid "custom"
 msgstr ""
 
+msgid "date, newest first"
+msgstr ""
+
 msgid "draft"
 msgstr ""
 
@@ -718,6 +883,9 @@ msgid "fragment %(n)s"
 msgstr ""
 
 msgid "inactive"
+msgstr ""
+
+msgid "inconsistent"
 msgstr ""
 
 msgid "language unknown"
@@ -751,7 +919,21 @@ msgstr ""
 msgid "processing"
 msgstr ""
 
+msgid "published"
+msgstr ""
+
 msgid "ready"
+msgstr ""
+
+msgid "relevance"
+msgstr ""
+
+#, python-format
+msgid "requires: %(codes)s"
+msgstr ""
+
+#, python-format
+msgid "since %(when)s"
 msgstr ""
 
 msgid "system"

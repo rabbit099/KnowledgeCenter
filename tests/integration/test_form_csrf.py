@@ -191,6 +191,9 @@ def cases(app: FastAPI) -> dict[str, Callable[[], Case]]:
         "/ingestion/versions/{version_id}/reprocess": lambda: Case(
             f"/ingestion/versions/{version_id}/parts", f"/ingestion/versions/{version_id}/reprocess"
         ),
+        "/documents/{document_id}/lifecycle": lambda: Case(
+            f"/documents/{doc_id}", f"/documents/{doc_id}/lifecycle"
+        ),
     }
 
 
@@ -215,6 +218,7 @@ ROUTES = [
     "/admin/audit/export",
     "/documents/upload",
     "/ingestion/versions/{version_id}/reprocess",
+    "/documents/{document_id}/lifecycle",
     "/logout",
 ]
 
@@ -226,7 +230,11 @@ def test_form_submits_with_the_token_it_renders(
     case = cases[route]()
     if route == "/login":
         c = client(app)
-    elif route in ("/documents/upload", "/ingestion/versions/{version_id}/reprocess"):
+    elif route in (
+        "/documents/upload",
+        "/ingestion/versions/{version_id}/reprocess",
+        "/documents/{document_id}/lifecycle",
+    ):
         c = login(app, app.state.publisher)
     else:
         c = login(app, make_user(app, "admin"))

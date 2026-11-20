@@ -91,6 +91,16 @@ class Settings(BaseSettings):
     language_min_letters: int = 40
     # Delivered events are kept this long in ing_outbox (diagnostics), then removed.
     outbox_retention_days: int = 7
+    # Search (Phase 3, ADR-027): query length in characters, results per page and the last
+    # page shown, time limit of one search statement in the database (an over-long ranked
+    # search falls back to results by date, see docs/en/search.md), and the word similarity
+    # (pg_trgm, 0-1) above which a title, file name, subject or sender counts as a near match.
+    search_min_query_chars: int = 2
+    search_max_query_chars: int = 200
+    search_page_size: int = 20
+    search_max_pages: int = 50
+    search_timeout_ms: int = 3000
+    search_trigram_threshold: float = 0.6
     # Virus scan step before extraction. Only "none" exists for now; the step is the place for
     # ClamAV (docs: ingestion-and-ocr.md, "Virus scan hook").
     scan_hook: Literal["none"] = "none"

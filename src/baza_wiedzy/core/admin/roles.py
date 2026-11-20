@@ -1,14 +1,19 @@
 """Roles and their permissions. The catalog of codes comes from the module manifests.
 
-System roles (Admin, Publisher, Reader) cannot be deleted or renamed. Admin always holds the full
-catalog and is not editable in the matrix. Codes stored for a disabled module are kept when a role
-is saved (they are not in the catalog, so they are not shown). Every change is audited with the
+Some permissions require others (`Permission.requires` in the manifests, e.g.
+documents.publish_any and documents.edit_any require documents.read_drafts): a role is saved only
+when it holds every required code, and roles stored before the rule existed are flagged in the
+list (`inconsistent_roles`). System roles (Admin, Publisher, Reader) cannot be deleted or
+renamed. Admin always holds the full catalog and is not editable in the matrix. Codes stored
+for a disabled module are kept when a role is saved (they are not in the catalog, so they are
+not shown). Every change is audited with the
 codes before and after.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -99,6 +104,39 @@ def _check_codes(codes: set[str], catalog: frozenset[str]) -> None:
         raise AdminError(N_("Unknown permission code."))
 
 
+Requirements = Mapping[str, frozenset[str]]
+
+
+def missing_requirements(codes: set[str], requirements: Requirements) -> dict[str, list[str]]:
+    """code held by the role -> required codes it lacks."""
+    missing = {
+        code: sorted(requirements[code] - codes) for code in sorted(codes) if code in requirements
+    }
+    return {code: lacking for code, lacking in missing.items() if lacking}
+
+
+def _check_requirements(codes: set[str], requirements: Requirements) -> None:
+    for code, lacking in missing_requirements(codes, requirements).items():
+        raise AdminError(
+            N_("The permission %(code)s also requires %(required)s."),
+            code=code,
+            required=", ".join(lacking),
+        )
+
+
+def inconsistent_roles(db: Session, requirements: Requirements) -> set[uuid.UUID]:
+    """Roles (other than Admin) whose stored codes miss a requirement."""
+    held: dict[uuid.UUID, set[str]] = {}
+    rows = db.execute(
+        select(RolePermission.role_id, RolePermission.permission_code)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(or_(Role.system_key.is_(None), Role.system_key != SYSTEM_ROLE_ADMIN))
+    )
+    for role_id, code in rows:
+        held.setdefault(role_id, set()).add(code)
+    return {role_id for role_id, codes in held.items() if missing_requirements(codes, requirements)}
+
+
 def create_role(
     db: Session,
     actor: Actor,
@@ -108,8 +146,10 @@ def create_role(
     codes: set[str],
     catalog: frozenset[str],
     ip: str | None,
+    requirements: Requirements | None = None,
 ) -> Role:
     _check_codes(codes, catalog)
+    _check_requirements(codes, requirements or {})
     role = Role(name=_clean_name(db, name, None), description=description.strip() or None)
     db.add(role)
     db.flush()
@@ -137,6 +177,7 @@ def update_role(
     codes: set[str],
     catalog: frozenset[str],
     ip: str | None,
+    requirements: Requirements | None = None,
 ) -> None:
     before_name, before_description = role.name, role.description
     new_name = role.name if role.system_key else _clean_name(db, name, role)
@@ -162,6 +203,7 @@ def update_role(
     before = stored_codes(db, role)
     # Codes of disabled modules are not in the catalog and therefore not in the form: keep them.
     after = codes | (before - catalog)
+    _check_requirements(after, requirements or {})
     if after == before:
         return
     db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))

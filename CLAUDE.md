@@ -78,10 +78,10 @@ baza-wiedzy/
 │   │   ├── admin/         # admin panel skeleton
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
-│       ├── documents/     # module.py, routes, models, services/api.py, storage
+│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, services/api.py, storage
 │       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
-│       └── search/        # module.py, backend interface, postgres backend, query building, services/api.py
-├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py)
+│       └── search/        # module.py, models.py, backend.py (SearchBackend), postgres.py (queries, ranking), identifiers.py, indexer.py, snippets.py, routes, services/api.py
+├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py; search_corpus.py: golden corpus + make probki)
 ├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh
 ├── docs/
 │   ├── en/
@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user>` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -112,14 +112,14 @@ If you add or rename a command, update this section and `docs/*/deployment-opera
 One codebase, one container image per role (`app`, `worker`), modules selected at start. Decisions: ADR-013, ADR-014 in `docs/en/decisions.md`.
 
 - **Core** (always on): config, db, auth, permissions, audit, admin panel skeleton, module registry, event bus. **Modules**: `documents`, `ingestion`, `search` in `src/baza_wiedzy/modules/<name>/`. The core never imports a module.
-- Enabled through `ENABLED_MODULES` (env). At startup the registry validates `requires` and fails with a readable error if a required module is missing. `ingestion` and `search` require `documents`.
+- Enabled through `ENABLED_MODULES` (env). At startup the registry validates `requires` and fails with a readable error if a required module is missing. `ingestion` and `search` require `documents`; `search` also requires `ingestion`.
 - **Manifest** (`module.py`, `manifest = ModuleManifest(...)`): name, version, requires, permissions, menu items, routers, templates, migrations branch and path, settings schema, background tasks, CLI commands, event subscriptions (`on_register`). Code references in a manifest are lazy strings (`package.module:attr`), so reading manifests imports nothing heavy.
 - **Boundaries**: a module never imports the internals of another module. Allowed: `baza_wiedzy.core.*` and another module's `services/api.py` (only if declared in `requires`). Everything else goes through in-process events defined in `core/events.py`. Enforced by import-linter (`make lint`, CI). Do not weaken the contracts to make a change compile; change the design.
 - **Events** are synchronous and in-process; the bus persists nothing. Payloads carry identifiers only. An event that must not be lost goes through the publisher's outbox table, written in the same transaction as the result and redelivered until it succeeds (`document.version.extracted` via `ing_outbox`, ADR-020), so handlers must be idempotent. Current events: `document.version.uploaded`, `document.version.extracted`, `document.published`. New events and their payloads are added to `core/events.py` and documented in the module docs.
-- **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` owns the extracted text (`ing_parts`), its notes and outbox, and updates status and e-mail metadata through `documents.services.api`; `search` owns its index (`srch_parts`) and, from Phase 3, copies the text through `ingestion.services.api` after `document.version.extracted` (ADR-020).
-- **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility; `search` injects it into its queries (details in Phase 3). Visibility stays in SQL.
+- **Data ownership**: every module owns its tables, prefixed `doc_` (documents), `ing_` (ingestion), `srch_` (search); core tables have no prefix. No module reads or writes another module's tables directly; it calls that module's `services/api.py`. A foreign key may point to a table of a module that this module `requires`. `documents` owns document and version rows, processing status and e-mail metadata; `ingestion` owns the extracted text (`ing_parts`), its notes and outbox, and updates status and e-mail metadata through `documents.services.api`; `search` owns its index (`srch_parts`, `srch_documents`), copies the text through `ingestion.services.api` and the metadata through `documents.services.api` after `document.version.extracted` (ADR-020, ADR-026), and gets visibility, the searched version and the filters from `documents.services.api.search_scope` in SQL.
+- **Visibility rule**: `documents.services.api` provides the SQL fragment that implements document visibility (`visibility.py`: owner sees own documents in every state, drafts need `documents.read_drafts`, published `documents.read`, archived `documents.edit_any`); `search` injects it into its queries. Visibility stays in SQL.
 - **Migrations**: one Alembic branch per module (`branch_labels`) plus a `core` branch; a branch that `requires` another has `depends_on` it. `baza-wiedzy migrate` upgrades **all** branches, independent of `ENABLED_MODULES` (the schema is always complete); `/ready` compares the database with all script heads.
-- **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes.
+- **Permissions**: the catalog is assembled from manifests. Codes are fixed in code; admins combine them into roles but never invent codes. A code may declare required codes (`Permission.requires`); the role editor refuses a role without them (ADR-025).
 - **Extension points** (inside the repository only, no dynamic plugin loading): extractor registry (new format = new file in `ingestion/extractors/`), `SearchBackend`, login providers (local, LDAP), file storage (in `documents`).
 - A new module needs: manifest, `services/api.py`, import-linter contract, docs `docs/en/modules/<name>.md` and `docs/pl/modules/<name>.md`, tests.
 - Keep it thin. No dependency injection framework, no plugin system, no per-module deployments.
@@ -127,11 +127,13 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 ## 7. Search rules (critical)
 
 - Every text part is indexed in three text-search configurations at once: `pl` (Hunspell + simple fallback), `english`, `simple_unaccent`. The detected language is informational and a filter, never a switch that decides which index is used.
-- Queries are built with `websearch_to_tsquery` for each configuration and combined with OR. Quoted phrases and `-exclusion` must work.
+- Queries are built with `websearch_to_tsquery` for each configuration and combined with OR. Quoted phrases and `-exclusion` must work; an exclusion removes the whole document (any part or the metadata), not only the matching part.
+- Identifiers (codes, numbers, phone numbers, e-mail addresses, domains, IPv4) get normalised extra tokens without separators at indexing and the same joined alternatives in the query (`search/identifiers.py`, ADR-026). Numbers never match by trigram similarity. Changing these rules needs `baza-wiedzy reindex-search --all`.
+- Ranking (ADR-027): title and e-mail subject (weight A) above file name and sender (B) above content; trigram near matches below exact matches; search phrases are never logged, audited or stored (ADR-025).
 - Title, file name and e-mail headers are matched with tsvector **and** `pg_trgm`.
 - Text is chunked (PDF per page, other text ≤ 100,000 characters per chunk) to stay under the 1 MB tsvector limit.
 - `ts_headline` runs only on the visible page of results. Source text is not HTML-escaped by PostgreSQL: use sentinel markers for the highlight, escape in Python, then replace the sentinels with `<mark>`. Never mark raw snippets as safe.
-- Changing a dictionary or configuration requires `baza-wiedzy reindex-search`. Document this whenever you touch search configuration.
+- Changing a dictionary or configuration requires `baza-wiedzy reindex-search --all` (`search-check` compares the index with the extracted text). Document this whenever you touch search configuration.
 - Keep the golden search tests in `tests/search_golden/` green (inflected forms, no-diacritics queries, English plurals, phrases, codes and numbers).
 
 ## 8. Security rules
@@ -141,9 +143,11 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Never render the HTML body of an e-mail as HTML. Convert to text.
 - Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
-- Containers run as non-root. Postgres and Redis are not published on host ports. `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
-- Audit log every login, upload, publish/unpublish, download, delete, role/permission change, setting change.
-- Test fixtures are synthetic. Never commit real company documents or real mail.
+- Containers run as non-root. Postgres and Redis are not published on host ports. The worker needs two database connections per process (job + event handler during outbox delivery; ADR-026). `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
+- Audit log every login, upload, publish/unpublish, archive/restore, download, delete, role/permission change, setting change, CLI password reset. Searches are never audited.
+- Authors of other people's documents (list column, search results, author filter) only for `documents.services.api.can_see_authors` (ADR-030); for others the author is not read and an `author` parameter is ignored (no 403). Local passwords are reset with `baza-wiedzy users set-password` (local accounts only, never as an argument); no e-mail reset (ADR-029).
+- Logs, audit and error messages never contain document content, file names, e-mail subjects or search phrases. Search phrases travel in URLs, so the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`, the app access log drops query strings, and database exceptions are logged without their message (ADR-025). `make smoke` checks it.
+- Test fixtures are synthetic. Never commit real company documents or real mail. The repository is public: real documents and queries are evaluated only locally with `make relevance` (inputs outside the repository, output never committed or pasted).
 
 ## 9. Documentation rules (MANDATORY)
 
@@ -165,6 +169,10 @@ The documentation is part of the product and you maintain it.
 - Integration tests run against real Postgres and Redis in Docker (no mocking the database).
 - Permission tests: a matrix of roles × actions, including "reader cannot see drafts" and "reader cannot find drafts through search".
 - A performance test generates a synthetic corpus of 20,000 documents; search p95 target < 500 ms.
+
+### Test data
+
+Data in the repository is synthetic only. Phone numbers from the range 600 100 xxx, e-mail addresses and hosts in reserved domains (example.com, example.org), tax numbers (NIP) and contract numbers invented. No company names, numbers or fragments from real documents. Real documents and queries for the relevance check stay outside the repository (`make relevance DIR=… QUERIES=…` outside the repository tree).
 
 ## 11. Git workflow
 

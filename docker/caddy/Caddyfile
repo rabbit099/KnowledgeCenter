@@ -8,6 +8,17 @@
 	auto_https disable_redirects
 	skip_install_trust
 	admin off
+	# Caddy's own log (errors such as "upstream unreachable" quote the request): same filter
+	# as the access log below, no search phrases (ADR-025).
+	log default {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp \?.*$ "?[removed]"
+			request>headers>Referer delete
+			request>headers>Hx-Current-Url delete
+		}
+	}
 }
 
 (tls-internal) {
@@ -40,8 +51,22 @@ https://{$PUBLIC_HOSTNAME} {
 		-Server
 	}
 	reverse_proxy app:8000
+	# Access log without search phrases, file names and tokens (ADR-025): query strings, the
+	# Referer and HX-Current-URL request headers (full URL of the previous page), redirect
+	# targets (a login redirect carries the requested URL), Content-Disposition (the name of a
+	# downloaded file) and the X-CSRF-Token header are removed. Caddy itself redacts Cookie,
+	# Set-Cookie and Authorization.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			request>uri regexp \?.*$ "?[removed]"
+			request>headers>Referer delete
+			request>headers>Hx-Current-Url delete
+			request>headers>X-Csrf-Token delete
+			resp_headers>Location delete
+			resp_headers>Hx-Redirect delete
+			resp_headers>Content-Disposition delete
+		}
 	}
 }

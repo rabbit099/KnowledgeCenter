@@ -15,6 +15,9 @@ def make_engine(settings: Settings) -> Engine:
         max_overflow=settings.db_max_overflow,
         pool_pre_ping=True,
         pool_recycle=3600,
+        # Exception messages never carry bound parameters: they can hold search phrases and
+        # document text (errors are logged; CLAUDE.md 8, ADR-025).
+        hide_parameters=True,
         connect_args={"connect_timeout": 3, "application_name": "baza-wiedzy"},
     )
 

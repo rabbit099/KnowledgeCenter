@@ -1,6 +1,6 @@
 # Architecture
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 ## Overview
 
@@ -52,7 +52,7 @@ The application is a modular monolith: one codebase and one image per role (`app
 | core | none | `users`, `roles`, `sessions`, `audit_log`, `app_settings` | none | none |
 | `documents` | none | `doc_*` | `document.version.uploaded`, `document.published` | none |
 | `ingestion` | `documents` | `ing_*` (extracted text, notes, outbox) | `document.version.extracted` (outbox, ids only) | `document.version.uploaded` |
-| `search` | `documents` (Phase 3: also `ingestion`, ADR-020) | `srch_*` | none | `document.version.extracted` |
+| `search` | `documents`, `ingestion` (ADR-020) | `srch_*` | none | `document.version.extracted` |
 
 Rules (enforced in CI by import-linter, see ADR-014):
 - A module never imports the internals of another module. It may import `baza_wiedzy.core` and the `services/api.py` of a module it requires. Everything else goes through events.
@@ -73,7 +73,7 @@ See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.1
 1. User with `documents.upload` sends a file.
 2. `app` validates it (size, type by content), stores it under a UUID key, writes `doc_documents` and `doc_versions` rows with `processing_status = pending`, publishes the event `document.version.uploaded` (the `ingestion` module enqueues `process_version(version_id)`), writes an audit entry.
 3. The browser polls the status of the version (HTMX) and shows progress.
-4. `worker` extracts text, runs OCR if needed (Phase 4), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event (from Phase 3 the `search` module copies the parts into `srch_parts` through `ingestion.services.api`). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` extracts text, runs OCR if needed (Phase 4), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event: the `search` module copies the parts into `srch_parts` through `ingestion.services.api` (the worker needs two database connections per process for this, see deployment-operations.md). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publish
 A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `doc_documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.

@@ -1,0 +1,11 @@
+{% from "search/_macros.html" import location, state_note %}
+<li class="hit">
+  <h3 class="hit-title"><a href="/documents/{{ hit.document_id }}">{{ hit.title }}</a>{{ state_note(hit.status) }}</h3>
+  <p class="hit-meta muted">{{ hit.kind|upper }} · {{ hit.filename }} · {% if hit.owner_name %}{{ hit.owner_name }} · {% endif %}<time datetime="{{ hit.doc_date.isoformat() }}">{{ hit.doc_date.astimezone(tz).strftime("%Y-%m-%d") }}</time></p>
+  {% if hit.snippet %}
+  <p class="hit-where">{{ location(hit) }}</p>
+  <p class="snippet">{{ hit.snippet }}</p>
+  {% else %}
+  <p class="hit-where">{{ _("Match in the title, file name or e-mail headers.") }}</p>
+  {% endif %}
+</li>

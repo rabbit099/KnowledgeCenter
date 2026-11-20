@@ -3,6 +3,8 @@
 Runs in the test image (LibreOffice for the DOC file). Every file is generated here from
 invented text with example.com addresses; nothing comes from real documents or mail.
 OCZEKIWANE.txt in the target directory lists the expected result of each file.
+The subdirectory wyszukiwanie/ holds the search corpus (tests/fixtures/search_corpus.py, the
+same files the golden search tests use) and OCZEKIWANE-wyszukiwanie.txt with the queries.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from fixtures import search_corpus
 from fixtures.msg import Attachment, Msg, msg_bytes
 from fixtures.samples import (
     ENGLISH_TEXT,
@@ -87,7 +90,17 @@ def main(target: Path) -> int:
     for name, data in files.items():
         (target / name).write_bytes(data)
     (target / "OCZEKIWANE.txt").write_text(EXPECTED, encoding="utf-8")
-    print(f"{len(files)} sample files written to {target}")
+    corpus = target / "wyszukiwanie"
+    corpus.mkdir(exist_ok=True)
+    for doc in search_corpus.DOCS:
+        (corpus / doc.filename).write_bytes(doc.build())
+    (target / "OCZEKIWANE-wyszukiwanie.txt").write_text(
+        search_corpus.expected_text("wyszukiwanie"), encoding="utf-8"
+    )
+    print(
+        f"{len(files)} sample files written to {target}, "
+        f"{len(search_corpus.DOCS)} search samples to {corpus}"
+    )
     return 0
 
 

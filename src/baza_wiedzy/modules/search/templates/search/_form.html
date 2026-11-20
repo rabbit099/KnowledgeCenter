@@ -1,0 +1,48 @@
+<form method="get" action="/search" role="search" class="search-form">
+  <div class="search-line">
+    <label for="search-q">{{ _("Search in documents") }}</label>
+    <input type="search" id="search-q" name="q" value="{{ filters.q }}" maxlength="{{ max_query }}" aria-describedby="search-help" autofocus>
+    <button type="submit">{{ _("Search") }}</button>
+  </div>
+  <p id="search-help" class="muted">{{ _('Several words: documents with all of them. "Quotation marks": exact phrase. A minus before a word (-draft): without it. or between words: either of them. Numbers and codes can be typed with or without separators.') }}</p>
+  <details class="search-filters"{% if filters.kind or filters.lang or filters.author or filters["from"] or filters.to or filters.archived %} open{% endif %}>
+    <summary>{{ _("Filters and sorting") }}</summary>
+    <fieldset>
+      <legend>{{ _("File type") }}</legend>
+      {% set kind_labels = {"pdf": "PDF", "word": _("Word (DOC, DOCX)"), "email": _("E-mail (EML, MSG)"), "text": _("Text (TXT)")} %}
+      {% for k in kind_groups %}
+      <label class="check"><input type="checkbox" name="kind" value="{{ k }}"{% if k in filters.kind %} checked{% endif %}> {{ kind_labels[k] }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="filter-row">
+      <label>{{ _("Language of the text") }}
+        <select name="lang">
+          <option value="">{{ _("any") }}</option>
+          {% set lang_labels = {"pl": _("Polish"), "en": _("English"), "unknown": _("language unknown")} %}
+          {% for code in languages %}<option value="{{ code }}"{% if filters.lang == code %} selected{% endif %}>{{ lang_labels[code] }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if show_authors %}
+      <label>{{ _("Author") }}
+        <select name="author">
+          <option value="">{{ _("anyone") }}</option>
+          {% for owner_id, name in owners %}<option value="{{ owner_id }}"{% if filters.author == owner_id|string %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      <label>{{ _("Date from") }} <input type="date" name="from" value="{{ filters['from'] }}"></label>
+      <label>{{ _("Date to") }} <input type="date" name="to" value="{{ filters.to }}"></label>
+      <label>{{ _("Sort by") }}
+        <select name="sort">
+          <option value="relevance"{% if filters.sort == "relevance" %} selected{% endif %}>{{ _("relevance") }}</option>
+          <option value="date"{% if filters.sort == "date" %} selected{% endif %}>{{ _("date, newest first") }}</option>
+        </select>
+      </label>
+    </div>
+    {% if may_see_archived %}
+    <label class="check"><input type="checkbox" name="archived" value="1"{% if filters.archived %} checked{% endif %}> {{ _("Show archived documents") }}</label>
+    {% endif %}
+    <p class="muted">{{ _("Date: the sending date of an e-mail, otherwise the upload date.") }}</p>
+    <button type="submit">{{ _("Apply") }}</button>
+  </details>
+</form>

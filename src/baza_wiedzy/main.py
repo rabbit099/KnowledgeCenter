@@ -105,6 +105,7 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
     app.state.session_limits = session_limits
     app.state.session_cookie, app.state.pre_cookie = cookie_names(settings.session_cookie_secure)
     app.state.permission_catalog = frozenset(p.code for p in registry.permissions())
+    app.state.permission_requirements = registry.permission_requirements()
     app.state.authenticator = Authenticator(
         passwords=Passwords(
             max_concurrent=settings.argon2_max_concurrent,

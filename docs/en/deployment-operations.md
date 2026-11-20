@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.3.0 · Last reviewed: 2026-11-17
+> Applies to: v0.4.0 · Last reviewed: 2026-11-20
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
@@ -71,7 +71,7 @@ Database user and privileges: the application and `baza-wiedzy migrate` connect 
 
 Every PostgreSQL connection loads the Polish dictionary on first use and keeps it: about 27–30 MB per connection (measured in the spike, see [search.md](search.md)). The connection limit is therefore set explicitly and the `db` memory limit is derived from it:
 
-- Connection budget: app 5 + 5 overflow per app process, worker 1 per worker process, plus a few for migrations, backups and manual `psql`. With 2 app processes and 2 worker processes: 2 × 10 + 2 × 1 + 6 = 28, so the default `POSTGRES_MAX_CONNECTIONS=40` leaves room.
+- Connection budget: app 5 + 5 overflow per app process, worker 2 per worker process (the job, and the search indexing that runs while the outbox delivery holds its row; with 1 the indexing would wait for a connection that never frees), plus a few for migrations, backups and manual `psql`. With 2 app processes and 2 worker processes: 2 × 10 + 2 × 2 + 6 = 30, so the default `POSTGRES_MAX_CONNECTIONS=40` leaves room.
 - Memory: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Defaults: 256 MB + 40 × 35 MB + 300 MB ≈ 1.95 GB → `DB_MEMORY_LIMIT=2g`.
 - If you raise `POSTGRES_MAX_CONNECTIONS`, raise `DB_MEMORY_LIMIT` by 35 MB per extra connection. Otherwise the kernel may kill PostgreSQL (`docker compose ps` shows `db` restarting; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` prints `true`).
 - Check the current values: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
@@ -157,9 +157,9 @@ Later, `update.sh` with `SKIP_PULL=1` (Phase 6). Requirement: Docker Engine with
 
 ### After changing search configuration
 
-Run `docker compose exec app baza-wiedzy reindex-search` (see [search.md](search.md)).
+Run `docker compose exec app baza-wiedzy reindex-search --all` (see [search.md](search.md#reindexing)); it prints `Indexed N version(s); removed 0 orphaned; took T s.`, then check with `docker compose exec app baza-wiedzy search-check` (`Search index OK.`).
 
-This applies to every change of the Polish dictionary, the stop-word list or a text-search configuration, including a new `db` image that ships a different `hunspell-pl` version or `polish.stop` (the changelog says so when it happens). Existing `tsv_*` values were computed with the old dictionary and will not match queries processed with the new one until reindexed. Restarting `db` also drops all connections, so every connection loads the new dictionary on first use.
+This applies to every change of the Polish dictionary, the stop-word list, a text-search configuration or the identifier rules of `search/identifiers.py`, including a new `db` image that ships a different `hunspell-pl` version or `polish.stop` (the changelog says so when it happens). Existing `tsv_*` values were computed with the old dictionary and will not match queries processed with the new one until reindexed. Restarting `db` also drops all connections, so every connection loads the new dictionary on first use.
 
 ## Backup
 
@@ -246,12 +246,20 @@ What runs where: the web application (`app`) stores uploads and enqueues them; t
 | `reprocess --stuck` | stuck and waiting versions back to the queue (no audit) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
 | `events redeliver` | deliver undelivered events, remove old delivered ones | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `search-check` | compare the search index with the extracted text (identifiers only; exit 1 on a difference) | `Extracted versions: 26` … `Search index OK.` |
+| `reindex-search --missing` | index what `search-check` reports, remove orphaned rows | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
+| `reindex-search --all` | rebuild the whole index (after a dictionary or configuration change) | the same line with the total |
+| `reindex-search --document ID` | one document again | the same line |
 
-Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`).
+**Search.** After an upgrade to 0.4.0 one worker process indexes every document processed earlier at its first start (log line `search: indexed N version(s) missing from the index`; the other processes log `search: startup indexing runs in another worker process; skipped here`; for 200 documents a few seconds); `search-check` must then print `Search index OK.`. New documents are indexed right after processing. Publishing, unpublishing, archiving and restoring need no reindex. Each search writes one log line with counters only (`search: results=… duration_ms=…`), never the phrase. A search slower than `SEARCH_TIMEOUT_MS` is shown by date instead of relevance (`fallback=yes` in the log); if this happens often, see the performance notes in [search.md](search.md#performance-target).
+
+Samples for checking a server or a new version by hand: `make probki DIR=<directory>` on a development machine (expected results in `OCZEKIWANE.txt`; search samples in `wyszukiwanie/` with `OCZEKIWANE-wyszukiwanie.txt`).
 
 ## Developer commands
 
 Everything goes through the `Makefile` (run from Git Bash on Windows or from a Linux shell). Python 3.12 and the virtual environment are managed by `uv`; run `uv sync --all-extras` once (the `worker` extra holds the document parsers the tests and type checks need; `make lint` and `make test` add it themselves).
+
+**Test data.** Data in the repository is synthetic only. Phone numbers from the range 600 100 xxx, e-mail addresses and hosts in reserved domains (example.com, example.org), tax numbers (NIP) and contract numbers invented. No company names, numbers or fragments from real documents. Real documents and queries for the relevance check stay outside the repository (`make relevance DIR=… QUERIES=…` outside the repository tree).
 
 | Command | What it does |
 |---|---|
@@ -260,7 +268,7 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make lint-workflows` | Only the actionlint check of the workflows |
 | `make fmt` | Formats and auto-fixes with `ruff` |
 | `make test` | Runs the tests with `pytest` (integration and golden search tests are skipped) |
-| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small TXT file (204) and waiting until the worker has processed it ("gotowe", at most 2 minutes), the parts page 200, logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, login, admin panel, upload processed to "ready", logout` (about 1 minute with cached layers) |
+| `make smoke` | Smoke test of the production Compose file: builds the four images (`linux/amd64`), starts `docker-compose.yml` as project `baza-wiedzy-smoke` on ports 18080/18443 with generated secrets, migrates, requires `/ready` = 4 × `ok`, checks the network isolation (the worker reaches db and redis, nothing outside), then creates the break-glass admin `smoke-admin` with a generated password and checks through the proxy: admin panel without a session 303, wrong password 401, login 303, `/admin/users` and `/admin/audit` 200, upload of a small text PDF and of a TXT file named `smoke Łódź.txt` (204 each) and waiting until the worker has processed both ("gotowe", at most 2 minutes each), the parts pages 200, publishing the TXT 303, downloading it (same bytes; `application/octet-stream`, `nosniff`, `attachment` with the ASCII and UTF-8 name, `CSP sandbox`), then a unique phrase in a query string, `Referer` and `HX-Current-URL` that must appear in no log of proxy, app, worker and db (and the proxy log must contain no file name and no CSRF token), logout 303. Removes everything at the end. Expected end: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (about 1–2 minutes with cached layers) |
 | `make test-db` | Runs the integration and golden search tests in Docker: a throwaway PostgreSQL from `docker/db` on tmpfs and a one-off test runner on a private Compose network (`docker-compose.test.yml`); no port is published. The runner is the target `test` of the worker image (LibreOffice, Tesseract; ADR-023) and runs the markers `integration` and `tools`. Expected end (Phase 2): `… passed, 2 skipped`. The first run builds the test image (about 2 minutes) and downloads the Python packages into a Docker volume |
 | `make docs-check` | Checks that the English and Polish documentation are consistent |
 | `make messages` | Extracts UI strings into `messages.pot` and updates the Polish catalog `messages.po`; then fill in the new `msgstr` entries |
@@ -268,7 +276,9 @@ Everything goes through the `Makefile` (run from Git Bash on Windows or from a L
 | `make migrate` | Applies database migrations in the dev stack (`baza-wiedzy migrate` in a one-off `app` container). Expected: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
 | `make revision branch=<branch> m="text"` | Creates an empty migration file in the branch of the core or a module (`core`, `search`, ...), on the host, no database needed |
 | `make shell` | Shell inside the `app` container (needs Docker) |
-| `make probki DIR=<directory>` | Writes synthetic sample files for a manual test of every format and error case (TXT cp1250 and cp852, DOCX, DOC, text PDF, scanned PDF, encrypted PDF, EML and MSG with attachments, damaged files) into the directory, with `OCZEKIWANE.txt` listing the expected result of each; runs in the test image (LibreOffice for the DOC) |
+| `make probki DIR=<directory>` | Writes synthetic sample files for a manual test of every format and error case (TXT cp1250 and cp852, DOCX, DOC, text PDF, scanned PDF, encrypted PDF, EML and MSG with attachments, damaged files) into the directory, with `OCZEKIWANE.txt` listing the expected result of each; the subdirectory `wyszukiwanie/` holds the search corpus (26 Polish and English documents, the same as in the golden search tests, `tests/fixtures/search_corpus.py`) and `OCZEKIWANE-wyszukiwanie.txt` lists their target state (publish, draft, archive) and the queries with the expected documents; runs in the test image (LibreOffice for the DOC) |
+| `make perf N=20000` | Search performance on N synthetic documents (manual, never in CI; about 10 minutes for 20,000, an hour for 100,000): a throwaway PostgreSQL with the production settings (`docker-compose.perf.yml`), full index with the real indexer, sizes, query p50/p95, `EXPLAIN (ANALYZE, BUFFERS)`, 10 concurrent searches, evaluation of a dictionary without diacritics. Results in `perf-results/perf-N.md` and `.json` (ignored by git); the current numbers are in [search.md](search.md#performance-target) |
+| `make relevance DIR=<documents> QUERIES=<file> AS=<user> [TOP=5] [ONLY=1]` | Relevance check with your own documents and queries on the **local development stack** (`make up` first; the user must exist and may upload). Uploads every file of DIR as a draft of that user (again only if new), waits for processing, runs each query of the file as that user and prints the first TOP results with score, title, file name, where the hit is and a fragment; `ONLY=1` hides other documents the user can see. Query file: UTF-8, one query per line, `#` comments, optional `query => part of the expected title or file name` (OK/MISSING). **The repository is public: DIR and QUERIES must be outside it** (refused otherwise; typical names are in `.gitignore`); never commit, paste or attach the output. Details: [search.md](search.md#golden-tests) |
 | `make seed-samples` | Reserved for loading synthetic sample documents (not available yet) |
 
 If `make` is not available, run the same tools through `uv run`, for example `uv run pytest`.
@@ -288,6 +298,8 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 
 | Symptom | Likely cause | What to check |
 |---|---|---|
+| A document is "gotowe" but not found | Not indexed (an event was not delivered), or the user may not see it (draft of someone else, archived, processing failed) | `docker compose exec app baza-wiedzy search-check`; then `reindex-search --missing`; undelivered events: `docker compose exec app baza-wiedzy events redeliver`, `docker compose logs worker \| grep outbox` |
+| Search shows "Wyszukiwanie trwało zbyt długo" or "posortowane według daty" | A very general query exceeded `SEARCH_TIMEOUT_MS` | Expected for single very common words; frequent for normal queries: database load (`docker compose exec db psql -U postgres -c 'SELECT count(*) FROM pg_stat_activity'`), memory of `db`; see [search.md](search.md#performance-target) |
 | Uploaded files stay "oczekuje" (`pending`) | Worker or Redis down, or the job was lost while Redis was down | `docker compose ps`, `docker compose logs worker redis`; once both run, a worker restart (`docker compose restart worker`) or `docker compose exec app baza-wiedzy reprocess --stuck` enqueues waiting versions again |
 | A document hangs in "przetwarzanie" | The worker was killed during an attempt (memory limit, restart) | Wait `INGEST_STALE_MINUTES` and restart the worker, or `docker compose exec app baza-wiedzy reprocess --stuck`; the worker log has the version ID (`docker compose logs worker \| grep <version id>`) |
 | "błąd": "Nie rozpoznano kodowania tekstu…" | TXT in a code page other than UTF-8, Windows-1250, ISO-8859-2 (for example DOS CP852) | Save the file as UTF-8 and upload it again (ADR-022) |
@@ -317,6 +329,7 @@ Local stack: `cp .env.example .env` once and set `SECRET_KEY` to a generated val
 - `worker`, `db` and `redis` are only on the internal Docker network `backend` (no route to the internet, no name resolution of public names); `app` is on it and on `default` (reached by the proxy, outgoing LDAPS to Active Directory). Healthchecks run inside the containers and are not affected; `scripts/offline_bundle.sh` lists images only and needs no change; the coming `update.sh` (Phase 6) runs `docker compose`, which creates or updates both networks. Check: `make smoke` ("Network isolation"), or on a server `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` must fail with `OSError` (network unreachable).
 - Containers run as non-root users: `app` and `worker` as uid 10001, `proxy` as uid 10002 (listening on 8080/8443 inside, no capabilities), `db` and `redis` drop to their own users after start. `app`, `worker` and `proxy` drop all Linux capabilities; all services set `no-new-privileges`.
 - Docker logs rotate: at most 5 files × 10 MB per container.
+- Logs never contain search phrases, document content, file names or e-mail subjects (ADR-025): the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`; the application's access log drops query strings; database errors are logged with type and SQLSTATE only. A request therefore shows as `"uri":"/documents?[removed]"` in the proxy log. If you add your own log collection (for example a reverse proxy in front of this one), configure the same; `make smoke` checks it. Browsers keep the addresses of searches in their own history; this is outside the server.
 - `.env` and backups contain secrets and personal data; restrict permissions.
 - Update the base images regularly (a new release rebuilds them).
 - Do not give the application access to `docker.sock`; updates are done from the host.

@@ -2,3 +2,8 @@
 {% set labels = {"pending": _("waiting"), "processing": _("processing"), "done": _("ready"), "failed": _("error"), "needs_ocr": _("needs OCR")} %}
 <span class="badge badge-{{ status }}">{{ labels.get(status, status) }}</span>
 {%- endmacro %}
+
+{% macro state_badge(state) -%}
+{% set labels = {"draft": _("draft"), "published": _("published"), "archived": _("archived")} %}
+<span class="badge badge-state-{{ state }}">{{ labels.get(state, state) }}</span>
+{%- endmacro %}

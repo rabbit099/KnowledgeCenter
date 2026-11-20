@@ -32,7 +32,11 @@
 {% endif %}
 {% endfor %}
 {% else %}
+{% if version.processing_status in ("done", "needs_ocr") %}
+<p class="warn" role="note">{{ _("The document contains no text. It can be downloaded; search finds it only by its title, file name and e-mail headers.") }}</p>
+{% else %}
 <p class="muted">{{ _("No text was extracted.") }}</p>
+{% endif %}
 {% endif %}
 {% if can_reprocess %}
 <form method="post" action="/ingestion/versions/{{ version.id }}/reprocess" hx-post="/ingestion/versions/{{ version.id }}/reprocess" class="inline">

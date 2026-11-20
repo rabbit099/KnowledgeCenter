@@ -1,0 +1,17 @@
+{# Where the best match is: "strona 7", "załącznik: umowa.pdf › strona 2", "treść". #}
+{% macro segment(s) -%}
+{%- if s.type == "attachment" -%}{{ _("attachment: %(name)s", name=s.name) }}
+{%- elif s.type == "page" -%}{{ _("page %(n)s", n=s.no) }}
+{%- else -%}{{ _("content") }}{%- endif -%}
+{%- endmacro %}
+
+{% macro location(hit) -%}
+{%- for s in hit.origin %}{% if s.type == "attachment" and loop.index0 > 0 and loop.previtem.type == "attachment" %}{{ s.name }}{% else %}{{ segment(s) }}{% endif %}{% if not loop.last or hit.page_no %} › {% endif %}{% endfor -%}
+{%- if hit.page_no %}{{ _("page %(n)s", n=hit.page_no) }}{% elif not hit.origin %}{{ _("content") }}{% endif -%}
+{%- if hit.chunk_no > 1 %} › {{ _("fragment %(n)s", n=hit.chunk_no) }}{% endif -%}
+{%- endmacro %}
+
+{% macro state_note(status) -%}
+{%- if status == "draft" %} <span class="badge badge-state-draft">{{ _("draft") }}</span>
+{%- elif status == "archived" %} <span class="badge badge-state-archived">{{ _("archived") }}</span>{% endif -%}
+{%- endmacro %}

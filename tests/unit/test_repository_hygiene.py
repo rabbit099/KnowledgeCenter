@@ -47,3 +47,29 @@ def test_env_example_lists_every_setting() -> None:
     composed = {"DATABASE_URL", "REDIS_URL"}
     missing = sorted(f.upper() for f in Settings.model_fields if f.upper() not in listed | composed)
     assert not missing, f"add to .env.example: {missing}"
+
+
+def test_worker_has_a_connection_for_the_job_and_one_for_event_handlers() -> None:
+    """The outbox delivery holds a connection while handlers (search indexing) open another;
+    with a pool of 1 the event is never delivered (found by make smoke, Phase 3)."""
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    env = compose["services"]["worker"]["environment"]
+    assert int(env["DB_POOL_SIZE"]) + int(env["DB_MAX_OVERFLOW"]) >= 2
+
+
+def test_relevance_inputs_are_ignored_and_refused_inside_the_repository() -> None:
+    """The repository is public: company documents and queries for `make relevance` never get
+    in (Makefile refuses paths inside it; .gitignore is the second net)."""
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for pattern in (
+        "/relevance/",
+        "/trafnosc/",
+        "/dokumenty-firmy/",
+        "/zapytania*.txt",
+        "/queries*.txt",
+    ):
+        assert pattern in ignored
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "is inside the repository, which is public" in makefile
