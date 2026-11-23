@@ -53,7 +53,7 @@ def test_partial_module_set_still_migrates_everything(settings: Settings) -> Non
     only_documents = settings.model_copy(update={"enabled_modules": ("documents",)})
     assert upgrade(only_documents) == [
         "core_0003",
-        "documents_0005",
+        "documents_0006",
         "ingestion_0002",
         "search_0003",
     ]
