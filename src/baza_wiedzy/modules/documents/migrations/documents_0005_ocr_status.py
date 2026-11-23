@@ -6,9 +6,11 @@ Create Date: 2026-11-20
 
 ocr_status: none | queued | running | done | failed | on_hold | skipped (see processing.py);
 ocr_pages: scanned pages that need OCR (priority and the "large document" rule); ocr_requested_at
-and ocr_started_at: queue order and stale detection; ocr_error: readable message id. Expand-only:
-every existing row gets "none" (a version still "wymaga OCR" stays waiting; `baza-wiedzy ocr
---pending` starts those by hand), older application versions never read these columns.
+and ocr_started_at: queue order and stale detection; ocr_error: readable message id;
+ocr_override: the next OCR attempt ignores OCR_MAX_PAGES (`baza-wiedzy ocr --ignore-page-limit`).
+Expand-only: every existing row gets "none" (a version still "wymaga OCR" stays waiting;
+`baza-wiedzy ocr --pending` starts those by hand), older application versions never read these
+columns. Not released yet when ocr_override was added (Phase 4 stage C, before 0.5.0).
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ def upgrade() -> None:
     op.add_column("doc_versions", sa.Column("ocr_requested_at", sa.DateTime(timezone=True)))
     op.add_column("doc_versions", sa.Column("ocr_started_at", sa.DateTime(timezone=True)))
     op.add_column("doc_versions", sa.Column("ocr_error", sa.Text))
+    op.add_column(
+        "doc_versions",
+        sa.Column("ocr_override", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    )
     op.create_check_constraint(
         "ck_doc_versions_ocr_status", "doc_versions", f"ocr_status IN {STATES}"
     )

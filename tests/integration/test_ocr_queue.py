@@ -22,7 +22,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from baza_wiedzy.cli import main
 from baza_wiedzy.core import runtime
@@ -70,6 +70,12 @@ def broker(rt: runtime.Runtime) -> Iterator[dramatiq.Broker]:
     current = setup_broker(rt.settings, rt.registry)
     for queue in ("ingestion", "ocr"):  # nothing left over from other tests
         current.flush(queue)
+    # Versions other tests left "queued" have no message any more; every OCR message takes the
+    # queued version with the fewest pages, so they would steal this test's messages.
+    with rt.session_factory.begin() as db:
+        db.execute(
+            update(Version).where(Version.ocr_status == "queued").values(ocr_status="on_hold")
+        )
     yield current
     current.close()
 
@@ -392,3 +398,33 @@ def test_reprocess_during_ocr_decides_again(
     assert response.status_code == 303
     version = wait_until(rt, version_id, ocr_is("on_hold"))
     assert version.processing_attempts == 1  # a fresh text pass decided "on hold" again
+
+
+def test_cli_ignore_page_limit_starts_a_skipped_document(
+    settings: Settings,
+    app: FastAPI,
+    rt: runtime.Runtime,
+    ingest_worker: dramatiq.Worker,
+    ocr_worker: dramatiq.Worker,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", settings.database_url)
+    monkeypatch.setenv("REDIS_URL", settings.redis_url)
+    monkeypatch.setenv("STORAGE_DIR", settings.storage_dir)
+    rt.settings = rt.settings.model_copy(update={"ocr_max_pages": 1})
+    c = login(app, make_user(app, "publisher"))
+    doc_id, version_id = upload(c, "za-duzy.pdf", unique_scan(pages=2))  # 2 > OCR_MAX_PAGES 1
+    wait_until(rt, version_id, ocr_is("skipped"))
+    assert "OCR pominięty (za dużo stron)" in c.get(f"/documents/{doc_id}").text
+    assert "Uruchom OCR" not in c.get(f"/documents/{doc_id}").text  # no button for this
+    assert main(["ocr", str(doc_id)]) == 0
+    assert "skipped ones need --ignore-page-limit" in capsys.readouterr().out
+    assert version_of(rt, version_id).ocr_status == "skipped"
+    assert main(["ocr", "--pending", "--ignore-page-limit"]) == 1  # IDs only
+    assert main(["ocr", str(doc_id), "--ignore-page-limit"]) == 0
+    assert "Queued for OCR: 1" in capsys.readouterr().out
+    version = wait_until(rt, version_id, lambda v: v.processing_status == "done")
+    assert (version.ocr_status, version.ocr_applied, version.ocr_override) == ("done", True, False)
+    entry = audit(rt, "document.ocr_request", doc_id)[-1]
+    assert entry.actor_label == "cli" and entry.details["source"] == "cli_override"

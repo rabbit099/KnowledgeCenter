@@ -319,11 +319,18 @@ def _user_active(args: argparse.Namespace) -> int:
 
 def _storage_cleanup(args: argparse.Namespace) -> int:
     from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.modules.documents.batches import BatchStore
     from baza_wiedzy.modules.documents.storage import LocalStorage
 
     settings = Settings()
     removed = LocalStorage(settings.storage_dir).cleanup_incoming(int(args.older_than * 3600))
     print(f"Removed {removed} orphaned incoming file(s) from {settings.storage_dir}/.incoming.")
+    # Upload results and files held as possible duplicates: UPLOAD_BATCH_HOURS (ADR-032).
+    batches = BatchStore(settings.storage_dir).cleanup(settings.upload_batch_hours * 3600)
+    print(
+        f"Removed {batches} expired upload batch(es) from {settings.storage_dir}/.batches "
+        f"(older than UPLOAD_BATCH_HOURS={settings.upload_batch_hours})."
+    )
     return 0
 
 
@@ -408,6 +415,8 @@ def _ocr(args: argparse.Namespace) -> int:
         raise _CliError("Give document or version IDs, or --pending (not both).")
     if args.max_pages is not None and not args.pending:
         raise _CliError("--max-pages works with --pending only.")
+    if args.ignore_page_limit and not args.ids:
+        raise _CliError("--ignore-page-limit works with document or version IDs only.")
     rt = _cli_runtime()
     try:
         if not rt.settings.ocr_enabled:
@@ -438,12 +447,20 @@ def _ocr(args: argparse.Namespace) -> int:
         queued = unchanged = 0
         for version_id in dict.fromkeys(targets):
             with rt.session_factory.begin() as db:
-                started = api.request_ocr(db, version_id, actor=CLI_ACTOR, ip=None, source="cli")
+                started = api.request_ocr(
+                    db,
+                    version_id,
+                    actor=CLI_ACTOR,
+                    ip=None,
+                    source="cli_override" if args.ignore_page_limit else "cli",
+                    ignore_page_limit=args.ignore_page_limit,
+                )
             if started:
                 queued += 1
             else:
                 unchanged += 1
-                print(f"  {version_id}: no scanned pages waiting for OCR (or already queued)")
+                hint = "" if args.ignore_page_limit else "; skipped ones need --ignore-page-limit"
+                print(f"  {version_id}: no scanned pages waiting for OCR (or already queued){hint}")
         if queued:
             enqueue_ocr(rt.settings, count=queued)
         print(f"Queued for OCR: {queued}; nothing to do: {unchanged}.")
@@ -623,10 +640,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     user_active.set_defaults(handler=_user_active)
 
     cleanup = commands.add_parser(
-        "storage-cleanup", help="remove orphaned files of interrupted uploads from .incoming/"
+        "storage-cleanup",
+        help="remove orphaned files of interrupted uploads (.incoming/) and expired upload "
+        "batches with their undecided duplicates (.batches/)",
     )
     cleanup.add_argument(
-        "--older-than", type=float, default=1.0, metavar="HOURS", help="age limit (default 1)"
+        "--older-than",
+        type=float,
+        default=1.0,
+        metavar="HOURS",
+        help="age limit for .incoming/ (default 1; .batches/ uses UPLOAD_BATCH_HOURS)",
     )
     cleanup.set_defaults(handler=_storage_cleanup)
 
@@ -662,6 +685,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=int,
         metavar="N",
         help="with --pending: only versions with at most N scanned pages",
+    )
+    ocr.add_argument(
+        "--ignore-page-limit",
+        action="store_true",
+        help='with IDs: also documents "OCR pominięty" (more than OCR_MAX_PAGES scanned pages); '
+        "that attempt ignores the limit (audited, source cli_override)",
     )
     ocr.set_defaults(handler=_ocr)
 

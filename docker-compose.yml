@@ -200,7 +200,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${OCR_MEMORY_LIMIT:-3g}
+          memory: ${OCR_MEMORY_LIMIT:-2g}
           cpus: "${OCR_CPUS:-2}"
     logging: *logging
 

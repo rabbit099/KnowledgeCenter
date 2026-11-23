@@ -16,6 +16,7 @@ e-mail headers.
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 import logging
 import shutil
@@ -433,8 +434,11 @@ def process_ocr(rt: Runtime) -> Outcome:
 
     try:
         source = documents.original_path(settings.storage_dir, claim.storage_key)
+        limits = limits_of(settings, ocr=True)
+        if claim.ignore_page_limit:  # `baza-wiedzy ocr --ignore-page-limit` (audited)
+            limits = dataclasses.replace(limits, ocr_max_pages=settings.ingest_max_pages)
         collector = Collector(
-            limits=limits_of(settings, ocr=True),
+            limits=limits,
             workdir=workdir,
             ocr_deadline=time.monotonic() + settings.ocr_timeout_seconds,
             ocr_should_stop=cancelled,

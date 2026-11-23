@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -57,7 +57,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
 | `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU). Pamięć zmierzona przy 2 procesach: 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem; trzymaj `WORKER_MEMORY_LIMIT` (domyślnie 2g) na co najmniej 1,4 GB + 0,6 GB na proces ([ingestion-and-ocr.md](ingestion-and-ocr.md#kod-natywny-w-procesach-potomnych)) |
-| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Limity pamięci (domyślnie 3g) i CPU (domyślnie 2) usługi `ocr-worker` (jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta). Rdzenie serwera ≈ `WORKER_PROCESSES` + `OCR_CPUS` to dobry punkt wyjścia |
+| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Limity pamięci (domyślnie 2g) i CPU (domyślnie 2) usługi `ocr-worker` (jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta). Rdzenie serwera ≈ `WORKER_PROCESSES` + `OCR_CPUS` to dobry punkt wyjścia |
 | `INGEST_MAX_PAGES`, `OCR_MIN_CHARS`, `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS`, `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` | Limit stron PDF (2000) i próg stron „wymaga OCR” (25 znaków); limity pamięci i czasu procesu potomnego PDF (1024 MB, 300 s) i LibreOffice (1024 MB, 120 s) |
 | `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD` | OCR zeskanowanych stron (true, `pol+eng`, automatycznie do 30 zeskanowanych stron, najwyżej 200, 1800 s na dokument, 120 s na stronę, 2 procesy Tesseracta, po 2048 MB, 200 megapikseli, pewność obrotu 5); zobacz ingestion-and-ocr.md |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
@@ -78,6 +78,22 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 - Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
 - Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
 - Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
+
+### Budżet pamięci i rdzeni (8 GB / 4 vCPU)
+
+Wartości domyślne dobrane do serwera z 8 GB pamięci i 4 vCPU. Kolumna pamięci to limit Dockera każdego kontenera (`*_MEMORY_LIMIT`), czyli najwięcej, ile może zająć; typowe zużycie jest dużo niższe i nie wszystkie usługi mają szczyt jednocześnie. `OCR_CPUS` to jedyny limit CPU: OCR nigdy nie zajmie więcej niż 2 rdzenie, więc aplikacji, bazie i zwykłemu przetwarzaniu zostają co najmniej 2.
+
+| Usługa | Limit pamięci | Typowo | CPU | Od czego zależy |
+|---|---|---|---|---|
+| `db` | 2 GB (`DB_MEMORY_LIMIT`) | 0,5–1,2 GB | wspólne | `POSTGRES_SHARED_BUFFERS` 256 MB + `POSTGRES_MAX_CONNECTIONS` 40 × 35 MB (polski słownik na połączenie) + 300 MB |
+| `app` | 1 GB (`APP_MEMORY_LIMIT`) | 0,2–0,4 GB | wspólne | 2 procesy Uvicorn; wgrywane pliki są buforowane na dysku, nie w pamięci |
+| `worker` | 2 GB (`WORKER_MEMORY_LIMIT`) | < 0,5 GB | wspólne, 2 procesy | `WORKER_PROCESSES` 2; w środku LibreOffice (jeden DOC naraz, `LIBREOFFICE_MEMORY_MB` 1 GB przestrzeni adresowej) i proces potomny PDF (`INGEST_CHILD_MEMORY_MB` 1 GB) |
+| `ocr-worker` | 2 GB (`OCR_MEMORY_LIMIT`) | zobacz pomiary w [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr) | najwyżej 2 (`OCR_CPUS`) | jeden dokument naraz, `OCR_JOBS` 2 procesy Tesseracta (`OCR_MEMORY_MB` 2 GB przestrzeni adresowej każdy: sufit pamięci wirtualnej, nie faktyczne zużycie) |
+| `redis` | 256 MB (`REDIS_MEMORY_LIMIT`) | < 50 MB | wspólne | tylko kolejka zadań i heartbeaty |
+| `proxy` | bez limitu | < 50 MB | wspólne | Caddy |
+| **Suma limitów** | **7,25 GB** | około 2–3 GB | 4 vCPU | zostaje około 0,75 GB dla systemu i proxy |
+
+Na serwerze z większą pamięcią podnieś najpierw `OCR_MEMORY_LIMIT` (duże skany), potem `DB_MEMORY_LIMIT` razem z `POSTGRES_MAX_CONNECTIONS`. Przy większej liczbie rdzeni podnieś razem `OCR_CPUS` i `OCR_JOBS` (jeden proces Tesseracta na rdzeń).
 
 ## Pierwsza instalacja
 
@@ -168,7 +184,7 @@ Dotyczy to każdej zmiany polskiego słownika, listy stop words, konfiguracji wy
 
 `scripts/backup.sh` (Faza 6) tworzy `/srv/baza-wiedzy/backups/RRRR-MM-DD_GGMMSS/` zawierający:
 - `db.dump` — `docker compose exec -T db pg_dump -Fc -U postgres <APP_DB_NAME>` (spójny zrzut przy działającej aplikacji)
-- `storage.tar` — wolumen `storage` (pliki oryginalne i pochodne), czytany przez krótko żyjący kontener: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <obraz app> tar -C /data -cf /backup/storage.tar storage`
+- `storage.tar` — wolumen `storage` (oryginały oraz `.batches/`: wyniki wgrań i pliki wstrzymane jako możliwe duplikaty najwyżej przez `UPLOAD_BATCH_HOURS`; `.incoming/` i `.work/` zawierają tylko niedokończoną pracę i można je pominąć), czytany przez krótko żyjący kontener: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <obraz app> tar -C /data -cf /backup/storage.tar storage`
 - `env.backup` — kopia `.env` (zawiera sekrety; zabezpiecz miejsce backupu)
 - `SHA256SUMS`
 
@@ -188,7 +204,7 @@ Wolumenów Dockera nie kopiuje się bezpośrednio (kopia `pgdata` działającej 
 ./scripts/restore.sh /srv/baza-wiedzy/backups/2026-11-12_021500
 ```
 
-Zatrzymuje `app` i `worker`, odtwarza bazę (`pg_restore --clean --if-exists`), odtwarza pliki, uruchamia usługi i sprawdza liczbę dokumentów i plików.
+Zatrzymuje `app`, `worker` i `ocr-worker`, odtwarza bazę (`pg_restore --clean --if-exists`), odtwarza pliki (z `.batches/`: odtworzona partia starsza niż `UPLOAD_BATCH_HOURS` jest usuwana przy następnym wgraniu albo `storage-cleanup`; nowsza nadal oferuje „Wgraj mimo to” / „Pomiń”), uruchamia usługi i sprawdza liczbę dokumentów i plików.
 
 **Test odtwarzania:** raz w miesiącu odtwórz ostatni backup na zapasowej maszynie lub w tymczasowym projekcie Compose i wykonaj kilka wyszukiwań. Backup, który nigdy nie został odtworzony, nie jest backupem.
 
@@ -240,7 +256,7 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 
 **Pamięć workera**: zmierzona przy 2 procesach 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem. Reguła: `WORKER_MEMORY_LIMIT` ≥ 1,4 GB + 0,6 GB × `WORKER_PROCESSES` (domyślnie 2 procesy, 2 GB). Więcej procesów niż rdzeni CPU nie pomaga.
 
-**OCR** działa w usłudze `ocr-worker` (ten sam obraz co `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), zwykły `worker` obsługuje tylko kolejkę `ingestion`: wgranie jest przetwarzane od razu nawet w trakcie długiego OCR. Jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta, limity kontenera `OCR_MEMORY_LIMIT` (3g) i `OCR_CPUS` (2); tylko sieć wewnętrzna. Małe skany (do `OCR_AUTO_MAX_PAGES`, 30 stron) startują same, najkrótsze najpierw; większe czekają na „Uruchom OCR”. Jego wiersze logu: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; nigdy tekst. Zatrzymanie `ocr-worker` (`docker compose stop ocr-worker`) tylko wstrzymuje OCR: dokumenty w kolejce czekają, wgrywanie działa; przy następnym starcie wiadomości utracone w międzyczasie są wysyłane ponownie.
+**OCR** działa w usłudze `ocr-worker` (ten sam obraz co `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), zwykły `worker` obsługuje tylko kolejkę `ingestion`: wgranie jest przetwarzane od razu nawet w trakcie długiego OCR. Jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta, limity kontenera `OCR_MEMORY_LIMIT` (2g) i `OCR_CPUS` (2); tylko sieć wewnętrzna. Małe skany (do `OCR_AUTO_MAX_PAGES`, 30 stron) startują same, najkrótsze najpierw; większe czekają na „Uruchom OCR”. Jego wiersze logu: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; nigdy tekst. Zatrzymanie `ocr-worker` (`docker compose stop ocr-worker`) tylko wstrzymuje OCR: dokumenty w kolejce czekają, wgrywanie działa; przy następnym starcie wiadomości utracone w międzyczasie są wysyłane ponownie.
 
 **Polecenia** (w kontenerze `app`: `docker compose exec app baza-wiedzy …`):
 
@@ -252,7 +268,8 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `ocr --pending [--max-pages N]` | uruchom OCR każdej wersji „wymaga OCR” nigdy nieuruchomionej albo wstrzymanej (na przykład dokumentów sprzed 0.5), z `--max-pages` tylko do N zeskanowanych stron; audyt `document.ocr_request` (`source: cli`); po aktualizacji nie ma automatycznej fali | `Queued for OCR: 3; nothing to do: 0.` oraz `Left out (more scanned pages than --max-pages 30): 1.` |
 | `ocr <ID dokumentu lub wersji> …` | uruchom OCR tych dokumentów (wstrzymanych, nieudanych, nieuruchomionych) | `Queued for OCR: 1; nothing to do: 0.` |
-| `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `ocr <ID> … --ignore-page-limit` | uruchom OCR dokumentów „OCR pominięty (za dużo stron)” (więcej niż `OCR_MAX_PAGES` zeskanowanych stron); ta próba ignoruje limit (nadal obowiązuje `OCR_TIMEOUT_SECONDS`: zwiększ go dla bardzo długich dokumentów). Celowo bez przycisku w UI; audyt `document.ocr_request` z `source: cli_override` | `Queued for OCR: 1; nothing to do: 0.` |
+| `storage-cleanup [--older-than HOURS]` | usuń pliki przerwanych wgrań (`.incoming/`, starsze niż HOURS, domyślnie 1) i przeterminowane partie wgrań z możliwymi duplikatami bez decyzji (`.batches/`, starsze niż `UPLOAD_BATCH_HOURS`, 24) | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` oraz `Removed 0 expired upload batch(es) from /data/storage/.batches (older than UPLOAD_BATCH_HOURS=24).` |
 | `search-check` | porównaj indeks wyszukiwania z wyodrębnionym tekstem (tylko identyfikatory; kod 1 przy różnicy) | `Extracted versions: 26` … `Search index OK.` |
 | `reindex-search --missing` | zaindeksuj to, co zgłasza `search-check`, usuń osierocone wiersze | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
 | `reindex-search --all` | przebuduj cały indeks (po zmianie słownika albo konfiguracji) | ta sama linia z sumą |

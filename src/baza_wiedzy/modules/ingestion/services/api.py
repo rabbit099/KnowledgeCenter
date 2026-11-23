@@ -139,17 +139,20 @@ def request_ocr(
     actor: Actor,
     ip: str | None,
     source: str = "button",
+    ignore_page_limit: bool = False,
 ) -> bool:
     """ "Uruchom OCR" / `baza-wiedzy ocr`: queue the scanned pages of a version and audit it as
     document.ocr_request (the caller commits, then calls tasks.enqueue_ocr). False: nothing to
     start (no scanned pages waiting, already queued or running, done, or skipped). Permission
-    checks are the caller's (routes: documents.services.api.can_reprocess; CLI: operator)."""
+    checks are the caller's (routes: documents.services.api.can_reprocess; CLI: operator).
+    `ignore_page_limit` (CLI only, source "cli_override"): also a version skipped for having more
+    scanned pages than OCR_MAX_PAGES; that attempt ignores the limit."""
     version = db.get(documents.Version, version_id)
     if version is None:
         return False
     if version.ocr_pages is None:  # versions processed before Phase 4 stage B
         documents.set_ocr_pages(db, version_id, count_scanned_pages(db, version_id))
-    if not documents.request_ocr(db, version_id):
+    if not documents.request_ocr(db, version_id, override=ignore_page_limit):
         return False
     record(
         db,

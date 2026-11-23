@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
 
 ## Uwierzytelnianie
 
@@ -201,7 +201,7 @@ Akcje zapisywane od Fazy 1:
 | Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
-| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.ocr_request` (`version_id`, `pages`, `source`: `button` albo `cli`), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
+| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli` albo `cli_override` dla `--ignore-page-limit`), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
 Reset hasła z wiersza poleceń: `user.password_reset_cli` (`username`, `revoked_sessions`). Wyszukiwania nie są audytowane, a wyszukiwane frazy nigdy nie są zapisywane (ADR-025). Kolejne akcje dokumentów (`delete`, zmiany wersji) dojdą w Fazie 5.

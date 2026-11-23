@@ -1,6 +1,6 @@
 # Deployment and operations
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-23
 
 Everything an operator needs: installing, configuring, updating, rolling back, backing up, restoring, monitoring.
 
@@ -57,7 +57,7 @@ All settings are environment variables in `.env`; `.env.example` in the reposito
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Explicit connection limit and shared buffers (see below) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Container memory limits |
 | `WORKER_PROCESSES` | Worker processes (default 2; one thread and one database connection each; not more than CPU cores). Memory measured with 2 processes: 173 MiB idle, below 0.5 GB under load; keep `WORKER_MEMORY_LIMIT` (default 2g) at least 1.4 GB + 0.6 GB per process ([ingestion-and-ocr.md](ingestion-and-ocr.md#native-code-in-child-processes)) |
-| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Memory (default 3g) and CPU (default 2) limits of the service `ocr-worker` (one OCR document at a time, `OCR_JOBS` Tesseract processes inside). Cores of the server ≈ `WORKER_PROCESSES` + `OCR_CPUS` is a good start |
+| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Memory (default 2g) and CPU (default 2) limits of the service `ocr-worker` (one OCR document at a time, `OCR_JOBS` Tesseract processes inside). Cores of the server ≈ `WORKER_PROCESSES` + `OCR_CPUS` is a good start |
 | `INGEST_MAX_PAGES`, `OCR_MIN_CHARS`, `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS`, `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` | PDF page limit (2000) and the threshold for "needs OCR" pages (25 characters); memory and time limits of the PDF child process (1024 MB, 300 s) and of LibreOffice (1024 MB, 120 s) |
 | `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD` | OCR of scanned pages (true, `pol+eng`, automatic up to 30 scanned pages, at most 200, 1800 s per document, 120 s per page, 2 Tesseract processes, 2048 MB each, 200 megapixels, rotation confidence 5); see ingestion-and-ocr.md |
 | `REDIS_PASSWORD` | Password required by Redis (`requirepass`); URL-safe characters only. `REDIS_URL` is built from it in `docker-compose.yml` |
@@ -78,6 +78,22 @@ Every PostgreSQL connection loads the Polish dictionary on first use and keeps i
 - Memory: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Defaults: 256 MB + 40 × 35 MB + 300 MB ≈ 1.95 GB → `DB_MEMORY_LIMIT=2g`.
 - If you raise `POSTGRES_MAX_CONNECTIONS`, raise `DB_MEMORY_LIMIT` by 35 MB per extra connection. Otherwise the kernel may kill PostgreSQL (`docker compose ps` shows `db` restarting; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` prints `true`).
 - Check the current values: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
+
+### Memory and CPU budget (8 GB / 4 vCPU)
+
+Defaults sized for a server with 8 GB of memory and 4 vCPU. The memory column is the Docker limit of each container (`*_MEMORY_LIMIT`), the most it may use; typical use is far lower, and not every service peaks at the same time. `OCR_CPUS` is the only CPU limit: OCR can never take more than 2 cores, so the web application, the database and ordinary processing keep at least 2.
+
+| Service | Memory limit | Typical use | CPU | What decides it |
+|---|---|---|---|---|
+| `db` | 2 GB (`DB_MEMORY_LIMIT`) | 0.5–1.2 GB | shared | `POSTGRES_SHARED_BUFFERS` 256 MB + `POSTGRES_MAX_CONNECTIONS` 40 × 35 MB (Polish dictionary per connection) + 300 MB |
+| `app` | 1 GB (`APP_MEMORY_LIMIT`) | 0.2–0.4 GB | shared | 2 Uvicorn processes; uploads are spooled to disk, not memory |
+| `worker` | 2 GB (`WORKER_MEMORY_LIMIT`) | < 0.5 GB | shared, 2 processes | `WORKER_PROCESSES` 2; LibreOffice (one DOC at a time, `LIBREOFFICE_MEMORY_MB` 1 GB address space) and the PDF child process (`INGEST_CHILD_MEMORY_MB` 1 GB) run inside it |
+| `ocr-worker` | 2 GB (`OCR_MEMORY_LIMIT`) | see the measurements in [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr) | at most 2 (`OCR_CPUS`) | one document at a time, `OCR_JOBS` 2 Tesseract processes (`OCR_MEMORY_MB` 2 GB address space each: a ceiling on virtual memory, not real use) |
+| `redis` | 256 MB (`REDIS_MEMORY_LIMIT`) | < 50 MB | shared | job queue and heartbeats only |
+| `proxy` | no limit | < 50 MB | shared | Caddy |
+| **Sum of the limits** | **7.25 GB** | about 2–3 GB | 4 vCPU | leaves about 0.75 GB for the system and the proxy |
+
+On a server with more memory, raise `OCR_MEMORY_LIMIT` first (large scans), then `DB_MEMORY_LIMIT` together with `POSTGRES_MAX_CONNECTIONS`. On more cores, raise `OCR_CPUS` and `OCR_JOBS` together (one Tesseract process per core).
 
 ## First installation
 
@@ -168,7 +184,7 @@ This applies to every change of the Polish dictionary, the stop-word list, a tex
 
 `scripts/backup.sh` (Phase 6) creates `/srv/baza-wiedzy/backups/YYYY-MM-DD_HHMMSS/` containing:
 - `db.dump` — `docker compose exec -T db pg_dump -Fc -U postgres <APP_DB_NAME>` (consistent snapshot while the application runs)
-- `storage.tar` — the `storage` volume (original and derived files), read through a short-lived container: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <app image> tar -C /data -cf /backup/storage.tar storage`
+- `storage.tar` — the `storage` volume (originals, and `.batches/`: upload results and files held as possible duplicates for at most `UPLOAD_BATCH_HOURS`; `.incoming/` and `.work/` hold only unfinished work and may be excluded), read through a short-lived container: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <app image> tar -C /data -cf /backup/storage.tar storage`
 - `env.backup` — copy of `.env` (contains secrets; protect the backup location)
 - `SHA256SUMS`
 
@@ -188,7 +204,7 @@ Docker volumes are not copied directly (copying `pgdata` of a running database i
 ./scripts/restore.sh /srv/baza-wiedzy/backups/2026-11-12_021500
 ```
 
-It stops `app` and `worker`, restores the database (`pg_restore --clean --if-exists`), restores the files, starts the services, and verifies counts of documents and files.
+It stops `app`, `worker` and `ocr-worker`, restores the database (`pg_restore --clean --if-exists`), restores the files (with `.batches/`: a restored batch older than `UPLOAD_BATCH_HOURS` is removed at the next upload or `storage-cleanup`; a newer one still offers "Wgraj mimo to" / "Pomiń"), starts the services, and verifies counts of documents and files.
 
 **Restore test:** once a month, restore the latest backup on a spare machine or a temporary Compose project and run a few searches. A backup that was never restored is not a backup.
 
@@ -240,7 +256,7 @@ What runs where: the web application (`app`) stores uploads and enqueues them; t
 
 **Memory of the worker**: measured with 2 processes 173 MiB idle, below 0.5 GB under load. Rule: `WORKER_MEMORY_LIMIT` ≥ 1.4 GB + 0.6 GB × `WORKER_PROCESSES` (default 2 processes, 2 GB). More processes than CPU cores do not help.
 
-**OCR** runs in the service `ocr-worker` (same image as `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), the ordinary `worker` consumes only the queue `ingestion`: an upload is processed at once even while a long OCR runs. One OCR document at a time, `OCR_JOBS` Tesseract processes inside it, container limits `OCR_MEMORY_LIMIT` (3g) and `OCR_CPUS` (2); internal network only. Small scans (up to `OCR_AUTO_MAX_PAGES`, 30 pages) start by themselves, shortest first; larger ones wait for "Uruchom OCR". Its log lines: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; never text. Stopping `ocr-worker` (`docker compose stop ocr-worker`) only pauses OCR: queued documents wait, uploads keep working; at its next start messages lost meanwhile are sent again.
+**OCR** runs in the service `ocr-worker` (same image as `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), the ordinary `worker` consumes only the queue `ingestion`: an upload is processed at once even while a long OCR runs. One OCR document at a time, `OCR_JOBS` Tesseract processes inside it, container limits `OCR_MEMORY_LIMIT` (2g) and `OCR_CPUS` (2); internal network only. Small scans (up to `OCR_AUTO_MAX_PAGES`, 30 pages) start by themselves, shortest first; larger ones wait for "Uruchom OCR". Its log lines: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; never text. Stopping `ocr-worker` (`docker compose stop ocr-worker`) only pauses OCR: queued documents wait, uploads keep working; at its next start messages lost meanwhile are sent again.
 
 **Commands** (in the `app` container: `docker compose exec app baza-wiedzy …`):
 
@@ -252,7 +268,8 @@ What runs where: the web application (`app`) stores uploads and enqueues them; t
 | `events redeliver` | deliver undelivered events, remove old delivered ones | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
 | `ocr --pending [--max-pages N]` | start OCR of every version "wymaga OCR" never started or on hold (for example documents from before 0.5), only up to N scanned pages with `--max-pages`; audited `document.ocr_request` (`source: cli`); there is no automatic wave after an upgrade | `Queued for OCR: 3; nothing to do: 0.` and `Left out (more scanned pages than --max-pages 30): 1.` |
 | `ocr <document or version ID> …` | start OCR of these documents (on hold, failed, never started) | `Queued for OCR: 1; nothing to do: 0.` |
-| `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `ocr <ID> … --ignore-page-limit` | start OCR of documents "OCR pominięty (za dużo stron)" (more than `OCR_MAX_PAGES` scanned pages); that attempt ignores the limit (it is still bound by `OCR_TIMEOUT_SECONDS`: raise it for very long documents). No button in the UI on purpose; audited `document.ocr_request` with `source: cli_override` | `Queued for OCR: 1; nothing to do: 0.` |
+| `storage-cleanup [--older-than HOURS]` | remove files of interrupted uploads (`.incoming/`, older than HOURS, default 1) and expired upload batches with their undecided possible duplicates (`.batches/`, older than `UPLOAD_BATCH_HOURS`, 24) | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` and `Removed 0 expired upload batch(es) from /data/storage/.batches (older than UPLOAD_BATCH_HOURS=24).` |
 | `search-check` | compare the search index with the extracted text (identifiers only; exit 1 on a difference) | `Extracted versions: 26` … `Search index OK.` |
 | `reindex-search --missing` | index what `search-check` reports, remove orphaned rows | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
 | `reindex-search --all` | rebuild the whole index (after a dictionary or configuration change) | the same line with the total |

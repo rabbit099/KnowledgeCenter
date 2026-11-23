@@ -158,6 +158,10 @@ class Version(Base):
     ocr_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ocr_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ocr_error: Mapped[str | None] = mapped_column(Text)
+    # The next OCR attempt ignores OCR_MAX_PAGES (CLI --ignore-page-limit, audited).
+    ocr_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
 
 class EmailMetadata(Base):

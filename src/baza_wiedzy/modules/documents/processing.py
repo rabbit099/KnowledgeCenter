@@ -18,6 +18,7 @@ version is needs_ocr:
     finish with scanned pages --> queued (<= OCR_AUTO_MAX_PAGES) | on_hold (more)
                                   | skipped (> OCR_MAX_PAGES) | none (OCR off)
     none | on_hold | failed --request_ocr ("Uruchom OCR", CLI)--> queued
+    skipped --request_ocr(override) (CLI --ignore-page-limit)--> queued, ignoring OCR_MAX_PAGES
     queued --claim_ocr (smallest ocr_pages first)--> running
     running --finish_ocr--> done (processing done) | skipped | failed (fail_ocr)
     queued | running --cancel_ocr--> on_hold     (a running OCR is stopped by the worker)
@@ -48,6 +49,7 @@ from baza_wiedzy.modules.documents.models import (
     OCR_ON_HOLD,
     OCR_QUEUED,
     OCR_RUNNING,
+    OCR_SKIPPED,
     PENDING,
     PROCESSING,
     Document,
@@ -161,18 +163,22 @@ class OcrClaim:
     storage_key: str
     pages: int | None
     started_at: datetime
+    ignore_page_limit: bool = False
 
 
-def request_ocr(db: Session, version_id: uuid.UUID) -> bool:
-    """none | on_hold | failed -> queued (the caller enqueues a message). False: not possible
-    (no scanned pages waiting, already queued or running, done, or skipped)."""
+def request_ocr(db: Session, version_id: uuid.UUID, *, override: bool = False) -> bool:
+    """none | on_hold | failed -> queued (the caller enqueues a message); with `override` also
+    skipped, and the attempt ignores OCR_MAX_PAGES. False: not possible (no scanned pages
+    waiting, already queued or running, done, or skipped without override)."""
     version = _locked(db, version_id)
+    allowed = (*OCR_REQUESTABLE, OCR_SKIPPED) if override else OCR_REQUESTABLE
     if (
         version is None
         or version.processing_status != NEEDS_OCR
-        or version.ocr_status not in OCR_REQUESTABLE
+        or version.ocr_status not in allowed
     ):
         return False
+    version.ocr_override = override
     version.ocr_status = OCR_QUEUED
     version.ocr_requested_at = _now()
     version.ocr_error = None
@@ -206,6 +212,7 @@ def claim_ocr(db: Session) -> OcrClaim | None:
         storage_key=version.storage_key,
         pages=version.ocr_pages,
         started_at=started,
+        ignore_page_limit=version.ocr_override,
     )
 
 
@@ -248,6 +255,7 @@ def finish_ocr(
     version.ocr_status = ocr_status
     version.ocr_applied = ocr_applied
     version.ocr_error = None
+    version.ocr_override = False
     version.processed_at = _now()
     version.page_count = page_count
     return True
@@ -260,6 +268,7 @@ def fail_ocr(db: Session, claim: OcrClaim, message: str) -> bool:
         return False
     version.ocr_status = OCR_FAILED
     version.ocr_error = message
+    version.ocr_override = False
     return True
 
 
@@ -270,6 +279,7 @@ def cancel_ocr(db: Session, version_id: uuid.UUID) -> bool:
         return False
     version.ocr_status = OCR_ON_HOLD
     version.ocr_started_at = None
+    version.ocr_override = False
     return True
 
 
@@ -350,6 +360,7 @@ def reset_for_reprocess(db: Session, version_id: uuid.UUID, *, stale_before: dat
     version.ocr_status = OCR_NONE
     version.ocr_error = None
     version.ocr_started_at = None
+    version.ocr_override = False
     return True
 
 

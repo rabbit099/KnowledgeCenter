@@ -68,3 +68,27 @@ def test_total_upload_size_never_exceeds_what_the_proxy_lets_through() -> None:
         Settings(secret_key=SECRET, max_upload_mb=50, upload_max_total_mb=10)
     with pytest.raises(ValidationError, match="UPLOAD_MAX_FILES"):
         Settings(secret_key=SECRET, upload_max_files=0)
+
+
+def test_storage_cleanup_removes_expired_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from baza_wiedzy.cli import main
+
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("SECRET_KEY", SECRET)
+    monkeypatch.setenv("UPLOAD_BATCH_HOURS", "24")
+    store = BatchStore(tmp_path)
+    owner = uuid.uuid4()
+    old, new = store.new_id(), store.new_id()
+    for batch in (old, new):
+        store.save(batch, owner, [])
+        store.held_path(batch, 0).write_bytes(b"held")
+    past = time.time() - 25 * 3600
+    for item in (tmp_path / ".batches").iterdir():
+        if old in item.name:
+            os.utime(item, (past, past))
+    assert main(["storage-cleanup"]) == 0
+    out = capsys.readouterr().out
+    assert "Removed 1 expired upload batch(es)" in out and "UPLOAD_BATCH_HOURS=24" in out
+    assert store.load(old, owner) is None and store.load(new, owner) == []

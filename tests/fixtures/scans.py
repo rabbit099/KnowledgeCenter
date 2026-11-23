@@ -166,6 +166,27 @@ SCANS: tuple[Scan, ...] = (
 )  # fmt: skip
 
 
+def long_scan(pages: int = 25) -> bytes:
+    """A longer image-only document: page N says which page it is (queue order, time)."""
+    return scan_pdf(
+        *[page_image([f"Strona {n} z {pages}: harmonogram przeglądów", *BASE_LINES[1:3]])
+          for n in range(1, pages + 1)]
+    )  # fmt: skip
+
+
+def little_text_scan() -> bytes:
+    """One scanned page with just "Nr 7": OCR finds a few characters ("bardzo mało tekstu")."""
+    return scan_pdf(page_image(["Nr 7"], font_size=60))
+
+
+# Only for `make probki` (manual tests); not in the recognition tests (25 pages take a minute).
+EXTRA_SCANS: tuple[Scan, ...] = (
+    Scan("12-dlugi-25-stron.pdf", long_scan, ("harmonogram", "przeglądów"),
+         "25 stron (≤ 30: OCR automatycznie)"),
+    Scan("13-malo-tekstu.pdf", little_text_scan, ("nr",), "kilka znaków na stronie"),
+)  # fmt: skip
+
+
 def expected_text(directory: str = "ocr") -> str:
     """OCZEKIWANE-ocr.txt for `make probki`."""
     lines = [
@@ -179,13 +200,19 @@ def expected_text(directory: str = "ocr") -> str:
         "",
         "Plik                          wada                                  szukaj (przykłady)",
     ]
-    for scan in SCANS:
+    for scan in (*SCANS, *EXTRA_SCANS):
         lines.append(f"  {scan.filename:<28} {scan.defect:<37} {', '.join(scan.expect)}")
     lines += [
         "",
         "Uwagi:",
         "  - 09-mieszany.pdf: strona 1 ma zwykły tekst (bez etykiety OCR), strona 2 z OCR.",
         "  - 10/11: skan jest w załączniku; miejsce trafienia „załącznik: … › strona 1”.",
+        "  - 12-dlugi-25-stron.pdf: OCR trwa dłużej (ok. 1–2 min); w tym czasie wgraj plik",
+        "    TXT: ma stan „gotowe” po kilku sekundach (zwykłe wgrania nie czekają na OCR).",
+        "    Z OCR_AUTO_MAX_PAGES poniżej 25 (np. 10 w .env) ten plik czeka jako",
+        "    „OCR wstrzymany (duży dokument)” na przycisk „Uruchom OCR”.",
+        "  - 13-malo-tekstu.pdf: stan „gotowe”, w panelu tekstu adnotacja „OCR znalazł bardzo",
+        "    mało tekstu: strona 1 (3 znaki)” (liczba znaków może się nieco różnić).",
         "  - Numery ze skanu (np. 600 100 201) mogą być rozpoznane z błędami; to opisane",
         "    ograniczenie OCR, nie błąd wyszukiwarki.",
         "",

@@ -103,13 +103,13 @@ def main(target: Path) -> int:
     )
     ocr_dir = target / "ocr"
     ocr_dir.mkdir(exist_ok=True)
-    for scan in scans.SCANS:
+    for scan in (*scans.SCANS, *scans.EXTRA_SCANS):
         (ocr_dir / scan.filename).write_bytes(scan.build())
     (target / "OCZEKIWANE-ocr.txt").write_text(scans.expected_text("ocr"), encoding="utf-8")
     print(
         f"{len(files)} sample files written to {target}, "
         f"{len(search_corpus.DOCS)} search samples to {corpus}, "
-        f"{len(scans.SCANS)} scans to {ocr_dir}"
+        f"{len(scans.SCANS) + len(scans.EXTRA_SCANS)} scans to {ocr_dir}"
     )
     return 0
 
