@@ -6,9 +6,13 @@
    failed after INGEST_MAX_ATTEMPTS.
 3. Versions still "pending" (the enqueue after upload was lost, e.g. Redis was down):
    enqueued again. A version already queued is simply skipped by the second message.
-4. Undelivered outbox entries are delivered (SKIP LOCKED), old delivered ones removed.
+4. OCR (ADR-033): attempts left "running" longer than OCR_TIMEOUT_SECONDS + 10 minutes (the
+   OCR worker was killed, e.g. out of memory) become "OCR nieudany" (not retried by
+   themselves); one OCR message is sent per version still "queued" (lost messages). Versions
+   "wymaga OCR" without a decision are NOT started: that is `baza-wiedzy ocr --pending`.
+5. Undelivered outbox entries are delivered (SKIP LOCKED), old delivered ones removed.
 
-Steps 2-4 run in one worker process at a time (a Redis lock for 60 s), because all processes
+Steps 2-5 run in one worker process at a time (a Redis lock for 60 s), because all processes
 start together.
 """
 
@@ -20,7 +24,7 @@ from dataclasses import dataclass
 from baza_wiedzy.core.runtime import Runtime
 from baza_wiedzy.modules.documents.services import api as documents
 from baza_wiedzy.modules.ingestion import outbox, pipeline
-from baza_wiedzy.modules.ingestion.tasks import enqueue
+from baza_wiedzy.modules.ingestion.tasks import enqueue, enqueue_ocr
 
 log = logging.getLogger(__name__)
 LOCK_KEY = "bw:ingestion:recovery"
@@ -31,6 +35,8 @@ class Recovery:
     requeued_stuck: int
     failed_stuck: int
     requeued_pending: int
+    ocr_failed: int = 0
+    ocr_requeued: int = 0
 
 
 def recover(rt: Runtime) -> Recovery:
@@ -45,7 +51,19 @@ def recover(rt: Runtime) -> Recovery:
         pending = documents.ids_with_status(db, documents.PENDING)
     for version_id in dict.fromkeys([*requeued, *pending]):
         enqueue(version_id, settings)
-    return Recovery(len(requeued), len(failed), len(set(pending) - set(requeued)))
+    with rt.session_factory.begin() as db:
+        ocr_failed, ocr_queued = documents.recover_ocr(
+            db, stale_before=pipeline.ocr_stale_before(settings)
+        )
+    if ocr_queued:
+        enqueue_ocr(settings, count=len(ocr_queued))
+    return Recovery(
+        len(requeued),
+        len(failed),
+        len(set(pending) - set(requeued)),
+        ocr_failed=len(ocr_failed),
+        ocr_requeued=len(ocr_queued),
+    )
 
 
 def on_worker_start(rt: Runtime) -> None:
@@ -59,10 +77,12 @@ def on_worker_start(rt: Runtime) -> None:
     pruned = outbox.prune(rt.session_factory, older_than_days=rt.settings.outbox_retention_days)
     log.info(
         "ingestion: startup recovery: stuck requeued=%s stuck failed=%s pending requeued=%s "
-        "events delivered=%s failed=%s pruned=%s",
+        "ocr failed=%s ocr requeued=%s events delivered=%s failed=%s pruned=%s",
         result.requeued_stuck,
         result.failed_stuck,
         result.requeued_pending,
+        result.ocr_failed,
+        result.ocr_requeued,
         delivery.delivered,
         delivery.failed,
         pruned,

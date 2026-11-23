@@ -123,6 +123,11 @@ class Collector:
     page_count: int | None = None
     email: EmailHeaders | None = None
     files: int = 0
+    # OCR pass only (Phase 4 stage B): monotonic deadline for all OCR runs of this version
+    # (OCR_TIMEOUT_SECONDS is per document, shared by every PDF of an e-mail), and a check
+    # whether the OCR was cancelled meanwhile (polled while Tesseract runs).
+    ocr_deadline: float | None = None
+    ocr_should_stop: Callable[[], bool] | None = None
 
     def temp_file(self) -> Path:
         self.files += 1

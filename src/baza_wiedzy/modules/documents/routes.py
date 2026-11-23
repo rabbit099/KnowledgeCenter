@@ -89,7 +89,7 @@ def my_documents(
     result = api.list_documents(
         db, user, q=q.strip(), scope=scope, page=_page(page), owner_id=owner_id
     )
-    busy = any(row[1].processing_status in (PENDING, PROCESSING) for row in result.items)
+    busy = any(_busy(row[1]) for row in result.items)
     filters = {"q": q, "scope": "all" if owner_id else scope}
     if owner_id:
         filters["author"] = str(owner_id)
@@ -346,6 +346,24 @@ def decide_duplicate(
     return RedirectResponse(f"/documents?batch={batch_id}", status_code=303)
 
 
+def _busy(version: api.Version) -> bool:
+    """The page polls while the text pass or OCR is under way."""
+    return version.processing_status in (PENDING, PROCESSING) or version.ocr_status in (
+        api.OCR_QUEUED,
+        api.OCR_RUNNING,
+    )
+
+
+def _ocr_context(request: Request, user: CurrentUser, document: api.Document) -> dict[str, Any]:
+    settings = request.app.state.settings
+    return {
+        "can_act": api.can_reprocess(user, document),
+        "ocr_enabled": settings.ocr_enabled,
+        "ocr_auto_max_pages": settings.ocr_auto_max_pages,
+        "ocr_max_pages": settings.ocr_max_pages,
+    }
+
+
 def _document_key(document_id: str) -> uuid.UUID:
     try:
         return uuid.UUID(document_id)
@@ -378,7 +396,8 @@ def _detail(
         "version": latest,
         "duplicates": api.visible_duplicates(db, user, latest.sha256, exclude_version_id=latest.id),
         "done": request.query_params.get("done"),
-        "busy": latest.processing_status in (PENDING, PROCESSING),
+        "busy": _busy(latest),
+        **_ocr_context(request, user, document),
         # The text is not (fully) searchable unless processing finished with every page read.
         "not_searchable": latest.processing_status != DONE,
         "actions": lifecycle.available_actions(user, document),
@@ -450,7 +469,8 @@ def document_status(request: Request, db: Db, user: AnyUser, document_id: str) -
     context = {
         "document": document,
         "version": latest,
-        "busy": latest.processing_status in (PENDING, PROCESSING),
+        "busy": _busy(latest),
         "polled": request.headers.get("hx-request") == "true",
+        **_ocr_context(request, user, document),
     }
     return _render(request, "documents/_status.html", context)

@@ -7,6 +7,7 @@ Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowan
 ## [Unreleased]
 
 ### Dodano
+- OCR działa w nowej usłudze `ocr-worker` (kolejka `ocr`; `docker compose up -d` ją uruchamia), więc wgrania nigdy nie czekają na OCR. Skany do `OCR_AUTO_MAX_PAGES` (30) zeskanowanych stron są rozpoznawane automatycznie, najkrótsze najpierw; większe czekają jako „OCR wstrzymany (duży dokument)” na „Uruchom OCR”; „Anuluj OCR” zatrzymuje OCR w kolejce lub w toku; „OCR nieudany” pokazuje przyczynę i „Uruchom OCR ponownie”. Stany OCR na stronie dokumentu i w „Moje dokumenty”. Audyt `document.ocr_request`, `document.ocr_cancel`. CLI `baza-wiedzy ocr --pending [--max-pages N]` i `baza-wiedzy ocr <ID>`: dokumenty „wymaga OCR” z wcześniejszych wersji nie są uruchamiane automatycznie po aktualizacji. Migracja `documents_0005` (`doc_versions.ocr_status` …). Nowe ustawienia `OCR_AUTO_MAX_PAGES` (30), `OCR_MEMORY_LIMIT` (3g), `OCR_CPUS` (2); `OCR_TIMEOUT_SECONDS` dotyczy teraz całego dokumentu, domyślnie 600 → 1800. Zwykły `worker` obsługuje tylko kolejkę `ingestion` (ADR-033).
 - Adnotacje OCR odróżniają „brak tekstu” (0 znaków) od „bardzo mało tekstu (N znaków)” i używają polskich form liczby mnogiej.
 - OCR zeskanowanych stron PDF (polski + angielski), także w załącznikach maili; etykieta „tekst z OCR” i ostrzeżenie o numerach na stronie dokumentu; ustawienia `OCR_*`; migracja `ingestion_0002` (`ing_parts.ocr_applied`).
 

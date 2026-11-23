@@ -14,7 +14,7 @@ How an uploaded file becomes searchable text. Upload validation and storage belo
 | PDF with text | pypdfium2 in a child process, one part per page | Phase 2 |
 | DOC | LibreOffice headless converts to DOCX in a child process, then the DOCX extractor | Phase 2 |
 | MSG | `extract-msg`: headers, plain / HTML / RTF body, attachments, attached messages | Phase 2 |
-| PDF scanned | pages without a text layer are recognised by OCR (OCRmyPDF + Tesseract, `pol+eng`), also in e-mail attachments; text only | Phase 4, stage A |
+| PDF scanned | pages without a text layer are recognised by OCR (OCRmyPDF + Tesseract, `pol+eng`) in the service `ocr-worker`, also in e-mail attachments; text only | Phase 4 |
 
 Attachments of EML/MSG that are themselves supported files are extracted recursively (depth ≤ `INGEST_MAX_DEPTH`, default 3) and stored as parts of type `attachment` (or `page` for PDF pages) in `ing_parts`; attached Outlook messages count as one level each. Other attachments (images, archives) and password-protected ones are skipped with a note on the document page. OCR of standalone images is out of scope for the MVP.
 
@@ -109,7 +109,7 @@ If the check fails (for example the DOS code page CP852, or binary data), the ve
 ### PDF, DOC and MSG
 
 - **PDF**: one part per page with the origin "strona N" (inside an e-mail "załącznik: raport.pdf › strona 2"); the page count is stored on the version. A page with text becomes a part; a page with fewer than `OCR_MIN_CHARS` (25) non-space characters that contains an image is a scanned page: kept as a part marked `needs_ocr` (with its little text); a blank page (no text, no image) is skipped.
-- **Status of scans** (Phase 4): the scanned pages are recognised by OCR in the same pass (section [OCR](#ocr)); the version ends as `done` with `ocr_applied`. It ends as `needs_ocr` ("wymaga OCR") only when OCR is off (`OCR_ENABLED=false`), the PDF has more scanned pages than `OCR_MAX_PAGES`, or OCR failed (time limit, crash); its text pages are stored and searchable either way, and "Przetwórz ponownie" tries again.
+- **Status of scans** (Phase 4): the text pass ends as `needs_ocr` ("wymaga OCR") with the scanned pages marked and an OCR state; the OCR pass in `ocr-worker` recognises them and moves the version to `done` with `ocr_applied` (section [OCR](#ocr)). The text pages are stored and searchable either way.
 - **DOC**: LibreOffice converts to DOCX, then the DOCX extractor reads it (tables "A | B", headers, footers).
 - **MSG**: like EML. Body: plain text, else HTML converted to text, else RTF (HTML encapsulated in RTF through extract-msg, plain RTF with `rtf_text.py`). Attachments stored by value go through the same registry (type by content, origin "załącznik: nazwa"); attached Outlook messages are processed as nested messages (one depth level each); other kinds (OLE objects, links) are skipped with a note. The libraries' own loggers are silenced so that nothing from a message reaches the log. Without a typed title the subject becomes the title; a document page opened during processing shows the new title as soon as processing ends (the status polling also replaces the heading).
 
@@ -135,17 +135,31 @@ Before extraction the pipeline calls `ingestion/scanning.py` with the path of th
 
 ## OCR
 
-Phase 4, stage A (ADR-031). Per PDF, also a PDF attached to an e-mail (EML, MSG):
-1. Text per page with pypdfium2 (child process). A page "needs OCR" when it has fewer than `OCR_MIN_CHARS` non-whitespace characters (default 25) and contains an image.
-2. If any page needs OCR and OCR is on, OCRmyPDF runs **only on those pages** (`--mode force --pages 2,5,…`) in a child process: languages `OCR_LANGUAGES` (`pol+eng`), automatic rotation of sideways pages (`--rotate-pages`, confidence `OCR_ROTATE_THRESHOLD`, default 5), pages rasterised by pypdfium (`--rasterizer pypdfium`), **text only** (`--sidecar`, `--output-type none`): no derived PDF is stored, the original is what "Pobierz oryginał" returns.
-3. The recognised text replaces those pages' parts; they get `ocr_applied` (and so does the version); the version ends as `done` ("gotowe"). A page from which OCR gets no character at all is noted "OCR nie znalazł żadnego tekstu na stronie …"; a page with fewer than `OCR_MIN_CHARS` characters "OCR znalazł bardzo mało tekstu: strona 2 (3 znaki)" (handwriting, a picture, a very poor scan). Messages with a number use the Polish plural forms (1 / 2–4 / 5+).
-4. OCR never fails a document: if it is off, the PDF has more scanned pages than `OCR_MAX_PAGES`, or it fails (time limit `OCR_TIMEOUT_SECONDS`, a crash), the scanned pages stay marked "wymaga OCR" with a note on the text panel, the text pages are searchable, and "Przetwórz ponownie" tries again.
+Phase 4 (ADR-031 engine, ADR-033 queue). Two passes per version, in two services:
+
+1. **Text pass** (service `worker`, queue `ingestion`, never runs OCR): text per page with pypdfium2; a page "needs OCR" when it has fewer than `OCR_MIN_CHARS` non-whitespace characters (default 25) and contains an image. Scanned pages are stored as parts marked "wymaga OCR"; the text pages are searchable at once. Then the version gets an OCR state from the number of scanned pages (attachments included):
+
+   | Scanned pages | OCR state | Shown as |
+   |---|---|---|
+   | 0 | `none` | "gotowe" |
+   | 1 … `OCR_AUTO_MAX_PAGES` (30) | `queued`: an OCR message is sent at once | "wymaga OCR" + "OCR w kolejce" |
+   | above `OCR_AUTO_MAX_PAGES` up to `OCR_MAX_PAGES` (200) | `on_hold` | "OCR wstrzymany (duży dokument)" + button "Uruchom OCR" |
+   | above `OCR_MAX_PAGES` | `skipped` | "OCR pominięty (za dużo stron)"; the scans stay unsearchable |
+   | any, `OCR_ENABLED=false` | `none` | "OCR jest wyłączony na tym serwerze" |
+
+2. **OCR pass** (service `ocr-worker`, queue `ocr`, one document at a time): every message takes "the next queued version", the one with the **fewest scanned pages** first (then the oldest request) with `SELECT … FOR UPDATE SKIP LOCKED`, so short documents never wait behind a long one. The order lives in the database: Dramatiq's message priority would only reorder messages a worker already prefetched from Redis. The version becomes `running` ("OCR w toku"); the whole file is extracted again with OCR on (scans may sit in e-mail attachments): OCRmyPDF **only on the marked pages** (`--mode force --pages 2,5,…`) in a child process, languages `OCR_LANGUAGES` (`pol+eng`), rotation of sideways pages (`--rotate-pages`, confidence `OCR_ROTATE_THRESHOLD`, default 5), pages rasterised by pypdfium, **text only** (`--sidecar`, `--output-type none`: no derived PDF; "Pobierz oryginał" returns the original). The new parts replace the old ones in one transaction with `document.version.extracted` in the outbox (search picks up the text); the version becomes `done` ("gotowe", OCR state `done`, `ocr_applied`).
+3. **Limits**: `OCR_TIMEOUT_SECONDS` (default 1800) for the **whole document**, shared by all its PDFs; `OCR_PAGE_TIMEOUT_SECONDS` (120) per page inside Tesseract; `OCR_JOBS` (2) Tesseract processes with one thread each (`OMP_THREAD_LIMIT=1`); `OCR_MEMORY_MB` (2048) address space per process (RLIMIT_AS); `OCR_MAX_IMAGE_MPIXELS` (200); the container limits `OCR_MEMORY_LIMIT` (3g) and `OCR_CPUS` (2). Over the time limit the process group is killed and the version shows "OCR nieudany" with the message "OCR trwał dłużej niż limit czasu…"; a crash gives "OCR się nie powiódł…". The previous parts stay (text pages searchable), the document never fails because of OCR, and "Uruchom OCR ponownie", "Przetwórz ponownie" or `baza-wiedzy ocr <ID>` retries. An OCR worker killed during an attempt (memory) leaves it `running`; the next worker start marks it failed ("OCR został przerwany…") after `OCR_TIMEOUT_SECONDS` + 10 minutes, and does not retry it by itself.
+4. **Cancel**: "Anuluj OCR" (queued or running) sets "OCR wstrzymany"; a running Tesseract is killed within 2 seconds (the OCR worker polls the state) and its result is discarded. "Uruchom OCR" starts it again.
+5. **Who**: "Uruchom OCR", "Uruchom OCR ponownie" and "Anuluj OCR" for the owner with `documents.upload` (own documents) and for `documents.edit_any` (any visible document), like "Przetwórz ponownie"; audited as `document.ocr_request` (`version_id`, `pages`, `source`: `button` or `cli`) and `document.ocr_cancel`. The automatic start is not audited (nobody asked).
+6. **Versions from before Phase 4 stage B** ("wymaga OCR", OCR state `none`) are **not** started by the upgrade: `baza-wiedzy ocr --pending [--max-pages N]` starts them by hand (also those on hold), `baza-wiedzy ocr <document or version ID>` one document. See [deployment-operations.md](deployment-operations.md#document-processing-operator-guide).
+
+A page from which OCR gets no character at all is noted "OCR nie znalazł żadnego tekstu na stronie …"; a page with fewer than `OCR_MIN_CHARS` characters "OCR znalazł bardzo mało tekstu: strona 2 (3 znaki)" (handwriting, a picture, a very poor scan). Messages with a number use the Polish plural forms (1 / 2–4 / 5+).
 
 The document page shows "Tekst: tekst z OCR" with a warning that words and especially numbers may contain recognition errors; the text panel marks each recognised page "tekst z OCR".
 
-Choices measured on synthetic scans (stage A): no `--deskew` (its fixed-threshold binarisation turned a low-contrast scan into an empty page; Tesseract reads a skew of up to about 5° by itself, 8° fails either way); rotation threshold 5 instead of OCRmyPDF's default 14 (a page turned by 90° stayed unturned and came out as garbage); no Ghostscript (not needed with the pypdfium rasteriser and text-only output; not installed). Isolation, limits and the absence of OCR text in logs: see [Safety limits](#safety-limits) and [Native code in child processes](#native-code-in-child-processes).
+Choices measured on synthetic scans (stage A): no `--deskew` (its fixed-threshold binarisation turned a low-contrast scan into an empty page; Tesseract reads a skew of up to about 5° by itself, 8° fails either way); rotation threshold 5 instead of OCRmyPDF's default 14 (a page turned by 90° stayed unturned and came out as garbage); no Ghostscript (not needed with the pypdfium rasteriser and text-only output; not installed). Neither the recognised text nor the messages of the OCR tools reach any log: the logs carry identifiers, page counts, durations and reasons (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
 
-Coming in Phase 4: stage B a separate queue and service for OCR, automatic OCR up to `OCR_AUTO_MAX_PAGES` (30) scanned pages and "Uruchom OCR" above, OCR statuses, `baza-wiedzy ocr --pending`; stage C the label in search results and measurements (time per page, `tessdata_best`).
+Coming in stage C: the label "tekst z OCR" in search results, measurements (time per page, `tessdata_best`, `--deskew`), golden search tests on defective scans.
 
 Known limits to tell users: quality depends on the scan; handwriting is not supported; numbers (tax numbers, account and phone numbers) may be misread; large scans take minutes; password-protected PDFs fail with "PDF jest zabezpieczony hasłem".
 
@@ -164,7 +178,7 @@ Known limits to tell users: quality depends on the scan; handwriting is not supp
 | LibreOffice: memory (address space), time, parallel conversions | 1024 MB, 120 s, one per worker container | `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` |
 | Time limit of one attempt | 900 s | `INGEST_TIME_LIMIT_SECONDS` |
 | Attempts (transient errors only) | 3, delay 30 s doubling up to 600 s | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS` |
-| OCR (per PDF): scanned pages, time, time per page, Tesseract processes, memory (address space) per process, page image size | 200 pages, 600 s, 120 s, 2, 2048 MB, 200 megapixels (more scanned pages: kept "wymaga OCR" with a note) | `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS` |
+| OCR: scanned pages started automatically / at most, time per document, time per page, Tesseract processes, memory (address space) per process, page image size | 30 / 200 pages, 1800 s, 120 s, 2, 2048 MB, 200 megapixels; container `ocr-worker`: 3 GB, 2 CPUs | `OCR_AUTO_MAX_PAGES` / `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`; `OCR_MEMORY_LIMIT`, `OCR_CPUS` |
 | Worker processes (one job each), worker memory | 2, 2 GB | `WORKER_PROCESSES`, `WORKER_MEMORY_LIMIT` |
 
 Password-protected files fail with "…zabezpieczony hasłem. Wgraj kopię bez hasła.": a PDF when pdfium asks for a password, a DOC by its encryption flag (before LibreOffice starts), a DOCX already at upload (an encrypted Office file is an OLE2 container with `EncryptionInfo`). As attachments they are skipped with a note.

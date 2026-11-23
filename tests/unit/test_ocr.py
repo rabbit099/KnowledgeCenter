@@ -192,3 +192,70 @@ def test_a_scan_with_a_few_characters_is_noted_as_very_little_text(tmp_path: Pat
     note = collector.notes[-1]
     assert note["code"] == "ocr_little_text"
     assert note["pages"][0]["page"] == 1 and 0 < note["pages"][0]["chars"] < 25
+
+
+# --- stage B: decision after the text pass, cancellation ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("enabled", "pages", "expected"),
+    [
+        (True, 0, "none"),
+        (True, 1, "queued"),
+        (True, 30, "queued"),
+        (True, 31, "on_hold"),
+        (True, 200, "on_hold"),
+        (True, 201, "skipped"),
+        (False, 5, "none"),
+    ],
+)
+def test_ocr_decision(enabled: bool, pages: int, expected: str) -> None:
+    from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.modules.ingestion.pipeline import ocr_decision
+
+    settings = Settings(_env_file=None, ocr_enabled=enabled)  # type: ignore[call-arg]
+    assert (settings.ocr_auto_max_pages, settings.ocr_max_pages) == (30, 200)
+    assert ocr_decision(settings, pages) == expected
+
+
+def test_a_cancelled_child_is_killed_within_the_poll_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    import time
+
+    from baza_wiedzy.modules.ingestion import sandbox
+
+    monkeypatch.setattr(sandbox, "POLL_SECONDS", 0.2)
+    calls: list[float] = []
+
+    def stop() -> bool:
+        calls.append(time.monotonic())
+        return len(calls) >= 2
+
+    started = time.monotonic()
+    with pytest.raises(sandbox.IsolationCancelled):
+        sandbox.run(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            workdir=tmp_path,
+            timeout=30,
+            should_stop=stop,
+        )
+    assert time.monotonic() - started < 5 and len(calls) == 2
+    with pytest.raises(sandbox.IsolationTimeout):
+        sandbox.run(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            workdir=tmp_path,
+            timeout=0.5,
+            should_stop=lambda: False,
+        )
+
+
+def test_the_document_deadline_is_shared_by_its_pdfs(tmp_path: Path) -> None:
+    import time
+
+    collector = Collector(limits=Limits(ocr_enabled=True), workdir=tmp_path)
+    collector.ocr_deadline = time.monotonic() - 1  # spent on an earlier PDF of the e-mail
+    with pytest.raises(ocr.OcrFailed) as caught:
+        ocr.recognise(tmp_path / "x.pdf", [1], Context(collector=collector))
+    assert caught.value.reason == "timeout"

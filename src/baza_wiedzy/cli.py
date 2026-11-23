@@ -395,6 +395,65 @@ def _reprocess(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ocr(args: argparse.Namespace) -> int:
+    """`ocr --pending [--max-pages N]` and `ocr ID...` (Phase 4 stage B, ADR-033)."""
+    import uuid
+
+    from baza_wiedzy.core.audit.service import CLI_ACTOR
+    from baza_wiedzy.modules.documents.services import api as documents
+    from baza_wiedzy.modules.ingestion.services import api
+    from baza_wiedzy.modules.ingestion.tasks import enqueue_ocr
+
+    if bool(args.ids) == bool(args.pending):
+        raise _CliError("Give document or version IDs, or --pending (not both).")
+    if args.max_pages is not None and not args.pending:
+        raise _CliError("--max-pages works with --pending only.")
+    rt = _cli_runtime()
+    try:
+        if not rt.settings.ocr_enabled:
+            raise _CliError("OCR is switched off (OCR_ENABLED=false).")
+        targets: list[uuid.UUID] = []
+        too_large = 0
+        with rt.session_factory() as db:
+            if args.pending:
+                for version_id, pages in documents.ocr_candidates(db):
+                    if pages is None:
+                        pages = api.count_scanned_pages(db, version_id)
+                    if args.max_pages is not None and pages > args.max_pages:
+                        too_large += 1
+                        continue
+                    targets.append(version_id)
+            for raw in args.ids:
+                try:
+                    key = uuid.UUID(raw)
+                except ValueError as exc:
+                    raise _CliError(f"Not an ID: {raw!r}.") from exc
+                if db.get(documents.Version, key) is not None:
+                    targets.append(key)
+                    continue
+                document = db.get(documents.Document, key)
+                if document is None or document.latest_version_id is None:
+                    raise _CliError(f"No document or version with ID {raw}.")
+                targets.append(document.latest_version_id)
+        queued = unchanged = 0
+        for version_id in dict.fromkeys(targets):
+            with rt.session_factory.begin() as db:
+                started = api.request_ocr(db, version_id, actor=CLI_ACTOR, ip=None, source="cli")
+            if started:
+                queued += 1
+            else:
+                unchanged += 1
+                print(f"  {version_id}: no scanned pages waiting for OCR (or already queued)")
+        if queued:
+            enqueue_ocr(rt.settings, count=queued)
+        print(f"Queued for OCR: {queued}; nothing to do: {unchanged}.")
+        if too_large:
+            print(f"Left out (more scanned pages than --max-pages {args.max_pages}): {too_large}.")
+    finally:
+        rt.close()
+    return 0
+
+
 def _events_redeliver(_: argparse.Namespace) -> int:
     from baza_wiedzy.modules.ingestion import outbox
 
@@ -585,6 +644,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="versions processing longer than INGEST_STALE_MINUTES, and waiting ones (no audit)",
     )
     reprocess.set_defaults(handler=_reprocess)
+
+    ocr = commands.add_parser(
+        "ocr",
+        help="start OCR of scanned pages (audited): documents by ID, or every one still waiting",
+    )
+    ocr.add_argument(
+        "ids", nargs="*", metavar="ID", help="document ID (its latest version) or version ID"
+    )
+    ocr.add_argument(
+        "--pending",
+        action="store_true",
+        help='every version "wymaga OCR" never started or on hold (none, on_hold)',
+    )
+    ocr.add_argument(
+        "--max-pages",
+        type=int,
+        metavar="N",
+        help="with --pending: only versions with at most N scanned pages",
+    )
+    ocr.set_defaults(handler=_ocr)
 
     events = commands.add_parser("events", help="event outbox of the ingestion module")
     events_commands = events.add_subparsers(dest="events_command", metavar="ACTION", required=True)

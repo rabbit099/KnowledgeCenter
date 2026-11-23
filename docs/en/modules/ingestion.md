@@ -14,6 +14,8 @@ Requires [documents](documents.md) (status, e-mail metadata, visibility, file na
 
 None of its own. "Przetwórz ponownie" (`POST /ingestion/versions/<id>/reprocess`) is allowed for the owner with `documents.upload` (own documents) and for `documents.edit_any` (any document), and only for documents the user can see (404 otherwise, 403 when visible without the right). Page of parts: `GET /ingestion/versions/<id>/parts` (HTMX fragment on the document page), anyone who can see the document. Audit: `document.reprocess` (document id, `version_id`, `sha256`).
 
+"Uruchom OCR" (`POST /ingestion/versions/<id>/ocr`) and "Anuluj OCR" (`POST /ingestion/versions/<id>/ocr/cancel`, Phase 4 stage B) follow the same rule as "Przetwórz ponownie" (owner with `documents.upload`, or `documents.edit_any`; 404 for invisible documents, 403 without the right). Audit: `document.ocr_request`, `document.ocr_cancel`.
+
 ## Tables
 
 Branch `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`):
@@ -36,6 +38,8 @@ Columns: [data-model.md](../data-model.md#ingestion).
 - `request_reprocess(db, settings, version_id, actor=…, ip=…)`: back to pending with a fresh attempt counter and audit; the caller checks permissions, commits and enqueues; raises `ReprocessBusy` while an attempt runs.
 
 Worker start hook (manifest `worker_startup`): `startup.on_worker_start` (temporary files, stuck and pending versions, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).
+
+Phase 4 stage B: `request_ocr` (queue a version for OCR, audited), `cancel_ocr`, `count_scanned_pages`. Actors: `ingestion.process_version` (queue `ingestion`, service `worker`) and `ingestion.ocr_next` (queue `ocr`, service `ocr-worker`; takes the queued version with the fewest scanned pages, ADR-033). CLI: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID>`.
 
 ## Extension points
 

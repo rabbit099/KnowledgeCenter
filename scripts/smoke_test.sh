@@ -59,6 +59,8 @@ POSTGRES_MAX_CONNECTIONS=20
 MAX_UPLOAD_MB=2
 UPLOAD_MAX_TOTAL_MB=3
 MAX_REQUEST_MB=4
+# OCR on hold above one scanned page, so that "Uruchom OCR" can be tested with two pages.
+OCR_AUTO_MAX_PAGES=1
 ENV
 
 compose() { docker compose -p "$PROJECT" -f docker-compose.yml --env-file "$ENV_FILE" "$@"; }
@@ -139,13 +141,17 @@ print(f"db={tcp('db', 5432)} redis={tcp('redis', 6379)} "
 PY
 }
 WORKER_NET="$(probe worker)"
+OCR_NET="$(probe ocr-worker)"
 APP_NET="$(probe app)"
-echo "    worker: $WORKER_NET"
-echo "    app:    $APP_NET"
-case "$WORKER_NET" in
-    "db=yes redis=yes internet_ip=no internet_ip2=no internet_dns=no") ;;
-    *) echo "FAILED: the worker must reach db and redis and nothing outside"; exit 1 ;;
-esac
+echo "    worker:     $WORKER_NET"
+echo "    ocr-worker: $OCR_NET"
+echo "    app:        $APP_NET"
+for net in "$WORKER_NET" "$OCR_NET"; do
+    case "$net" in
+        "db=yes redis=yes internet_ip=no internet_ip2=no internet_dns=no") ;;
+        *) echo "FAILED: worker and ocr-worker must reach db and redis and nothing outside"; exit 1 ;;
+    esac
+done
 case "$APP_NET" in
     "db=yes redis=yes"*) ;;
     *) echo "FAILED: the app must reach db and redis"; exit 1 ;;
@@ -270,10 +276,60 @@ case "$(curl -sk -c "$JAR" -b "$JAR" "$BASE$SCAN_DOC")" in
     *"tekst z OCR"*) echo "    document page: \"tekst z OCR\"" ;;
     *) echo "FAILED: the document page does not say \"tekst z OCR\""; exit 1 ;;
 esac
-if compose logs --no-color worker 2>&1 | grep -qi "odbioru\|chłodniczych"; then
-    echo "FAILED: recognised text appears in the worker log"; exit 1
+if compose logs --no-color worker ocr-worker 2>&1 | grep -qi "odbioru\|chłodniczych"; then
+    echo "FAILED: recognised text appears in the worker or ocr-worker log"; exit 1
 fi
-echo "    worker log: no recognised text"
+echo "    worker and ocr-worker logs: no recognised text"
+compose logs --no-color ocr-worker 2>&1 | grep -q "ocr: done version=" \
+    || { echo "FAILED: the OCR did not run in ocr-worker"; exit 1; }
+if compose logs --no-color worker 2>&1 | grep -q "ocr: done version="; then
+    echo "FAILED: OCR ran in the ordinary worker (it must only consume the queue ingestion)"; exit 1
+fi
+echo "    OCR ran in ocr-worker, not in worker"
+
+echo "==> OCR: two scanned pages wait on hold (OCR_AUTO_MAX_PAGES=1) until \"Uruchom OCR\""
+SAMPLE_SCAN="$(mktemp)"
+compose exec -T worker python - > "$SAMPLE_SCAN" <<'PY'
+import io, sys
+from PIL import Image, ImageDraw, ImageFont
+font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 34)
+pages = []
+for text in ("Wstrzymany skan strona pierwsza", "Wstrzymany skan strona druga"):
+    image = Image.new("L", (1654, 2339), 255)
+    ImageDraw.Draw(image).text((160, 220), text, fill=0, font=font)
+    pages.append(image)
+out = io.BytesIO()
+pages[0].save(out, "PDF", resolution=200, save_all=True, append_images=pages[1:])
+sys.stdout.buffer.write(out.getvalue())
+PY
+HEADERS="$(mktemp)"
+expect "upload of a two-page scan" 204 "$(status -D "$HEADERS" -X POST "$BASE/documents/upload" \
+    -H "HX-Request: true" -H "X-CSRF-Token: $(token /documents/upload)" \
+    -F "file=@$SAMPLE_SCAN;filename=duzy-skan.pdf;type=application/pdf")"
+HOLD_DOC="$(sed -n 's/^[Hh][Xx]-[Rr]edirect: \([^?[:space:]]*\).*/\1/p' "$HEADERS")"
+rm -f "$SAMPLE_SCAN" "$HEADERS"
+fragment=""
+for _ in $(seq 60); do
+    fragment="$(curl -sk -c "$JAR" -b "$JAR" -H "HX-Request: true" "$BASE$HOLD_DOC/status")"
+    case "$fragment" in *"OCR wstrzymany"*) break ;; esac
+    sleep 2
+done
+case "$fragment" in
+    *"OCR wstrzymany"*"Uruchom OCR"*) echo "    status: \"OCR wstrzymany (duży dokument)\" with \"Uruchom OCR\"" ;;
+    *) echo "FAILED: a two-page scan is not on hold"; exit 1 ;;
+esac
+HOLD_VERSION="$(printf '%s' "$fragment" | sed -n 's|.*/ingestion/versions/\([0-9a-f-]*\)/ocr".*|\1|p' | head -n 1)"
+expect "Uruchom OCR" 303 "$(status -X POST "$BASE/ingestion/versions/$HOLD_VERSION/ocr" \
+    --data-urlencode "csrf_token=$(token "$HOLD_DOC")")"
+processed=""
+for _ in $(seq 60); do
+    case "$(curl -sk -c "$JAR" -b "$JAR" -H "HX-Request: true" "$BASE$HOLD_DOC/status")" in
+        *badge-done*) processed=done; break ;;
+    esac
+    sleep 2
+done
+[ "$processed" = "done" ] || { echo "FAILED: OCR started with the button did not finish"; exit 1; }
+echo "    after \"Uruchom OCR\": ready"
 
 echo "==> Several files in one form without JavaScript (token as the first field), limits"
 MULTI_A="$(mktemp)"; MULTI_B="$(mktemp)"; BIG="$(mktemp)"; HUGE="$(mktemp)"; HEADERS="$(mktemp)"
@@ -359,9 +415,9 @@ for _ in $(seq 1 15); do
     compose logs --no-color proxy 2>&1 | grep -q '/documents?\[removed\]' && break
     sleep 1
 done
-if compose logs --no-color proxy app worker db 2>&1 | grep -q "$PHRASE"; then
+if compose logs --no-color proxy app worker ocr-worker db 2>&1 | grep -q "$PHRASE"; then
     echo "FAILED: the search phrase appears in a container log:"
-    compose logs --no-color proxy app worker db 2>&1 | grep -n "$PHRASE" | cut -c1-200
+    compose logs --no-color proxy app worker ocr-worker db 2>&1 | grep -n "$PHRASE" | cut -c1-200
     exit 1
 fi
 # File names and CSRF tokens stay out of the proxy log as well (Content-Disposition, X-CSRF-Token).
@@ -370,10 +426,10 @@ if compose logs --no-color proxy 2>&1 | grep -qi 'smoke Lodz\|smoke%20\|Content-
 fi
 compose logs --no-color proxy 2>&1 | grep -q '/documents?\[removed\]' \
     || { echo "FAILED: the proxy access log does not show the filtered request"; exit 1; }
-echo "    proxy, app, worker, db logs: no search phrase; proxy log: no file name, no CSRF token"
+echo "    proxy, app, worker, ocr-worker, db logs: no search phrase; proxy log: no file name, no CSRF token"
 
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR) processed to \"ready\", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout"
+echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR in ocr-worker; on hold + \"Uruchom OCR\") processed to \"ready\", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout"
 exit 0

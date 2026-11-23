@@ -1,14 +1,16 @@
 """PDF: text per page with pypdfium2, in a child process (sandbox.py, pdf_child.py).
 
 One part per page (origin "strona N"). A page with fewer than OCR_MIN_CHARS non-space characters
-that contains an image is a scan. Scans are recognised by OCR (ocr.py, Phase 4, ADR-031) and
-stored with `ocr_applied`; a page from which OCR gets fewer than OCR_MIN_CHARS characters is
-noted: "no text" at 0 characters, otherwise "very little text (N characters)". When OCR is off,
-the PDF has more scanned pages than OCR_MAX_PAGES, or OCR fails (time limit, crash), the scans
-stay parts marked `needs_ocr` (with whatever little text they have) and the version ends as
-"wymaga OCR"; the text pages are searchable either way, and the document never fails because of
-OCR. Works the same for a PDF attached to an e-mail. A page with no text and no image (blank) is
-skipped.
+that contains an image is a scan. In the text pass (limits.ocr_enabled is False) scans are
+stored as parts marked `needs_ocr` (with whatever little text they have) and the version ends as
+"wymaga OCR" with an OCR decision (ADR-033). In the OCR pass (ocr-worker, limits.ocr_enabled)
+the scans are recognised by OCR (ocr.py, ADR-031) and stored with `ocr_applied`; a page from
+which OCR gets fewer than OCR_MIN_CHARS characters is noted: "no text" at 0 characters,
+otherwise "very little text (N characters)". A PDF with more scanned pages than OCR_MAX_PAGES
+keeps them marked (note); an OCR failure (time limit, crash) is a note the OCR pass turns into
+"OCR nieudany"; a cancellation stops the pass. The text pages are searchable either way, and the
+document never fails because of OCR. Works the same for a PDF attached to an e-mail. A page with
+no text and no image (blank) is skipped.
 
 Password-protected and damaged files fail permanently with a readable message; more pages than
 INGEST_MAX_PAGES is a limit error; running out of the child's memory is permanent (the same
@@ -86,6 +88,8 @@ def _recognise(path: Path, pages: list[int], ctx: Context) -> dict[int, str]:
     try:
         recognised = ocr.recognise(path, pages, ctx)
     except ocr.OcrFailed as exc:
+        if exc.reason == "cancelled":
+            raise  # the whole OCR attempt stops; nothing is stored
         log.warning("ocr: failed pages=%d reason=%s", len(pages), exc.reason)
         ctx.note("ocr_failed", reason=exc.reason)
         return {}

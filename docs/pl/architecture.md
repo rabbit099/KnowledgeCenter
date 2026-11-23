@@ -26,6 +26,7 @@ Przeglądarka ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `proxy` | `baza-wiedzy-proxy` (Caddy, z `docker/caddy`) | Terminacja TLS, reverse proxy, limit rozmiaru żądania; działa bez roota na portach 8080/8443 wewnątrz kontenera | 80, 443 |
 | `app` | `baza-wiedzy-app` | Interfejs WWW, API, uprawnienia, zapytania wyszukiwania | wewnętrzny |
 | `worker` | `baza-wiedzy-worker` | Wyciąganie tekstu, OCR, indeksacja (w środku Tesseract i LibreOffice) | brak |
+| `ocr-worker` | `baza-wiedzy-worker` | OCR zeskanowanych stron (kolejka `ocr`, jeden dokument naraz, własne limity pamięci i CPU; ADR-033) | brak |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + słownik Hunspell dla polskiego | brak |
 | `redis` | `redis` 8.2 | Tylko kolejka zadań (bez danych biznesowych); włączony plik append-only, więc zadania w kolejce przetrwają restart; wymagane hasło | brak |
 | `clamav` | `clamav` | Opcjonalne skanowanie antywirusowe, profil compose `antivirus`, domyślnie wyłączone | brak |
@@ -35,9 +36,9 @@ Sieci (ADR-024):
 | Sieć | Członkowie | Internet |
 |---|---|---|
 | `default` (`DOCKER_SUBNET`, domyślnie `172.30.70.0/24`; proxy pod `PROXY_IP`) | `proxy`, `app` (`clamav` z profilem `antivirus`, do aktualizacji sygnatur) | tak: ruch przychodzący tylko przez porty wystawione przez proxy; wychodzący dla `app` (Active Directory przez LDAPS) |
-| `backend` (`internal: true`, `BACKEND_SUBNET`, domyślnie `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | brak: Docker nie tworzy bramy; publiczne nazwy nawet się nie rozwiązują |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, domyślnie `172.30.72.0/24`) | `app`, `worker`, `ocr-worker`, `db`, `redis` (`clamav`) | brak: Docker nie tworzy bramy; publiczne nazwy nawet się nie rozwiązują |
 
-Worker, który parsuje niezaufane pliki kodem natywnym, sięga tylko do bazy, Redisa i aplikacji; proxy jest jedynym punktem wejścia. Sprawdza to `make smoke`: z workera odpowiadają `db` i `redis`, a `1.1.1.1:443`, `8.8.8.8:53` i nazwa `example.com` nie.
+Worker, który parsuje niezaufane pliki kodem natywnym, sięga tylko do bazy, Redisa i aplikacji; proxy jest jedynym punktem wejścia. Sprawdza to `make smoke`: z workera i z `ocr-worker` odpowiadają `db` i `redis`, a `1.1.1.1:443`, `8.8.8.8:53` i nazwa `example.com` nie.
 
 Licencja Redisa: Redis 8 jest dostępny m.in. na AGPLv3, co jest akceptowalne przy użyciu wewnętrznym bez modyfikacji. Gdyby to kiedyś budziło wątpliwości, zamiennikiem 1:1 jest [Valkey](https://valkey.io) (BSD-3-Clause): zmień obraz `redis` na `valkey/valkey` z przypiętym tagiem; nic więcej się nie zmienia.
 
@@ -73,7 +74,7 @@ Obowiązująca tabela jest w `CLAUDE.md`, sekcja 3. W skrócie: Python 3.12, Fas
 1. Użytkownik z uprawnieniem `documents.upload` wysyła plik.
 2. `app` waliduje go (rozmiar, typ według zawartości), zapisuje pod kluczem UUID, tworzy wiersze `doc_documents` i `doc_versions` ze statusem `processing_status = pending`, publikuje zdarzenie `document.version.uploaded` (moduł `ingestion` kolejkuje `process_version(version_id)`) i zapisuje wpis audytowy.
 3. Przeglądarka odpytuje o status wersji (HTMX) i pokazuje postęp.
-4. `worker` wyciąga tekst, w razie potrzeby uruchamia OCR (Faza 4), wykrywa język, zapisuje części w `ing_parts`, ustawia status `done` lub `failed` przez `documents.services.api` i zapisuje `document.version.extracted` w outboxie, wszystko w jednej transakcji; potem dostarcza zdarzenie: moduł `search` kopiuje części do `srch_parts` przez `ingestion.services.api` (worker potrzebuje do tego dwóch połączeń z bazą na proces, zobacz deployment-operations.md). Błędy przejściowe są ponawiane z opóźnieniem; start workera odzyskuje zawieszone i oczekujące wersje. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` wyciąga tekst (zeskanowane strony są oznaczane i, do `OCR_AUTO_MAX_PAGES`, kolejkowane dla `ocr-worker`, który je rozpoznaje i tak samo zapisuje części ponownie; ADR-033), wykrywa język, zapisuje części w `ing_parts`, ustawia status `done` lub `failed` przez `documents.services.api` i zapisuje `document.version.extracted` w outboxie, wszystko w jednej transakcji; potem dostarcza zdarzenie: moduł `search` kopiuje części do `srch_parts` przez `ingestion.services.api` (worker potrzebuje do tego dwóch połączeń z bazą na proces, zobacz deployment-operations.md). Błędy przejściowe są ponawiane z opóźnieniem; start workera odzyskuje zawieszone i oczekujące wersje. Szczegóły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publikacja
 Użytkownik z `documents.publish` (własne dokumenty) lub `documents.publish_any` publikuje wersję: ustawiane jest `doc_documents.published_version_id`, a status zmienia się na `published`. Dopiero wtedy czytelnicy widzą dokument i mogą go znaleźć.

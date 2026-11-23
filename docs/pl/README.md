@@ -63,10 +63,12 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] `search-check`, `reindex-search`, indeksowanie brakujących wersji przy starcie workera
 
 ### Faza 4 — OCR
-- [x] Wykrywanie stron bez tekstu (Faza 2: strony oznaczane, wersja „wymaga OCR”)
-- [ ] OCRmyPDF (`pol+eng`) dla oznaczonych stron wersji `needs_ocr`, potem `done`
-- [ ] Pochodny PDF z warstwą tekstu, flaga `ocr_applied`, limity i timeouty
-- [ ] Po OCR zapisać części ponownie i ponownie zapisać `document.version.extracted` w tej samej transakcji (search zastąpi wtedy wiersze wersji; zmiany w search niepotrzebne)
+- [x] Wykrywanie stron bez tekstu (Faza 2: strony oznaczone, wersja „wymaga OCR”)
+- [x] OCRmyPDF + Tesseract (`pol+eng`) w procesie potomnym dla oznaczonych stron, także w załącznikach maili; `ocr_applied` dla części i wersji; bez pliku pochodnego, bez Ghostscripta (etap A, ADR-031)
+- [x] Po OCR zapisać części ponownie i ponownie zapisać `document.version.extracted` w tej samej transakcji (wyszukiwarka zastępuje wiersze wersji)
+- [x] Wgrywanie kilku plików w jednym formularzu, także bez JavaScriptu; duplikaty wstrzymane do decyzji (etap B, ADR-032)
+- [x] Osobna kolejka i usługa `ocr-worker`; automatyczny OCR do `OCR_AUTO_MAX_PAGES`, „Uruchom OCR” / „Anuluj OCR”, stany OCR, `baza-wiedzy ocr --pending` (etap B, ADR-033)
+- [ ] Etykieta „tekst z OCR” w wynikach wyszukiwania; pomiary (czas na stronę, `tessdata_best`, `--deskew`); złote testy wyszukiwania na wadliwych skanach (etap C)
 
 ### Faza 5 — Cykl życia dokumentu
 - [ ] Wersje, publikacja wybranej wersji (szkic / opublikowany / zarchiwizowany: Faza 3)

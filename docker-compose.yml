@@ -51,8 +51,9 @@ x-app-env: &app-env
   OCR_MIN_CHARS: ${OCR_MIN_CHARS:-25}
   OCR_ENABLED: ${OCR_ENABLED:-true}
   OCR_LANGUAGES: ${OCR_LANGUAGES:-pol+eng}
+  OCR_AUTO_MAX_PAGES: ${OCR_AUTO_MAX_PAGES:-30}
   OCR_MAX_PAGES: ${OCR_MAX_PAGES:-200}
-  OCR_TIMEOUT_SECONDS: ${OCR_TIMEOUT_SECONDS:-600}
+  OCR_TIMEOUT_SECONDS: ${OCR_TIMEOUT_SECONDS:-1800}
   OCR_PAGE_TIMEOUT_SECONDS: ${OCR_PAGE_TIMEOUT_SECONDS:-120}
   OCR_JOBS: ${OCR_JOBS:-2}
   OCR_MEMORY_MB: ${OCR_MEMORY_MB:-2048}
@@ -147,8 +148,9 @@ services:
     <<: *hardening
     # Two database connections per worker process (ADR-016, ADR-026): the job, and the handler
     # of an outbox event (search indexing) that runs while the delivery holds the outbox row.
-    # One thread per process.
-    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "${WORKER_PROCESSES:-2}", "--threads", "1"]
+    # One thread per process. Only the queue "ingestion": OCR has its own service (ocr-worker),
+    # so ordinary uploads never wait behind a long OCR (ADR-033).
+    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "${WORKER_PROCESSES:-2}", "--threads", "1", "--queues", "ingestion"]
     environment:
       <<: *app-env
       DB_POOL_SIZE: "2"
@@ -169,6 +171,37 @@ services:
       resources:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-2g}
+    logging: *logging
+
+  # OCR of scanned pages (Phase 4 stage B, ADR-033): the worker image, only the queue "ocr", one
+  # process with one thread (one document at a time; OCR_JOBS Tesseract processes inside it, one
+  # thread each). Own memory and CPU limits, so OCR never starves the ordinary worker or the
+  # database. Same isolation as the worker: internal network only.
+  ocr-worker:
+    image: ${IMAGE_PREFIX:-ghcr.io/change-me/baza-wiedzy}-worker:${APP_VERSION:?set APP_VERSION in .env}
+    restart: unless-stopped
+    <<: *hardening
+    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "1", "--threads", "1", "--queues", "ocr"]
+    environment:
+      <<: *app-env
+      DB_POOL_SIZE: "2"
+      DB_MAX_OVERFLOW: "0"
+      OMP_THREAD_LIMIT: "1"
+    networks:
+      - backend
+    stop_grace_period: 60s
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${OCR_MEMORY_LIMIT:-3g}
+          cpus: "${OCR_CPUS:-2}"
     logging: *logging
 
   db:

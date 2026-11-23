@@ -21,9 +21,12 @@ from baza_wiedzy.modules.ingestion.models import Part, Result
 __all__ = [
     "PartView",
     "ReprocessBusy",
+    "cancel_ocr",
+    "count_scanned_pages",
     "extracted_version_ids",
     "notes_of",
     "parts_of",
+    "request_ocr",
     "request_reprocess",
     "text_part_counts",
 ]
@@ -117,5 +120,62 @@ def request_reprocess(
         entity_id=version.document_id,
         ip=ip,
         details={"version_id": str(version_id), "sha256": version.sha256},
+    )
+    return True
+
+
+def count_scanned_pages(db: Session, version_id: uuid.UUID) -> int:
+    """Pages of a version still waiting for OCR (one part per page, attachments included)."""
+    query = select(func.count()).where(
+        Part.version_id == version_id, Part.needs_ocr.is_(True), Part.chunk_no == 1
+    )
+    return int(db.scalar(query) or 0)
+
+
+def request_ocr(
+    db: Session,
+    version_id: uuid.UUID,
+    *,
+    actor: Actor,
+    ip: str | None,
+    source: str = "button",
+) -> bool:
+    """ "Uruchom OCR" / `baza-wiedzy ocr`: queue the scanned pages of a version and audit it as
+    document.ocr_request (the caller commits, then calls tasks.enqueue_ocr). False: nothing to
+    start (no scanned pages waiting, already queued or running, done, or skipped). Permission
+    checks are the caller's (routes: documents.services.api.can_reprocess; CLI: operator)."""
+    version = db.get(documents.Version, version_id)
+    if version is None:
+        return False
+    if version.ocr_pages is None:  # versions processed before Phase 4 stage B
+        documents.set_ocr_pages(db, version_id, count_scanned_pages(db, version_id))
+    if not documents.request_ocr(db, version_id):
+        return False
+    record(
+        db,
+        "document.ocr_request",
+        actor,
+        entity_type="document",
+        entity_id=version.document_id,
+        ip=ip,
+        details={"version_id": str(version_id), "pages": version.ocr_pages, "source": source},
+    )
+    return True
+
+
+def cancel_ocr(db: Session, version_id: uuid.UUID, *, actor: Actor, ip: str | None) -> bool:
+    """ "Anuluj OCR": queued or running -> on hold, audited as document.ocr_cancel. A running
+    OCR process is killed by the OCR worker within seconds; its result is discarded."""
+    version = db.get(documents.Version, version_id)
+    if version is None or not documents.cancel_ocr(db, version_id):
+        return False
+    record(
+        db,
+        "document.ocr_cancel",
+        actor,
+        entity_type="document",
+        entity_id=version.document_id,
+        ip=ip,
+        details={"version_id": str(version_id), "pages": version.ocr_pages},
     )
     return True

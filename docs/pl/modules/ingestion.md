@@ -14,6 +14,8 @@ Wymaga [documents](documents.md) (status, metadane maila, widoczność, nazwy pl
 
 Brak własnych. „Przetwórz ponownie” (`POST /ingestion/versions/<id>/reprocess`) może wykonać właściciel z `documents.upload` (własne dokumenty) i posiadacz `documents.edit_any` (dowolne), i tylko dla dokumentów, które użytkownik widzi (w przeciwnym razie 404, a 403, gdy widzi, ale nie ma prawa). Strona części: `GET /ingestion/versions/<id>/parts` (fragment HTMX na stronie dokumentu), każdy, kto widzi dokument. Audyt: `document.reprocess` (identyfikator dokumentu, `version_id`, `sha256`).
 
+„Uruchom OCR” (`POST /ingestion/versions/<id>/ocr`) i „Anuluj OCR” (`POST /ingestion/versions/<id>/ocr/cancel`, Faza 4 etap B) podlegają tej samej regule co „Przetwórz ponownie” (właściciel z `documents.upload` albo `documents.edit_any`; 404 dla niewidocznych dokumentów, 403 bez uprawnienia). Audyt: `document.ocr_request`, `document.ocr_cancel`.
+
 ## Tabele
 
 Gałąź `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`):
@@ -36,6 +38,8 @@ Kolumny: [data-model.md](../data-model.md#ingestion).
 - `request_reprocess(db, settings, version_id, actor=…, ip=…)`: powrót do oczekiwania z wyzerowanym licznikiem prób i audytem; wywołujący sprawdza uprawnienia, zatwierdza i kolejkuje; zgłasza `ReprocessBusy`, gdy trwa próba.
 
 Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (pliki tymczasowe, zawieszone i oczekujące wersje, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).
+
+Faza 4 etap B: `request_ocr` (kolejkuje wersję do OCR, z audytem), `cancel_ocr`, `count_scanned_pages`. Aktorzy: `ingestion.process_version` (kolejka `ingestion`, usługa `worker`) i `ingestion.ocr_next` (kolejka `ocr`, usługa `ocr-worker`; bierze wersję w kolejce z najmniejszą liczbą zeskanowanych stron, ADR-033). CLI: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID>`.
 
 ## Punkty rozszerzeń
 

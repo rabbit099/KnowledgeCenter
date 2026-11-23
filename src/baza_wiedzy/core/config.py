@@ -95,13 +95,15 @@ class Settings(BaseSettings):
     libreoffice_memory_mb: int = 1024
     # OCR of scanned PDF pages (Phase 4, ADR-031): OCRmyPDF + Tesseract in a child process,
     # only for pages marked "needs OCR", text only (no derived file). Languages as Tesseract
-    # names; at most this many pages per PDF (more: the pages stay "wymaga OCR" with a note);
-    # time limit for one PDF and for one page; Tesseract processes at the same time; address
-    # space of each OCR process (MB); larger page images (megapixels) are refused.
+    # names; scanned pages per version started automatically (more: "OCR wstrzymany" until
+    # "Uruchom OCR") and at most (more: skipped); time limit for one document (all its PDFs) and
+    # for one page; Tesseract processes at the same time; address space of each OCR process
+    # (MB); larger page images (megapixels) are refused.
     ocr_enabled: bool = True
     ocr_languages: str = "pol+eng"
+    ocr_auto_max_pages: int = 30
     ocr_max_pages: int = 200
-    ocr_timeout_seconds: int = 600
+    ocr_timeout_seconds: int = 1800
     ocr_page_timeout_seconds: int = 120
     ocr_jobs: int = 2
     ocr_memory_mb: int = 2048

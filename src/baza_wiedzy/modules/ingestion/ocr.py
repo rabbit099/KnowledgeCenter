@@ -10,7 +10,8 @@ pages are rasterised by pypdfium (`--rasterizer pypdfium`), so Ghostscript is no
 not installed in the worker image.
 
 Isolation as for every native step (sandbox.py, ADR-023): own process group killed at the
-time limit (OCR_TIMEOUT_SECONDS for the PDF), address-space limit for each process
+time limit (OCR_TIMEOUT_SECONDS for the whole document, shared by its PDFs) or when the OCR is
+cancelled, address-space limit for each process
 (OCR_MEMORY_MB), minimal environment with OMP_THREAD_LIMIT=1 (one thread per Tesseract), at
 most OCR_JOBS Tesseract processes, a per-page Tesseract limit (OCR_PAGE_TIMEOUT_SECONDS) and a
 page-image limit (OCR_MAX_IMAGE_MPIXELS). The tools' messages go to files in the attempt's
@@ -22,6 +23,7 @@ A failure never fails the document: the caller keeps the pages "needs OCR" with 
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 from baza_wiedzy.modules.ingestion import sandbox
@@ -31,7 +33,7 @@ _SKIPPED = re.compile(r"^\[OCR skipped on page\(s\) (\d+)(?:-(\d+))?\]$")
 
 
 class OcrFailed(Exception):
-    """reason: timeout | crash | failed (no text, no file name)."""
+    """reason: timeout | crash | failed | cancelled (no text, no file name)."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -76,19 +78,28 @@ def parse_sidecar(text: str) -> dict[int, str]:
 
 def recognise(source: Path, pages: list[int], ctx: Context) -> dict[int, str]:
     """Text of the given pages (1-based); raises OcrFailed."""
-    workdir = ctx.collector.new_dir("ocr")
-    sidecar = workdir / "text.txt"
+    collector = ctx.collector
     limits = ctx.limits
+    timeout: float = limits.ocr_timeout_seconds
+    if collector.ocr_deadline is not None:  # one limit for the whole document (ADR-033)
+        timeout = min(timeout, collector.ocr_deadline - time.monotonic())
+    if timeout <= 0:
+        raise OcrFailed("timeout")
+    workdir = collector.new_dir("ocr")
+    sidecar = workdir / "text.txt"
     try:
         finished = sandbox.run(
             command(source, sidecar, pages, ctx),
             workdir=workdir,
-            timeout=limits.ocr_timeout_seconds,
+            timeout=timeout,
             memory_mb=limits.ocr_memory_mb,
             env={"OMP_THREAD_LIMIT": "1"},
+            should_stop=collector.ocr_should_stop,
         )
     except sandbox.IsolationTimeout:
         raise OcrFailed("timeout") from None
+    except sandbox.IsolationCancelled:
+        raise OcrFailed("cancelled") from None
     if finished.killed_by_signal is not None:
         raise OcrFailed("crash")
     if finished.returncode != 0:

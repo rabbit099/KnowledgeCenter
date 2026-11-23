@@ -36,7 +36,10 @@ manifest = ModuleManifest(
     templates="baza_wiedzy.modules.ingestion",
     migrations_branch="ingestion",
     migrations_path="baza_wiedzy.modules.ingestion.migrations",
-    tasks=("baza_wiedzy.modules.ingestion.tasks:process_version",),
+    tasks=(
+        "baza_wiedzy.modules.ingestion.tasks:process_version",
+        "baza_wiedzy.modules.ingestion.tasks:ocr_next",
+    ),
     worker_startup=("baza_wiedzy.modules.ingestion.startup:on_worker_start",),
     on_register=_on_register,
 )

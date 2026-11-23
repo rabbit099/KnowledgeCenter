@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: baza-wiedzy 0.0.0\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-20 15:09+0100\n"
+"POT-Creation-Date: 2026-11-20 15:16+0100\n"
 "PO-Revision-Date: 2026-11-12 11:27+0100\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: pl\n"
@@ -29,6 +29,20 @@ msgid_plural "%(num)d parts"
 msgstr[0] "%(num)d część"
 msgstr[1] "%(num)d części"
 msgstr[2] "%(num)d części"
+
+#, python-format
+msgid "%(num)d scanned page waits for OCR; documents with fewer pages go first."
+msgid_plural "%(num)d scanned pages wait for OCR; documents with fewer pages go first."
+msgstr[0] "%(num)d zeskanowana strona czeka na OCR; dokumenty z mniejszą liczbą stron idą pierwsze."
+msgstr[1] "%(num)d zeskanowane strony czekają na OCR; dokumenty z mniejszą liczbą stron idą pierwsze."
+msgstr[2] "%(num)d zeskanowanych stron czeka na OCR; dokumenty z mniejszą liczbą stron idą pierwsze."
+
+#, python-format
+msgid "%(num)d scanned page, more than OCR handles (%(max)s): the scans are not searchable."
+msgid_plural "%(num)d scanned pages, more than OCR handles (%(max)s): the scans are not searchable."
+msgstr[0] "%(num)d zeskanowana strona, więcej niż obsługuje OCR (%(max)s): skanów nie da się wyszukać."
+msgstr[1] "%(num)d zeskanowane strony, więcej niż obsługuje OCR (%(max)s): skanów nie da się wyszukać."
+msgstr[2] "%(num)d zeskanowanych stron, więcej niż obsługuje OCR (%(max)s): skanów nie da się wyszukać."
 
 #, python-format
 msgid "%(where)s: %(num)d scanned page, more than OCR handles (%(limit)s); not searchable yet"
@@ -181,6 +195,9 @@ msgstr "Przetwarzanie w tle"
 
 msgid "Cancel"
 msgstr "Anuluj"
+
+msgid "Cancel OCR"
+msgstr "Anuluj OCR"
 
 msgid "Cc"
 msgstr "DW"
@@ -474,6 +491,64 @@ msgstr "Nie wgrano: identyczna treść już istnieje."
 msgid "Notes"
 msgstr "Uwagi"
 
+msgid "Nothing changed: the OCR state has changed meanwhile."
+msgstr "Nic nie zmieniono: stan OCR zmienił się w międzyczasie."
+
+msgid "OCR failed"
+msgstr "OCR nieudany"
+
+msgid "OCR failed because of an internal error. Details are in the log."
+msgstr "OCR się nie powiódł z powodu błędu wewnętrznego. Szczegóły są w logu."
+
+msgid "OCR failed."
+msgstr "OCR się nie powiódł."
+
+msgid "OCR failed. Start OCR again; if it fails again, the scan cannot be read."
+msgstr "OCR się nie powiódł. Uruchom OCR ponownie; jeśli znowu się nie uda, skanu nie da się odczytać."
+
+#, python-format
+msgid "OCR is reading %(num)d scanned page."
+msgid_plural "OCR is reading %(num)d scanned pages."
+msgstr[0] "OCR odczytuje %(num)d zeskanowaną stronę."
+msgstr[1] "OCR odczytuje %(num)d zeskanowane strony."
+msgstr[2] "OCR odczytuje %(num)d zeskanowanych stron."
+
+msgid "OCR is switched off on this server."
+msgstr "OCR jest wyłączony na tym serwerze."
+
+msgid "OCR not started"
+msgstr "OCR nieuruchomiony"
+
+msgid "OCR of the scanned pages has not been started."
+msgstr "OCR zeskanowanych stron nie został uruchomiony."
+
+msgid "OCR on hold (large document)"
+msgstr "OCR wstrzymany (duży dokument)"
+
+msgid "OCR queued"
+msgstr "OCR w kolejce"
+
+msgid "OCR running"
+msgstr "OCR w toku"
+
+msgid "OCR skipped (too many pages)"
+msgstr "OCR pominięty (za dużo stron)"
+
+msgid "OCR took longer than the time limit. Start OCR again or ask the administrator."
+msgstr "OCR trwał dłużej niż limit czasu. Uruchom OCR ponownie albo zwróć się do administratora."
+
+msgid "OCR was interrupted (worker stopped or out of memory). Start OCR again."
+msgstr "OCR został przerwany (zatrzymanie usługi albo brak pamięci). Uruchom OCR ponownie."
+
+msgid "OCR was queued; it runs in the background."
+msgstr "OCR dodano do kolejki; działa w tle."
+
+msgid "OCR was stopped. Start it again when needed."
+msgstr "OCR zatrzymano. Uruchom go ponownie, gdy będzie potrzebny."
+
+msgid "OCR was stopped; you can start it again later."
+msgstr "OCR zatrzymano; możesz go uruchomić ponownie później."
+
 msgid "OK"
 msgstr "OK"
 
@@ -656,6 +731,12 @@ msgstr "Sortuj według"
 msgid "Source"
 msgstr "Źródło"
 
+msgid "Start OCR"
+msgstr "Uruchom OCR"
+
+msgid "Start OCR again"
+msgstr "Uruchom OCR ponownie"
+
 msgid "Status"
 msgstr "Stan"
 
@@ -731,6 +812,23 @@ msgstr ""
 
 msgid "The document does not exist or you cannot see it."
 msgstr "Dokument nie istnieje albo nie masz do niego dostępu."
+
+#, python-format
+msgid ""
+"The document has %(num)d scanned page, more than OCR starts by itself (%(auto)s). Start it when "
+"the server is not busy."
+msgid_plural ""
+"The document has %(num)d scanned pages, more than OCR starts by itself (%(auto)s). Start it when "
+"the server is not busy."
+msgstr[0] ""
+"Dokument ma %(num)d zeskanowaną stronę, więcej niż OCR uruchamia sam (%(auto)s). Uruchom go, gdy "
+"serwer nie jest zajęty."
+msgstr[1] ""
+"Dokument ma %(num)d zeskanowane strony, więcej niż OCR uruchamia sam (%(auto)s). Uruchom go, gdy "
+"serwer nie jest zajęty."
+msgstr[2] ""
+"Dokument ma %(num)d zeskanowanych stron, więcej niż OCR uruchamia sam (%(auto)s). Uruchom go, gdy"
+" serwer nie jest zajęty."
 
 msgid "The document is being processed right now; try again when it has finished."
 msgstr "Dokument jest właśnie przetwarzany; spróbuj ponownie, gdy przetwarzanie się zakończy."

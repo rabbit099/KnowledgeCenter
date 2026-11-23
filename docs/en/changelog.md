@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [Se
 ## [Unreleased]
 
 ### Added
+- OCR runs in the new service `ocr-worker` (queue `ocr`; `docker compose up -d` starts it), so uploads never wait for OCR. Scans with up to `OCR_AUTO_MAX_PAGES` (30) scanned pages are recognised automatically, shortest first; larger ones wait as "OCR wstrzymany (duży dokument)" for "Uruchom OCR"; "Anuluj OCR" stops a queued or running OCR; "OCR nieudany" shows the reason and "Uruchom OCR ponownie". OCR states on the document page and in "Moje dokumenty". Audit `document.ocr_request`, `document.ocr_cancel`. CLI `baza-wiedzy ocr --pending [--max-pages N]` and `baza-wiedzy ocr <ID>`: documents "wymaga OCR" from earlier versions are not started automatically after the upgrade. Migration `documents_0005` (`doc_versions.ocr_status` …). New settings `OCR_AUTO_MAX_PAGES` (30), `OCR_MEMORY_LIMIT` (3g), `OCR_CPUS` (2); `OCR_TIMEOUT_SECONDS` is now per document, default 600 → 1800. The ordinary `worker` consumes only the queue `ingestion` (ADR-033).
 - OCR notes distinguish "no text" (0 characters) from "very little text (N znaków)" and use the Polish plural forms.
 - OCR of scanned PDF pages (Polish + English), also in e-mail attachments; label "tekst z OCR" and a warning about numbers on the document page; `OCR_*` settings; migration `ingestion_0002` (`ing_parts.ocr_applied`).
 

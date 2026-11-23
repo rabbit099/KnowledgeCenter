@@ -16,6 +16,7 @@ Jak wgrywać dokumenty, jak je znajdować, co wyszukiwanie potrafi, a czego nie,
 4. Możliwy duplikat to plik o treści identycznej z dokumentem, który już widzisz. Nie jest wgrywany, dopóki nie zdecydujesz: „Wgraj mimo to” go wgrywa, „Pomiń” go odrzuca. Decydujesz dla każdego pliku osobno; pozostałe pliki są już wgrane i nic nie trzeba wybierać ponownie. Pliki bez decyzji są usuwane po 24 godzinach.
 5. Odrzucony plik nigdy nie zatrzymuje pozostałych. Wgraj go ponownie po usunięciu przyczyny.
 6. Każdy nowy dokument jest szkicem, który widzisz tylko Ty i administratorzy; przetwarzanie (wyciąganie tekstu, OCR skanów) odbywa się w tle.
+7. Skany: strony z tekstem są wyszukiwalne zaraz po przetworzeniu; zeskanowane strony czekają na OCR, co widać obok „wymaga OCR”: „OCR w kolejce” (dokumenty z mniejszą liczbą stron idą pierwsze), „OCR w toku”, potem „gotowe” z „tekst z OCR”. Dokument z więcej niż 30 zeskanowanymi stronami czeka jako „OCR wstrzymany (duży dokument)”: kliknij „Uruchom OCR”, kiedy Ci pasuje. „Anuluj OCR” go zatrzymuje; „OCR nieudany” pokazuje przyczynę i „Uruchom OCR ponownie”. Numery odczytane ze skanu sprawdzaj w oryginale.
 
 Wgrywanie działa także z wyłączonym JavaScriptem (bez przeciągania i bez sprawdzania przed wysłaniem).
 

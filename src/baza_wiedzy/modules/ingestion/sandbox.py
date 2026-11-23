@@ -23,6 +23,7 @@ import resource
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,13 @@ log = logging.getLogger(__name__)
 
 class IsolationTimeout(TransientError):
     pass
+
+
+class IsolationCancelled(Exception):
+    """`should_stop` said so: the child was killed (OCR cancelled by the user)."""
+
+
+POLL_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -74,8 +82,10 @@ def run(
     timeout: float,
     memory_mb: int | None = None,
     env: dict[str, str] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> Finished:
-    """Run argv in its own process group; raise IsolationTimeout after `timeout` seconds.
+    """Run argv in its own process group; raise IsolationTimeout after `timeout` seconds, or
+    IsolationCancelled when `should_stop()` (polled every POLL_SECONDS) returns True.
 
     stdout and stderr go to files in workdir (never to the worker log: they may quote
     document content).
@@ -91,8 +101,20 @@ def run(
             start_new_session=True,
             preexec_fn=_limits(memory_mb),
         )
+        deadline = time.monotonic() + timeout
         try:
-            returncode = process.wait(timeout=timeout)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(list(argv), timeout)
+                step = remaining if should_stop is None else min(remaining, POLL_SECONDS)
+                try:
+                    returncode = process.wait(timeout=step)
+                    break
+                except subprocess.TimeoutExpired:
+                    if should_stop is not None and should_stop():
+                        _kill_group(process)
+                        raise IsolationCancelled() from None
         except subprocess.TimeoutExpired:
             _kill_group(process)
             raise IsolationTimeout("timeout") from None

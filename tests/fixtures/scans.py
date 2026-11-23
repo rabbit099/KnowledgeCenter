@@ -171,10 +171,11 @@ def expected_text(directory: str = "ocr") -> str:
     lines = [
         "Próbki do testu OCR (syntetyczne skany, Faza 4).",
         "",
-        f"Wgraj pliki z katalogu {directory}/ (np. jako bw-test). Po przetworzeniu każdy ma stan",
-        "„gotowe”, na stronie dokumentu jest „Tekst: tekst z OCR” z ostrzeżeniem o numerach, a w",
-        "panelu tekstu strony ze skanu mają etykietę „tekst z OCR”. Wyszukiwanie znajduje słowa",
-        "ze skanów (po publikacji także jako Czytelnik).",
+        f"Wgraj wszystkie pliki z katalogu {directory}/ naraz (np. jako bw-test). Najpierw stan",
+        "„wymaga OCR” z „OCR w kolejce” / „OCR w toku” (usługa ocr-worker, najkrótsze najpierw),",
+        "potem „gotowe”; na stronie dokumentu jest „Tekst: tekst z OCR” z ostrzeżeniem o numerach,",
+        "a w panelu tekstu strony ze skanu mają etykietę „tekst z OCR”. Wyszukiwanie znajduje",
+        "słowa ze skanów (po publikacji także jako Czytelnik).",
         "",
         "Plik                          wada                                  szukaj (przykłady)",
     ]

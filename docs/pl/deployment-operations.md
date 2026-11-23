@@ -57,8 +57,9 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
 | `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU). Pamięć zmierzona przy 2 procesach: 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem; trzymaj `WORKER_MEMORY_LIMIT` (domyślnie 2g) na co najmniej 1,4 GB + 0,6 GB na proces ([ingestion-and-ocr.md](ingestion-and-ocr.md#kod-natywny-w-procesach-potomnych)) |
+| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Limity pamięci (domyślnie 3g) i CPU (domyślnie 2) usługi `ocr-worker` (jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta). Rdzenie serwera ≈ `WORKER_PROCESSES` + `OCR_CPUS` to dobry punkt wyjścia |
 | `INGEST_MAX_PAGES`, `OCR_MIN_CHARS`, `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS`, `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` | Limit stron PDF (2000) i próg stron „wymaga OCR” (25 znaków); limity pamięci i czasu procesu potomnego PDF (1024 MB, 300 s) i LibreOffice (1024 MB, 120 s) |
-| `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD` | OCR zeskanowanych stron (true, `pol+eng`, 200 stron, 600 s, 120 s na stronę, 2 procesy Tesseracta, 2048 MB, 200 megapikseli, pewność obrotu 5); zobacz ingestion-and-ocr.md |
+| `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD` | OCR zeskanowanych stron (true, `pol+eng`, automatycznie do 30 zeskanowanych stron, najwyżej 200, 1800 s na dokument, 120 s na stronę, 2 procesy Tesseracta, po 2048 MB, 200 megapikseli, pewność obrotu 5); zobacz ingestion-and-ocr.md |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Logowanie przez Active Directory, domyślnie wyłączone (`LDAP_ENABLED=false`). `./secrets/ldap/` jest montowany tylko do odczytu w `/run/secrets/ldap/` w `app` dla certyfikatu CA i pliku z hasłem konta serwisowego. Szczegóły, normalizacja nazw i procedura testu na prawdziwym AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-przez-tls) |
@@ -73,7 +74,7 @@ Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się 
 
 Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu i trzyma go w pamięci: około 27–30 MB na połączenie (zmierzone w spike'u, zob. [search.md](search.md)). Dlatego limit połączeń jest ustawiony jawnie, a limit pamięci `db` z niego wynika:
 
-- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 6 = 30, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
+- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), `ocr-worker` 2 (jeden proces), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 2 + 6 = 32, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
 - Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
 - Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
 - Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
@@ -219,7 +220,7 @@ Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:
 
 ## Przetwarzanie dokumentów (przewodnik operatora)
 
-Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje; `worker` wyciąga tekst w tle. Szczegóły i reguły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje; `worker` wyciąga tekst w tle; `ocr-worker` rozpoznaje zeskanowane strony. Szczegóły i reguły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 **Start i migracje.** Kolejność na nowym serwerze i w środowisku deweloperskim: uruchom stos (`docker compose up -d` / `make up`), potem migruj (`docker compose run --rm app baza-wiedzy migrate` / `make migrate`). Worker uruchomiony przed migracją raz na minutę loguje `worker startup: waiting for database migrations`, a zadania startowe wykonuje potem: usuwa pozostałe katalogi tymczasowe, kolejkuje oczekujące wersje, odzyskuje zawieszone, dostarcza niedostarczone zdarzenia.
 
@@ -230,7 +231,7 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | oczekuje | w kolejce | nic; jeśli trwa: czy worker działa (`docker compose ps`)? |
 | przetwarzanie | trwa próba | nic; po `INGEST_STALE_MINUTES` (30) bez postępu wersja jest odzyskiwana przy najbliższym starcie workera albo przez `baza-wiedzy reprocess --stuck` |
 | gotowe | tekst wyciągnięty | — |
-| wymaga OCR | strony z tekstem wyciągnięte, co najmniej jedna zeskanowana strona bez tekstu | OCR dojdzie w Fazie 4; strony z tekstem są już zapisane |
+| wymaga OCR | strony z tekstem wyciągnięte i wyszukiwalne, co najmniej jedna zeskanowana strona czeka na OCR; druga etykieta mówi, gdzie: „OCR w kolejce”, „OCR w toku”, „OCR wstrzymany (duży dokument)”, „OCR nieudany”, „OCR pominięty (za dużo stron)”, „OCR nieuruchomiony” | w kolejce / w toku: nic (czy `ocr-worker` działa?); wstrzymany: „Uruchom OCR”, gdy serwer nie jest zajęty; nieudany: przeczytaj komunikat, „Uruchom OCR ponownie”; nieuruchomiony (dokumenty sprzed 0.5): `baza-wiedzy ocr --pending` |
 | błąd | błąd trwały (uszkodzony, zabezpieczony hasłem, nieznane kodowanie, limit) albo błędy przejściowe we wszystkich próbach | komunikat na stronie mówi, który; popraw plik i wgraj go ponownie albo po usunięciu przyczyny „Przetwórz ponownie” |
 
 **Ponawianie**: tylko błędy przejściowe (baza, Redis, limity czasu), do `INGEST_MAX_ATTEMPTS` (3) razy, po 30 s, 60 s, 120 s… (najwyżej 600 s). Błędy trwałe nie są ponawiane.
@@ -238,6 +239,8 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 **LibreOffice (DOC)**: jedna konwersja naraz na kontener workera, każda najwyżej `LIBREOFFICE_TIMEOUT_SECONDS` (120 s) i `LIBREOFFICE_MEMORY_MB` (1 GB); parsowanie PDF też działa w procesie potomnym (`INGEST_CHILD_*`). Ani worker, ani te procesy nie mają dostępu do internetu (ADR-024).
 
 **Pamięć workera**: zmierzona przy 2 procesach 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem. Reguła: `WORKER_MEMORY_LIMIT` ≥ 1,4 GB + 0,6 GB × `WORKER_PROCESSES` (domyślnie 2 procesy, 2 GB). Więcej procesów niż rdzeni CPU nie pomaga.
+
+**OCR** działa w usłudze `ocr-worker` (ten sam obraz co `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), zwykły `worker` obsługuje tylko kolejkę `ingestion`: wgranie jest przetwarzane od razu nawet w trakcie długiego OCR. Jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta, limity kontenera `OCR_MEMORY_LIMIT` (3g) i `OCR_CPUS` (2); tylko sieć wewnętrzna. Małe skany (do `OCR_AUTO_MAX_PAGES`, 30 stron) startują same, najkrótsze najpierw; większe czekają na „Uruchom OCR”. Jego wiersze logu: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; nigdy tekst. Zatrzymanie `ocr-worker` (`docker compose stop ocr-worker`) tylko wstrzymuje OCR: dokumenty w kolejce czekają, wgrywanie działa; przy następnym starcie wiadomości utracone w międzyczasie są wysyłane ponownie.
 
 **Polecenia** (w kontenerze `app`: `docker compose exec app baza-wiedzy …`):
 
@@ -247,6 +250,8 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `reprocess --failed` | każda wersja ze statusem „błąd” | jak wyżej, z liczbą |
 | `reprocess --stuck` | zawieszone i oczekujące wersje z powrotem do kolejki (bez audytu) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
+| `ocr --pending [--max-pages N]` | uruchom OCR każdej wersji „wymaga OCR” nigdy nieuruchomionej albo wstrzymanej (na przykład dokumentów sprzed 0.5), z `--max-pages` tylko do N zeskanowanych stron; audyt `document.ocr_request` (`source: cli`); po aktualizacji nie ma automatycznej fali | `Queued for OCR: 3; nothing to do: 0.` oraz `Left out (more scanned pages than --max-pages 30): 1.` |
+| `ocr <ID dokumentu lub wersji> …` | uruchom OCR tych dokumentów (wstrzymanych, nieudanych, nieuruchomionych) | `Queued for OCR: 1; nothing to do: 0.` |
 | `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
 | `search-check` | porównaj indeks wyszukiwania z wyodrębnionym tekstem (tylko identyfikatory; kod 1 przy różnicy) | `Extracted versions: 26` … `Search index OK.` |
 | `reindex-search --missing` | zaindeksuj to, co zgłasza `search-check`, usuń osierocone wiersze | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
@@ -309,7 +314,9 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 | „błąd”: „Przetwarzanie trwało dłużej niż limit czasu.” dla DOC lub PDF | LibreOffice albo proces potomny PDF przekroczył `LIBREOFFICE_TIMEOUT_SECONDS` / `INGEST_CHILD_TIMEOUT_SECONDS` w każdej próbie (bardzo duży lub uszkodzony plik, przeciążony serwer) | `docker compose logs worker \| grep <id wersji>` (`IsolationTimeout`); jeśli plik jest prawidłowy, zwiększ limit w `.env`, `docker compose up -d worker`, potem „Przetwórz ponownie” |
 | „błąd”: „…zabezpieczony hasłem…” | PDF, DOC albo DOCX zabezpieczony hasłem | Wgraj kopię bez hasła; aplikacja nigdy nie pyta o hasła |
 | `baza-wiedzy events redeliver` zgłasza nieudane dostarczenia | Handler zdarzenia zgłasza wyjątek (klasa wyjątku w logu) | Popraw handler (błąd w kodzie: zgłoś go), uruchom polecenie ponownie; wpisy czekają do skutecznego dostarczenia |
-| `failed` z timeoutem na skanie | Bardzo duży lub słabej jakości skan | Zwiększ `OCR_TIMEOUT_SECONDS`, zeskanuj ponownie, przetwórz ponownie |
+| „OCR nieudany”: „OCR trwał dłużej niż limit czasu…” | Bardzo duży lub słabej jakości skan, wolny serwer | `docker compose logs ocr-worker` (`ocr: failed … reason=timeout`); zwiększ `OCR_TIMEOUT_SECONDS`, `docker compose up -d ocr-worker`, potem „Uruchom OCR ponownie” |
+| „OCR w kolejce” nie rusza dalej | `ocr-worker` nie działa albo Redis zgubił wiadomość | `docker compose ps ocr-worker`, `docker compose logs ocr-worker`; `docker compose restart ocr-worker` wysyła utracone wiadomości ponownie |
+| „OCR nieudany”: „OCR został przerwany…” | `ocr-worker` zabity w trakcie OCR (brak pamięci: `docker inspect <kontener ocr-worker> --format '{{.State.OOMKilled}}'`) | Zwiększ `OCR_MEMORY_LIMIT` albo zmniejsz `OCR_JOBS`, potem „Uruchom OCR ponownie” |
 | Użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne” | Kontrolery domeny nieosiągalne, problem z certyfikatem albo odrzucone konto serwisowe (audyt `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; przy `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` i nazwa hosta w `LDAP_URI`. Admin awaryjny dalej działa |
 | `app` kończy się komunikatem `Active Directory configuration: ...` | `LDAP_ENABLED=true` przy niepełnej konfiguracji (brak pliku CA, adres `ldap://`, pusty bind DN) | Popraw zmienną wskazaną w komunikacie albo ustaw `LDAP_ENABLED=false` |
 | Jeden użytkownik AD nie może się zalogować, inni mogą | Złe hasło, konto wyłączone lub wygasłe w AD, nazwa zajęta przez konto lokalne, nazwa poza `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <nazwa> --password`; audyt `auth.login_failed` `reason`; `docker compose logs app` pod kątem `AD login refused` |

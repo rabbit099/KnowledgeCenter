@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 COMPOSE      := docker compose
 COMPOSE_DEV  := docker compose -f docker-compose.yml -f docker-compose.dev.yml
-SERVICES     := proxy app worker db redis
+SERVICES     := proxy app worker ocr-worker db redis
 
 .PHONY: help
 help: ## List commands
@@ -19,15 +19,15 @@ _need-docker:
 up: _need-docker ## Start all services (dev overrides)
 	$(COMPOSE_DEV) up -d --build
 	@$(COMPOSE_DEV) ps --format 'table {{.Service}}\t{{.Status}}'
-	@echo "app/worker stop after 3 failed starts in dev; see 'make logs' if one is not running."
+	@echo "app/worker/ocr-worker stop after 3 failed starts in dev; see 'make logs' if one is not running."
 
 .PHONY: down
 down: _need-docker ## Stop all services
 	$(COMPOSE_DEV) down
 
 .PHONY: logs
-logs: _need-docker ## Follow logs of app and worker
-	$(COMPOSE_DEV) logs -f app worker
+logs: _need-docker ## Follow logs of app, worker and ocr-worker
+	$(COMPOSE_DEV) logs -f app worker ocr-worker
 
 .PHONY: build
 build: _need-docker ## Build the images

@@ -201,7 +201,7 @@ Actions recorded since Phase 1:
 | Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audit | `audit.export` (`filters`, `rows`, `truncated`) |
-| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
+| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.ocr_request` (`version_id`, `pages`, `source`: `button` or `cli`), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
 Password resets from the command line: `user.password_reset_cli` (`username`, `revoked_sessions`). Searches are not audited and search phrases are never stored (ADR-025). Further document actions (`delete`, version changes) are added with Phase 5.

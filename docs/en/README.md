@@ -64,9 +64,11 @@ Tick items when they are finished and documented.
 
 ### Phase 4 — OCR
 - [x] Detection of pages without text (Phase 2: pages marked, version "wymaga OCR")
-- [ ] OCRmyPDF (`pol+eng`) for the marked pages of `needs_ocr` versions, then `done`
-- [ ] Derived searchable PDF, `ocr_applied` flag, timeouts and limits
-- [ ] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search then replaces the rows of the version; no change in search needed)
+- [x] OCRmyPDF + Tesseract (`pol+eng`) in a child process for the marked pages, also in e-mail attachments; `ocr_applied` per part and version; no derived PDF, no Ghostscript (stage A, ADR-031)
+- [x] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search replaces the rows of the version)
+- [x] Upload of several files in one form, without JavaScript too; duplicates held for a decision (stage B, ADR-032)
+- [x] Separate queue and service `ocr-worker`; automatic OCR up to `OCR_AUTO_MAX_PAGES`, "Uruchom OCR" / "Anuluj OCR", OCR states, `baza-wiedzy ocr --pending` (stage B, ADR-033)
+- [ ] Label "tekst z OCR" in search results; measurements (time per page, `tessdata_best`, `--deskew`); golden search tests on defective scans (stage C)
 
 ### Phase 5 — Document lifecycle
 - [ ] Versions, publishing a chosen version (draft / published / archived: Phase 3)

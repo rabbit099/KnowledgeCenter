@@ -658,12 +658,13 @@ def test_doc_upload_end_to_end(
 def test_scanned_pdf_is_recognised_by_ocr(
     app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
 ) -> None:
-    """Phase 4, stage A: the scanned page is recognised in the worker (OCRmyPDF + Tesseract)."""
+    """Phase 4: the text pass marks the scanned page, the OCR queue recognises it (ADR-033)."""
     c = login(app, make_user(app, "publisher"))
     scan = mixed_pdf(["Strona pierwsza ma warstwę tekstu: umowa najmu."], page_image(BASE_LINES))
     doc_id, version_id = upload(c, "skan.pdf", scan)
-    version = wait_final(rt, version_id, timeout=120)
-    assert version.processing_status == "done" and version.page_count == 2
+    assert wait_for(lambda: version_of(rt, version_id).processing_status == "done", timeout=120)
+    version = version_of(rt, version_id)
+    assert version.ocr_status == "done" and version.page_count == 2
     assert version.ocr_applied
     stored = parts(rt, version_id)
     assert [(p.page_no, p.needs_ocr, p.ocr_applied) for p in stored] == [

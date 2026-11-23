@@ -26,6 +26,7 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 | `proxy` | `baza-wiedzy-proxy` (Caddy, from `docker/caddy`) | TLS termination, reverse proxy, request size limit; runs as non-root on 8080/8443 inside the container | 80, 443 |
 | `app` | `baza-wiedzy-app` | Web UI, API, permissions, search queries | internal |
 | `worker` | `baza-wiedzy-worker` | Extraction, OCR, indexing (Tesseract, LibreOffice inside) | none |
+| `ocr-worker` | `baza-wiedzy-worker` | OCR of scanned pages (queue `ocr`, one document at a time, own memory and CPU limits; ADR-033) | none |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + Polish Hunspell dictionary | none |
 | `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
@@ -35,9 +36,9 @@ Networks (ADR-024):
 | Network | Members | Internet |
 |---|---|---|
 | `default` (`DOCKER_SUBNET`, default `172.30.70.0/24`; proxy at `PROXY_IP`) | `proxy`, `app` (`clamav` with the `antivirus` profile, for signature updates) | yes: incoming only through the proxy's published ports; outgoing for `app` (Active Directory over LDAPS) |
-| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `ocr-worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
 
-The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
+The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker and from `ocr-worker` `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
 
 Redis licence: Redis 8 is offered under AGPLv3 (among others), which is acceptable for internal, unmodified use. If that is ever in doubt, [Valkey](https://valkey.io) (BSD-3-Clause) is a 1:1 replacement: change the `redis` image to `valkey/valkey` with a pinned tag; nothing else changes.
 
@@ -73,7 +74,7 @@ See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.1
 1. User with `documents.upload` sends a file.
 2. `app` validates it (size, type by content), stores it under a UUID key, writes `doc_documents` and `doc_versions` rows with `processing_status = pending`, publishes the event `document.version.uploaded` (the `ingestion` module enqueues `process_version(version_id)`), writes an audit entry.
 3. The browser polls the status of the version (HTMX) and shows progress.
-4. `worker` extracts text, runs OCR if needed (Phase 4), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event: the `search` module copies the parts into `srch_parts` through `ingestion.services.api` (the worker needs two database connections per process for this, see deployment-operations.md). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` extracts text (scanned pages are marked and, up to `OCR_AUTO_MAX_PAGES`, queued for `ocr-worker`, which recognises them and stores the parts again the same way; ADR-033), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event: the `search` module copies the parts into `srch_parts` through `ingestion.services.api` (the worker needs two database connections per process for this, see deployment-operations.md). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publish
 A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `doc_documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.

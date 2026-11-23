@@ -16,6 +16,7 @@ How to upload documents, how to find them, what search can and cannot do, who se
 4. A possible duplicate is a file whose content is identical to a document you can already see. It is not uploaded until you decide: "Wgraj mimo to" uploads it, "Pomiń" drops it. You decide per file; the other files are already uploaded and nothing has to be chosen again. Undecided files are removed after 24 hours.
 5. A refused file never stops the others. Upload it again after fixing the reason.
 6. Every new document is a draft that only you and administrators see; processing (text extraction, OCR of scans) runs in the background.
+7. Scans: the text pages are searchable right after processing; the scanned pages wait for OCR, shown next to "wymaga OCR": "OCR w kolejce" (documents with fewer pages go first), "OCR w toku", then "gotowe" with "tekst z OCR". A document with more than 30 scanned pages waits as "OCR wstrzymany (duży dokument)": click "Uruchom OCR" when it suits you. "Anuluj OCR" stops it; "OCR nieudany" shows the reason and "Uruchom OCR ponownie". Check numbers read from a scan in the original.
 
 Uploading also works with JavaScript switched off (without dragging and without the checks before sending).
 
