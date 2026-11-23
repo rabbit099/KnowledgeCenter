@@ -259,3 +259,55 @@ def test_the_document_deadline_is_shared_by_its_pdfs(tmp_path: Path) -> None:
     with pytest.raises(ocr.OcrFailed) as caught:
         ocr.recognise(tmp_path / "x.pdf", [1], Context(collector=collector))
     assert caught.value.reason == "timeout"
+
+
+# --- stage C: the rotation threshold never turns an upright page ----------------------------
+
+
+def _rotation_decision(tmp_path: Path, pdf: bytes) -> tuple[bool, float]:
+    """Run the production OCR command verbosely and read OCRmyPDF's orientation decision:
+    (rotated, confidence; 0 when the page has too little text to decide). Its messages go to
+    this test only, never to a log."""
+    import os
+    import re
+
+    source, sidecar = tmp_path / "in.pdf", tmp_path / "s.txt"
+    source.write_bytes(pdf)
+    ctx = Context(collector=Collector(limits=Limits(ocr_enabled=True), workdir=tmp_path))
+    argv = ocr.command(source, sidecar, [1], ctx)
+    argv[argv.index("--quiet")] = "-v1"
+    done = subprocess.run(
+        argv, capture_output=True, text=True, env={**os.environ, "OMP_THREAD_LIMIT": "1"}
+    )
+    found = re.search(
+        r"facing \S+, confidence ([\d.]+) - (will rotate|rotation appears)", done.stderr
+    )
+    if found is None:  # too little text for orientation detection: the page is left as it is
+        return "will rotate" in done.stderr, 0.0
+    return found.group(2) == "will rotate", float(found.group(1))
+
+
+UPRIGHT = {
+    "czysty": lambda: page_image(BASE_LINES),
+    "maly-druk": lambda: page_image(BASE_LINES, font_size=22),
+    "jeden-wiersz": lambda: page_image(BASE_LINES[:1]),
+    "tabela": lambda: page_image(["Zestawienie kosztów"], table=[["Pozycja", "Kwota"]] * 4),
+    "przekrzywiony-3": lambda: page_image(BASE_LINES, skew=3),
+}
+
+
+@needs_tesseract
+@pytest.mark.parametrize("name", list(UPRIGHT))
+def test_an_upright_page_is_never_turned(tmp_path: Path, name: str) -> None:
+    from fixtures.scans import scan_pdf as make
+
+    rotated, confidence = _rotation_decision(tmp_path, make(UPRIGHT[name]()))
+    assert not rotated, f"{name}: turned at confidence {confidence}"
+
+
+@needs_tesseract
+def test_a_sideways_page_is_turned_upright(tmp_path: Path) -> None:
+    rotated, confidence = _rotation_decision(
+        tmp_path, scan_pdf(page_image(BASE_LINES, rotate90=True))
+    )
+    assert rotated and confidence > 5

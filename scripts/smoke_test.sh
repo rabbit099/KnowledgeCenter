@@ -272,6 +272,10 @@ case "$page" in
     *"href=\"$SCAN_DOC\""*) echo "    search for a word of the scan: found" ;;
     *) echo "FAILED: search does not find the word recognised by OCR"; exit 1 ;;
 esac
+case "$page" in
+    *"badge-ocr"*"tekst z OCR"*) echo "    search result: labelled \"tekst z OCR\"" ;;
+    *) echo "FAILED: the search result does not say \"tekst z OCR\""; exit 1 ;;
+esac
 case "$(curl -sk -c "$JAR" -b "$JAR" "$BASE$SCAN_DOC")" in
     *"tekst z OCR"*) echo "    document page: \"tekst z OCR\"" ;;
     *) echo "FAILED: the document page does not say \"tekst z OCR\""; exit 1 ;;

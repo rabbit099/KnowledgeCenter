@@ -28,6 +28,8 @@ Thumbs.db
 # Search performance runs (make perf): results and the evaluated dictionary without diacritics
 /perf-results/
 /.perf-dict/
+# make perf-ocr BEST=1: tessdata_best models downloaded for the comparison only
+/.perf-tessdata/
 
 # Company documents and queries for `make relevance` must never be committed (the repository is
 # public): keep them outside the repository; these names are ignored as a second safety net.

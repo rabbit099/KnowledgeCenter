@@ -1,6 +1,6 @@
 # User guide — uploading and searching
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-23
 
 How to upload documents, how to find them, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
 
@@ -58,6 +58,7 @@ Results are grouped by document, best first (a match in the title or e-mail subj
 - the title (a link to the document page, where the file can be downloaded);
 - type, file name, date (e-mail: the sending date, otherwise the upload date) and, for users who work with other people's documents, the author;
 - where the best match is ("strona 7", "załącznik: umowa.pdf › strona 2") and a fragment with the matching words highlighted; "Dopasowanie w tytule, nazwie pliku albo nagłówkach maila" when only those matched;
+- "tekst z OCR" when the match is in text read from a scan: words and especially numbers there may contain recognition errors, so check them in the original (with the same words, a document with real text ranks above a scan);
 - "szkic" or "zarchiwizowany" when the document is not published.
 
 The page says how many documents were found; 20 per page, page links at the bottom, at most 50 pages (make the query more specific to see beyond).

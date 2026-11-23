@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -68,7 +68,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [x] Po OCR zapisać części ponownie i ponownie zapisać `document.version.extracted` w tej samej transakcji (wyszukiwarka zastępuje wiersze wersji)
 - [x] Wgrywanie kilku plików w jednym formularzu, także bez JavaScriptu; duplikaty wstrzymane do decyzji (etap B, ADR-032)
 - [x] Osobna kolejka i usługa `ocr-worker`; automatyczny OCR do `OCR_AUTO_MAX_PAGES`, „Uruchom OCR” / „Anuluj OCR”, stany OCR, `baza-wiedzy ocr --pending` (etap B, ADR-033)
-- [ ] Etykieta „tekst z OCR” w wynikach wyszukiwania; pomiary (czas na stronę, `tessdata_best`, `--deskew`); złote testy wyszukiwania na wadliwych skanach (etap C)
+- [x] Etykieta „tekst z OCR” w wynikach wyszukiwania i ranking × 0,9 dla tekstu z OCR; pomiary (`make perf-ocr`, fast kontra `tessdata_best`, `--deskew`); złote testy wyszukiwania na wadliwych skanach; `make relevance` czeka na OCR (etap C, ADR-034)
 
 ### Faza 5 — Cykl życia dokumentu
 - [ ] Wersje, publikacja wybranej wersji (szkic / opublikowany / zarchiwizowany: Faza 3)

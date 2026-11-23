@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user>` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make perf-ocr PAGES=<n> [BEST=1]` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user> [OCR=1]` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 

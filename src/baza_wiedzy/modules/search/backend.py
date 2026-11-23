@@ -69,6 +69,7 @@ class SearchHit:
     page_no: int | None = None
     chunk_no: int = 1
     language: str | None = None
+    ocr_applied: bool = False  # the snippet's part was recognised by OCR
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 # Module: search
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-23
 
 ## Scope
 
@@ -16,7 +16,7 @@ None of its own. Searching needs `documents.read`; seeing drafts needs `document
 
 ## Tables
 
-`srch_parts` (one row per text part: `text_content`, `ident_terms`, the three generated `tsv_*` columns, origin, page, language) and `srch_documents` (one row per version: metadata with weights, `meta_fold` with a trigram index), both from `search_0002`. See [data-model.md](../data-model.md).
+`srch_parts` (one row per text part: `text_content`, `ident_terms`, the three generated `tsv_*` columns, origin, page, language) and `srch_documents` (one row per version: metadata with weights, `meta_fold` with a trigram index), both from `search_0002`; `srch_parts.ocr_applied` from `search_0003` (ranking × 0.9 and the label "tekst z OCR", ADR-034). See [data-model.md](../data-model.md).
 
 ## Events
 

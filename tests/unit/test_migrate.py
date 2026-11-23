@@ -30,7 +30,7 @@ def test_expected_heads_are_all_script_heads() -> None:
         "core_0003",
         "documents_0005",
         "ingestion_0002",
-        "search_0002",
+        "search_0003",
     }
 
 

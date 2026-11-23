@@ -1,6 +1,6 @@
 # Wyszukiwanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
 
 Wyszukiwanie to pełnotekstowe wyszukiwanie PostgreSQL (FTS), a nie OCR. OCR tylko zamienia zeskanowane strony na tekst; potem każdy dokument jest przeszukiwany tak samo.
 
@@ -68,6 +68,7 @@ Nie działa (z założenia): fragment jednego członu („0042” w „00042”)
 
 Dla każdego dokumentu (ADR-027):
 - treść: najlepsza część; `ts_rank_cd(…, 32)` konfiguracji wykrytego języka części (`pl` albo `english`; „nieznany”: lepsza z obu); dopiero gdy daje 0 (identyfikator, słowo wpisane bez polskich znaków, słowo drugiego języka), lepsza z `simple_unaccent` × 0,8 i drugiego języka × 0,9. Ranking czyta tsvector każdej używanej konfiguracji, co jest głównym kosztem szerokiego zapytania, więc ta kolejność oszczędza większość pracy (ADR-028);
+- część, której tekst rozpoznał OCR (`srch_parts.ocr_applied`, `search_0003`), liczy się × 0,9 (`OCR_FACTOR`, ADR-034): przy tych samych słowach warstwa tekstu jest wyżej niż tekst z OCR, który może zawierać błędy rozpoznania; trafienie w OCR i tak jest wyżej niż słabsze dopasowanie gdzie indziej;
 - plus metadane: `ts_rank(…, 32)` z wagami A (tytuł, temat) = 1,0 i B (nazwa pliku, nadawca, odbiorcy) = 0,4, więc trafienie w tytule jest wyżej niż w treści; dopasowanie przybliżone (trigramy) liczy się jako `0,3 × podobieństwo`, poniżej dopasowania dokładnego;
 - remisy: nowszy dokument pierwszy, potem według id (deterministycznie).
 
@@ -96,7 +97,7 @@ Reguła widoczności należy do modułu `documents`: `documents.services.api` ud
 3. Cały fragment jest escapowany w Pythonie (`snippets.to_html`).
 4. Dopiero potem wartownicy zamieniani są na `<mark>` i `</mark>`.
 
-`ts_headline` sam pomija tokeny znaczników, np. `<script>`; pozostały tekst jest escapowany. Nigdy nie przekazuj surowego fragmentu do szablonu jako bezpiecznego HTML. Dokument znaleziony tylko po metadanych pokazuje zamiast fragmentu „Dopasowanie w tytule, nazwie pliku albo nagłówkach maila”.
+`ts_headline` sam pomija tokeny znaczników, np. `<script>`; pozostały tekst jest escapowany. Nigdy nie przekazuj surowego fragmentu do szablonu jako bezpiecznego HTML. Trafienie w tekście rozpoznanym przez OCR ma obok miejsca etykietę „tekst z OCR”, dla każdego, kto widzi dokument (także Czytelnika). Dokument znaleziony tylko po metadanych pokazuje zamiast fragmentu „Dopasowanie w tytule, nazwie pliku albo nagłówkach maila”.
 
 ## Filtry i paginacja
 
@@ -201,14 +202,15 @@ Start workera sam wykonuje część `--missing` (linia logu `search: indexed N v
 
 - `test_golden.py`: słownik i trzy konfiguracje na krótkich tekstach (formy podstawowe, stop words, frazy, wykluczenie, kody).
 - `test_corpus.py`: syntetyczny korpus polsko-angielski `tests/fixtures/search_corpus.py` (26 dokumentów, 48 zapytań; te same pliki `make probki` zapisuje do `wyszukiwanie/` z `OCZEKIWANE-wyszukiwanie.txt`). Każdy plik przechodzi wgranie, ekstrakcję, indeksowanie po zdarzeniu i publikację; każde zapytanie idzie przez `/search` jako Czytelnik, autor albo Admin i jest porównywane z „musi znaleźć”, „nie może znaleźć” i „pierwszy wynik”. Pokryte: odmiana (umowa/umowy/umowie), polskie znaki (Łódź/lodz), nazwiska, frazy, wykluczenie w innej części, zapytania dwujęzyczne, angielska liczba mnoga, słowa tylko w załączniku maila, temacie albo nadawcy, częściowo zeskanowany PDF, słowo tylko w nazwie pliku, literówka w tytule, szkice i zarchiwizowane według roli, identyfikatory (NIP, numery umów, telefony, nazwy hostów, kody, adresy e-mail, domeny, adresy IP). To, że `lodz` nie znajduje „w Łodzi”, jest udokumentowanym przypadkiem (oczekiwanie „nie może znaleźć”), a nie błędem.
+- `test_ocr_golden.py` (Faza 4 etap C): 11 syntetycznych skanów z wadami (skos, szum, rozmycie, mały druk, tabela, obrót, niski kontrast, strona mieszana, skany w załącznikach EML i MSG) przechodzi wgranie, przebieg tekstowy, przebieg OCR, indeksowanie i publikację; Czytelnik musi znaleźć każdy skan po polskich odmianach (protokoły, odbiór, urządzenie, chłodniczy), bez polskich znaków (chlodniczych, zazolc), po formach angielskich (reports, approve) i po frazie; warstwa tekstu jest wyżej niż te same słowa z OCR; wyniki oznaczają tekst z OCR. Numery (telefon, NIP) są sprawdzane tylko na skanach, z których OCR je odczytuje (wszystkie poza skanem z 6 % szumu); zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr). Wymaga Tesseracta (`make test-db`).
 - Tam też: escapowanie HTML z dokumentów, fragmenty i ich lokalizacja, sortowanie, każdy filtr, limity zapytania, limit czasu, brak frazy w logu, `search-check` i `reindex-search`, publikacja działająca bez reindeksu, powtórzone zdarzenia.
 
 **Prawdziwe dokumenty i zapytania (tylko lokalnie).** Repozytorium jest publiczne: dokumenty i zapytania firmy nigdy do niego nie trafiają ani do CI. Oceniaj je lokalnie przez `make relevance` na stosie deweloperskim:
 
 1. Umieść dokumenty w katalogu **poza** repozytorium (na przykład `~/trafnosc/dokumenty/`), a zapytania w pliku poza nim (`~/trafnosc/zapytania.txt`): jedno zapytanie w linii, `#` dla komentarzy, opcjonalnie `zapytanie => fragment oczekiwanego tytułu albo nazwy pliku`.
 2. `make up`, zaloguj się raz kontem, które ma być właścicielem szkiców (albo użyj istniejącego konta Publikującego), potem `make relevance DIR=~/trafnosc/dokumenty QUERIES=~/trafnosc/zapytania.txt AS=bw-test ONLY=1`.
-3. Pierwsze uruchomienie wgrywa każdy plik jako szkic tego użytkownika i czeka na workera (linie `processing: {...}`); kolejne uruchomienia używają tych samych plików (ten sam SHA-256) i tylko wyszukują.
-4. Dla każdego zapytania wynik pokazuje liczbę dokumentów, czas i pierwsze `TOP` wyników: wynik, tytuł, nazwę pliku, miejsce trafienia („strona 3”, „załącznik: … › strona 1”, „tytuł/nazwa/nagłówki”) i fragment z trafieniami w «»; przy `=>` także OK albo MISSING i podsumowanie na końcu.
+3. Pierwsze uruchomienie wgrywa każdy plik jako szkic tego użytkownika i czeka na workera oraz na OCR skanów (linie `processing: {...}`, skany jako `needs_ocr/queued`, `needs_ocr/running`); duże skany (więcej niż `OCR_AUTO_MAX_PAGES` zeskanowanych stron) czekają wstrzymane jak w aplikacji: dodaj `OCR=1`, aby je uruchomić (audyt `document.ocr_request`, `source: relevance`). Kolejne uruchomienia używają tych samych plików (ten sam SHA-256) i tylko wyszukują.
+4. Dla każdego zapytania wynik pokazuje liczbę dokumentów, czas i pierwsze `TOP` wyników: wynik, tytuł, nazwę pliku, miejsce trafienia („strona 3”, „załącznik: … › strona 1”, „tytuł/nazwa/nagłówki”; „ (OCR)”, gdy trafienie jest w tekście rozpoznanym przez OCR) i fragment z trafieniami w «»; przy `=>` także OK albo MISSING i podsumowanie na końcu.
 5. Oceń wyniki ręcznie; zapisuj tu tylko wnioski bez treści (na przykład „18 z 20 zapytań ma oczekiwany dokument na pierwszym miejscu; problemy: skróty”).
 
 Szkice zostają na stosie deweloperskim, widoczne tylko dla tego użytkownika i posiadaczy `documents.read_drafts`; aby je usunąć, odtwórz bazę deweloperską (`make down`, potem `docker volume rm baza-wiedzy_pgdata baza-wiedzy_storage`, co kasuje wszystkie dane lokalne). Wynik zawiera tekst dokumentów: nigdy go nie commituj, nie wklejaj ani nie załączaj.

@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-23
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -68,7 +68,7 @@ Tick items when they are finished and documented.
 - [x] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search replaces the rows of the version)
 - [x] Upload of several files in one form, without JavaScript too; duplicates held for a decision (stage B, ADR-032)
 - [x] Separate queue and service `ocr-worker`; automatic OCR up to `OCR_AUTO_MAX_PAGES`, "Uruchom OCR" / "Anuluj OCR", OCR states, `baza-wiedzy ocr --pending` (stage B, ADR-033)
-- [ ] Label "tekst z OCR" in search results; measurements (time per page, `tessdata_best`, `--deskew`); golden search tests on defective scans (stage C)
+- [x] Label "tekst z OCR" in search results and ranking × 0.9 for OCR text; measurements (`make perf-ocr`, fast vs `tessdata_best`, `--deskew`); golden search tests on defective scans; `make relevance` waits for OCR (stage C, ADR-034)
 
 ### Phase 5 — Document lifecycle
 - [ ] Versions, publishing a chosen version (draft / published / archived: Phase 3)

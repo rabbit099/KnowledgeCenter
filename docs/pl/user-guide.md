@@ -1,6 +1,6 @@
 # Przewodnik użytkownika — wgrywanie i wyszukiwanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
 
 Jak wgrywać dokumenty, jak je znajdować, co wyszukiwanie potrafi, a czego nie, kto widzi co i co uruchamia administrator. Szczegóły techniczne (indeksy, ranking, pomiary): [search.md](search.md).
 
@@ -58,6 +58,7 @@ Wyniki są grupowane po dokumencie, od najlepszego (trafienie w tytule albo tema
 - tytuł (link do strony dokumentu, gdzie można pobrać plik);
 - typ, nazwę pliku, datę (mail: data wysłania, pozostałe: data wgrania) oraz, dla użytkowników pracujących z cudzymi dokumentami, autora;
 - gdzie jest najlepsze trafienie („strona 7”, „załącznik: umowa.pdf › strona 2”) i fragment z podświetlonymi słowami; „Dopasowanie w tytule, nazwie pliku albo nagłówkach maila”, gdy pasowały tylko one;
+- „tekst z OCR”, gdy trafienie jest w tekście odczytanym ze skanu: słowa, a zwłaszcza numery, mogą tam zawierać błędy rozpoznania, więc sprawdzaj je w oryginale (przy tych samych słowach dokument z prawdziwym tekstem jest wyżej niż skan);
 - „szkic” albo „zarchiwizowany”, gdy dokument nie jest opublikowany.
 
 Strona podaje, ile dokumentów znaleziono; 20 na stronę, linki do stron na dole, najwyżej 50 stron (aby zobaczyć dalej, doprecyzuj zapytanie).

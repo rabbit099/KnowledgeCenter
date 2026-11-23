@@ -1,6 +1,6 @@
 # Search
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.4.1 · Last reviewed: 2026-11-23
 
 Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text from scanned pages; after that, every document is searched the same way.
 
@@ -68,6 +68,7 @@ Does not work (by design): a part of one segment ("0042" in "00042"); prefixes (
 
 Per document (ADR-027):
 - content: the best part; `ts_rank_cd(…, 32)` of the configuration of the part's detected language (`pl` or `english`; "unknown": the better of both); only when that gives 0 (an identifier, a word typed without diacritics, a word of the other language) the better of `simple_unaccent` × 0.8 and the other language × 0.9. Ranking reads a tsvector per configuration it uses, which is the main cost of a broad query, so the order saves most of it (ADR-028);
+- a part whose text was recognised by OCR (`srch_parts.ocr_applied`, `search_0003`) counts × 0.9 (`OCR_FACTOR`, ADR-034): with the same words, a text layer ranks above OCR text, which may hold recognition errors; an OCR hit still ranks above a weaker match elsewhere;
 - plus metadata: `ts_rank(…, 32)` with the weights A (title, subject) = 1.0 and B (file name, sender, recipients) = 0.4, so a match in the title ranks above one in the text; a trigram near match counts `0.3 × similarity`, below an exact match;
 - ties: newer document first, then by id (deterministic).
 
@@ -96,7 +97,7 @@ The visibility rule is owned by the `documents` module: `documents.services.api`
 3. The whole snippet is HTML-escaped in Python (`snippets.to_html`).
 4. Only then the sentinels become `<mark>` and `</mark>`.
 
-`ts_headline` drops markup tokens such as `<script>` by itself; whatever text remains is escaped. Never pass a raw snippet to a template as safe HTML. A document found only through its metadata shows "Dopasowanie w tytule, nazwie pliku albo nagłówkach maila" instead of a snippet.
+`ts_headline` drops markup tokens such as `<script>` by itself; whatever text remains is escaped. Never pass a raw snippet to a template as safe HTML. A hit in text recognised by OCR shows the label "tekst z OCR" next to its location, for every user who can see the document (Reader included). A document found only through its metadata shows "Dopasowanie w tytule, nazwie pliku albo nagłówkach maila" instead of a snippet.
 
 ## Filters and pagination
 
@@ -201,14 +202,15 @@ The worker start runs the `--missing` part by itself (log line `search: indexed 
 
 - `test_golden.py`: the dictionary and the three configurations on short texts (base forms, stop words, phrases, exclusion, codes).
 - `test_corpus.py`: the synthetic Polish-English corpus `tests/fixtures/search_corpus.py` (26 documents, 48 queries; the same files `make probki` writes to `wyszukiwanie/` with `OCZEKIWANE-wyszukiwanie.txt`). Every file goes through upload, extraction, indexing by the event and publication; every query runs through `/search` as a Reader, as the author or as Admin and is compared with "must find", "must not find" and "first result". Covered: inflection (umowa/umowy/umowie), diacritics (Łódź/lodz), names, phrases, exclusion in another part, bilingual queries, English plurals, words only in an e-mail attachment, subject or sender, a partly scanned PDF, a word only in the file name, a typo in a title, drafts and archived documents per role, identifiers (tax numbers, contract numbers, phone numbers, host names, codes, e-mail addresses, domains, IP addresses). `lodz` not finding "w Łodzi" is a documented case (a "must not find" expectation), not a failure.
+- `test_ocr_golden.py` (Phase 4 stage C): the 11 synthetic scans with defects (skew, noise, blur, small print, table, rotation, low contrast, mixed page, scans in EML and MSG attachments) go through upload, text pass, OCR pass, indexing and publication; a Reader must find every scan by inflected Polish forms (protokoły, odbiór, urządzenie, chłodniczy), without diacritics (chlodniczych, zazolc), by English forms (reports, approve) and by a phrase; the text layer ranks above the same words from OCR; results label OCR text. Numbers (phone number, tax number) are asserted only on the scans where OCR reads them (all but the 6 % noise scan); see [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr). Needs Tesseract (`make test-db`).
 - Also there: escaping of HTML in documents, snippets and their location, sorting, every filter, query limits, the time limit, no phrase in the log, `search-check` and `reindex-search`, publication taking effect without reindexing, repeated events.
 
 **Real documents and queries (local only).** The repository is public: company documents and queries never go into it or into CI. Rate them locally with `make relevance` on the development stack:
 
 1. Put the documents in a directory **outside** the repository (for example `~/trafnosc/dokumenty/`) and the queries in a file outside it (`~/trafnosc/zapytania.txt`): one query per line, `#` for comments, optionally `query => part of the expected title or file name`.
 2. `make up`, log in once as the account that will own the drafts (or use an existing Publisher account), then `make relevance DIR=~/trafnosc/dokumenty QUERIES=~/trafnosc/zapytania.txt AS=bw-test ONLY=1`.
-3. The first run uploads every file as a draft of that user and waits for the worker (`processing: {...}` lines); later runs reuse the files (same SHA-256) and only search.
-4. For each query the output shows the number of documents, the time, and the first `TOP` results: score, title, file name, where the hit is ("strona 3", "załącznik: … › strona 1", "tytuł/nazwa/nagłówki") and the fragment with hits in «»; with `=>` also OK or MISSING, and a summary at the end.
+3. The first run uploads every file as a draft of that user and waits for the worker and for OCR of the scans (`processing: {...}` lines, scans as `needs_ocr/queued`, `needs_ocr/running`); large scans (more than `OCR_AUTO_MAX_PAGES` scanned pages) wait on hold as in the application: add `OCR=1` to start them (audited `document.ocr_request`, `source: relevance`). Later runs reuse the files (same SHA-256) and only search.
+4. For each query the output shows the number of documents, the time, and the first `TOP` results: score, title, file name, where the hit is ("strona 3", "załącznik: … › strona 1", "tytuł/nazwa/nagłówki"; " (OCR)" when the hit is in text recognised by OCR) and the fragment with hits in «»; with `=>` also OK or MISSING, and a summary at the end.
 5. Rate the results by hand; record only conclusions without content here (for example "18 of 20 queries have the expected document first; problems: abbreviations").
 
 The drafts stay on the development stack, visible only to that user and holders of `documents.read_drafts`; to remove them, recreate the development database (`make down`, then `docker volume rm baza-wiedzy_pgdata baza-wiedzy_storage`, which deletes all local data). The output contains document text: never commit, paste or attach it.

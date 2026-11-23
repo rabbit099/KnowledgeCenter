@@ -157,9 +157,26 @@ A page from which OCR gets no character at all is noted "OCR nie znalazł żadne
 
 The document page shows "Tekst: tekst z OCR" with a warning that words and especially numbers may contain recognition errors; the text panel marks each recognised page "tekst z OCR".
 
-Choices measured on synthetic scans (stage A): no `--deskew` (its fixed-threshold binarisation turned a low-contrast scan into an empty page; Tesseract reads a skew of up to about 5° by itself, 8° fails either way); rotation threshold 5 instead of OCRmyPDF's default 14 (a page turned by 90° stayed unturned and came out as garbage); no Ghostscript (not needed with the pypdfium rasteriser and text-only output; not installed). Neither the recognised text nor the messages of the OCR tools reach any log: the logs carry identifiers, page counts, durations and reasons (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
+Choices measured on synthetic scans (stage A, checked again in stage C, ADR-034): no `--deskew`, rotation threshold 5, no Ghostscript (not needed with the pypdfium rasteriser and text-only output; not installed). Neither the recognised text nor the messages of the OCR tools reach any log: the logs carry identifiers, page counts, durations and reasons (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
 
-Coming in stage C: the label "tekst z OCR" in search results, measurements (time per page, `tessdata_best`, `--deskew`), golden search tests on defective scans.
+- **`--deskew`** (word recall on a 10-line page, without / with): skew 2° 100 / 100 %, 3° 98.4 / 100 %, 4° 100 / 100 %, 5° 95.3 / 98.4 %, 6° 65.6 / 65.6 %, 7° 31.2 / 31.2 %, 8° 0 / 0 %; low contrast 140/200 and 120/210 96.9 / 100 %. But on a short page (4 lines) with low contrast 140/200 `--deskew` gives an **empty page** (100 % → 0 %): its fixed-threshold binarisation loses the faint text. A gain of 1–4 points does not outweigh losing whole pages, and above 5° it does not help at all, so it stays off. Pages skewed more than about 5° need rescanning.
+- **Rotation threshold 5**: a page turned by 90° is detected with confidence about 6.3 and turned; upright pages (clean, small print, skewed 3°) are "facing up" (confidence about 6.9) and never turned; pages with very little text (one line, a table) give no decision at all and stay as they are. Tested in `tests/unit/test_ocr.py`.
+- **Search in OCR text** (`tests/search_golden/test_ocr_golden.py`): on all 11 synthetic scans with defects, inflected Polish forms, words without diacritics, English forms and phrases are found. Numbers are the limit: the phone number and the tax number are found on every scan except the one with 6 % noise, where OCR misreads digits. Tell users to search for words rather than numbers in scans, or check numbers in the original.
+
+**Measurements** (`make perf-ocr PAGES=50 BEST=1`, development machine, container limited like `ocr-worker`: 2 CPUs, 2 GB, `OCR_JOBS=2`; synthetic A4 pages at 200 dpi with all defects; a slower server CPU scales the times proportionally):
+
+| | Debian "fast" (in the image) | tessdata_best 4.1.0 (variant) |
+|---|---|---|
+| One document of 50 pages | 50 s, **60 pages/min** | 52 s, 57 pages/min |
+| 22 documents of 1–5 pages | p50 2.5 s, **p95 5.4 s**, max 6.3 s, 44 pages/min | p50 2.9 s, p95 6.4 s, max 6.8 s, 38 pages/min |
+| Word recall (average) | 98.0 % | 99.1 % |
+| … noise 4 % | 96.9 % | 93.8 % |
+| … small print, low contrast | 96.9 % | 100 % |
+| Largest process / peak of all OCR processes | 281 MB / **468 MB** | 273 MB / 486 MB |
+
+Decision (ADR-034): keep the "fast" models. "best" gains about one point of word recall, loses on noisy scans, is 10–20 % slower per document and would add 27 MB of models outside the Debian packages; with the inflected search the remaining misses rarely matter. Reconsider with real scans if `make relevance` shows words missed in OCR text.
+
+Recommendation for 4 vCPU / 8 GB (the defaults): `OCR_CPUS=2`, `OCR_JOBS=2` (one Tesseract process per core), `OCR_MEMORY_LIMIT=2g` (four times the measured peak, room for A3 or 300 dpi scans), `OCR_MEMORY_MB=2048`, `OCR_AUTO_MAX_PAGES=30` (about 30 s of OCR), `OCR_TIMEOUT_SECONDS=1800` (a 200-page document takes about 4 minutes here; the limit leaves room for a server 5× slower). With 8 vCPU: `OCR_CPUS=4`, `OCR_JOBS=4`, `OCR_MEMORY_LIMIT=3g`.
 
 Known limits to tell users: quality depends on the scan; handwriting is not supported; numbers (tax numbers, account and phone numbers) may be misread; large scans take minutes; password-protected PDFs fail with "PDF jest zabezpieczony hasłem".
 

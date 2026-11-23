@@ -7,8 +7,9 @@ One search is one transaction with `statement_timeout` (SEARCH_TIMEOUT_MS):
    documents.services.api.search_scope (visibility, current version and filters in SQL);
 3. ranking per document: the best part (ts_rank_cd, normalisation 32, the best of the three
    configurations; simple_unaccent x 0.8; the configuration of the other language than the
-   detected one x 0.9) plus the metadata (ts_rank with weights A title/subject, B file
-   name/sender/recipients; trigram near match x 0.3, never more than an exact match);
+   detected one x 0.9; a part recognised by OCR x 0.9, OCR_FACTOR) plus the metadata (ts_rank
+   with weights A title/subject, B file name/sender/recipients; trigram near match x 0.3, never
+   more than an exact match);
 4. exclusions (-word, -"phrase") remove the whole document when any part or the metadata
    contains them;
 5. count(*) OVER () gives the number of documents (ranking reads every match anyway);
@@ -67,6 +68,7 @@ QUERY_CANCELED = "57014"
 SIMPLE_FACTOR = 0.8
 OTHER_LANGUAGE_FACTOR = 0.9
 TRIGRAM_FACTOR = 0.3
+OCR_FACTOR = 0.9  # a part recognised by OCR may hold recognition errors (ADR-034)
 _NEGATION = re.compile(r'(?:(?<=\s)|^)-("[^"]+"|[^\s"]+)')
 _OPERATOR = re.compile(r'"|(?:(?<=\s)|^)-|\sor\s', re.IGNORECASE)
 
@@ -240,6 +242,8 @@ class PostgresBackend:
                     other * OTHER_LANGUAGE_FACTOR,
                 ),
             )
+            # Same words in a text layer and in OCR text: the text layer first.
+            score = score * case((p.ocr_applied, OCR_FACTOR), else_=1.0)
             matched_query = matched_query.join(first, true())
         else:
             score = literal(0.0, Float)
@@ -393,7 +397,13 @@ class PostgresBackend:
                 r.id: r
                 for r in db.execute(
                     select(
-                        p.id, p.origin, p.page_no, p.chunk_no, p.language, headline.label("snippet")
+                        p.id,
+                        p.origin,
+                        p.page_no,
+                        p.chunk_no,
+                        p.language,
+                        p.ocr_applied,
+                        headline.label("snippet"),
                     )
                     .select_from(p)
                     .join(q, true())
@@ -421,6 +431,7 @@ class PostgresBackend:
                     page_no=part.page_no if part is not None else None,
                     chunk_no=part.chunk_no if part is not None else 1,
                     language=part.language if part is not None else None,
+                    ocr_applied=bool(part.ocr_applied) if part is not None else False,
                 )
             )
         return hits

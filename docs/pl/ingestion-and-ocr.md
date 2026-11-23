@@ -157,9 +157,26 @@ Strona, z której OCR nie wydobył ani jednego znaku, dostaje adnotację „OCR 
 
 Strona dokumentu pokazuje „Tekst: tekst z OCR” z ostrzeżeniem, że słowa, a zwłaszcza numery, mogą zawierać błędy rozpoznania; panel tekstu oznacza każdą rozpoznaną stronę „tekst z OCR”.
 
-Wybory zmierzone na syntetycznych skanach (etap A): bez `--deskew` (jego binaryzacja ze stałym progiem zmieniała skan o niskim kontraście w pustą stronę; Tesseract sam czyta skos do około 5°, 8° nie działa w żadnym wariancie); próg obrotu 5 zamiast domyślnego 14 w OCRmyPDF (strona obrócona o 90° zostawała nieobrócona i wychodził bełkot); bez Ghostscripta (niepotrzebny przy rasteryzacji pypdfium i wyniku tylko tekstowym; nie jest instalowany). Ani rozpoznany tekst, ani komunikaty narzędzi OCR nie trafiają do żadnego logu: logi zawierają identyfikatory, liczby stron, czasy i powody (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
+Wybory zmierzone na syntetycznych skanach (etap A, sprawdzone ponownie w etapie C, ADR-034): bez `--deskew`, próg obrotu 5, bez Ghostscripta (niepotrzebny przy rasteryzacji pypdfium i wyniku tylko tekstowym; nie jest instalowany). Ani rozpoznany tekst, ani komunikaty narzędzi OCR nie trafiają do żadnego logu: logi zawierają identyfikatory, liczby stron, czasy i powody (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
 
-W etapie C: etykieta „tekst z OCR” w wynikach wyszukiwania, pomiary (czas na stronę, `tessdata_best`, `--deskew`), złote testy wyszukiwania na wadliwych skanach.
+- **`--deskew`** (trafność słów na stronie z 10 wierszami, bez / z): skos 2° 100 / 100 %, 3° 98,4 / 100 %, 4° 100 / 100 %, 5° 95,3 / 98,4 %, 6° 65,6 / 65,6 %, 7° 31,2 / 31,2 %, 8° 0 / 0 %; niski kontrast 140/200 i 120/210 96,9 / 100 %. Ale na krótkiej stronie (4 wiersze) z niskim kontrastem 140/200 `--deskew` daje **pustą stronę** (100 % → 0 %): binaryzacja ze stałym progiem gubi blady tekst. Zysk 1–4 pkt nie równoważy utraty całych stron, a powyżej 5° nie pomaga wcale, więc zostaje wyłączony. Strony przekrzywione o więcej niż około 5° trzeba zeskanować ponownie.
+- **Próg obrotu 5**: strona obrócona o 90° jest wykrywana z pewnością około 6,3 i obracana; strony prawidłowo ułożone (czysta, mały druk, skos 3°) są „ku górze” (pewność około 6,9) i nigdy nie są obracane; strony z bardzo małą ilością tekstu (jeden wiersz, tabela) nie dają żadnej decyzji i zostają bez zmian. Testy w `tests/unit/test_ocr.py`.
+- **Wyszukiwanie w tekście z OCR** (`tests/search_golden/test_ocr_golden.py`): na wszystkich 11 syntetycznych skanach z wadami znajdowane są polskie odmiany, słowa bez polskich znaków, formy angielskie i frazy. Granicą są numery: telefon i NIP są znajdowane na każdym skanie poza tym z 6 % szumu, gdzie OCR źle odczytuje cyfry. Użytkownikom warto mówić, by w skanach szukali raczej słów niż numerów, a numery sprawdzali w oryginale.
+
+**Pomiary** (`make perf-ocr PAGES=50 BEST=1`, komputer deweloperski, kontener ograniczony jak `ocr-worker`: 2 CPU, 2 GB, `OCR_JOBS=2`; syntetyczne strony A4 w 200 dpi ze wszystkimi wadami; wolniejszy procesor serwera wydłuża czasy proporcjonalnie):
+
+| | Debian „fast” (w obrazie) | tessdata_best 4.1.0 (wariant) |
+|---|---|---|
+| Jeden dokument 50 stron | 50 s, **60 stron/min** | 52 s, 57 stron/min |
+| 22 dokumenty po 1–5 stron | p50 2,5 s, **p95 5,4 s**, maks. 6,3 s, 44 strony/min | p50 2,9 s, p95 6,4 s, maks. 6,8 s, 38 stron/min |
+| Trafność słów (średnio) | 98,0 % | 99,1 % |
+| … szum 4 % | 96,9 % | 93,8 % |
+| … mały druk, niski kontrast | 96,9 % | 100 % |
+| Największy proces / szczyt wszystkich procesów OCR | 281 MB / **468 MB** | 273 MB / 486 MB |
+
+Decyzja (ADR-034): zostają modele „fast”. „best” zyskuje około jednego punktu trafności słów, traci na zaszumionych skanach, jest o 10–20 % wolniejszy na dokument i dodałby 27 MB modeli spoza pakietów Debiana; przy wyszukiwaniu odmian pozostałe pomyłki rzadko mają znaczenie. Do ponownej oceny na prawdziwych skanach, jeśli `make relevance` pokaże słowa gubione w tekście z OCR.
+
+Rekomendacja dla 4 vCPU / 8 GB (wartości domyślne): `OCR_CPUS=2`, `OCR_JOBS=2` (jeden proces Tesseracta na rdzeń), `OCR_MEMORY_LIMIT=2g` (cztery razy zmierzony szczyt, zapas na skany A3 lub 300 dpi), `OCR_MEMORY_MB=2048`, `OCR_AUTO_MAX_PAGES=30` (około 30 s OCR), `OCR_TIMEOUT_SECONDS=1800` (dokument 200-stronicowy trwa tu około 4 minut; limit zostawia zapas na serwer 5× wolniejszy). Przy 8 vCPU: `OCR_CPUS=4`, `OCR_JOBS=4`, `OCR_MEMORY_LIMIT=3g`.
 
 Znane ograniczenia do przekazania użytkownikom: jakość zależy od skanu; pismo odręczne nie jest obsługiwane; numery (NIP, numery kont i telefonów) mogą być źle odczytane; duże skany trwają minuty; PDF-y zabezpieczone hasłem kończą się komunikatem „PDF jest zabezpieczony hasłem”.
 
