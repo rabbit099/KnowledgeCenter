@@ -22,7 +22,8 @@ cd "$(dirname "$0")/.."
 mapfile -t IMAGES < <(
     IMAGE_PREFIX="$PREFIX" APP_VERSION="$VERSION" POSTGRES_PASSWORD=x APP_DB_PASSWORD=x \
     REDIS_PASSWORD=x SECRET_KEY=x \
-    docker compose -f docker-compose.yml --env-file /dev/null --profile antivirus config --images
+    docker compose -f docker-compose.yml --env-file /dev/null --profile antivirus config --images \
+        | sort -u  # worker and ocr-worker share one image
 )
 
 SAVE=()

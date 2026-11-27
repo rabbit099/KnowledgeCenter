@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-23
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -82,6 +82,7 @@ Tick items when they are finished and documented.
 - [ ] Release workflow (tags → GHCR)
 - [ ] `update.sh`, `rollback.sh`
 - [ ] `backup.sh`, `restore.sh`, restore test procedure
+- [ ] `update.sh`, `backup.sh`, `restore.sh` cover `ocr-worker` (stopped during migrations and restore) and `/data/storage/.batches/` (in the files backup), as described in deployment-operations.md since 0.5.0
 - [ ] Operator guide complete
 
 ### Phase 7 — Hardening and acceptance
@@ -94,6 +95,8 @@ Tick items when they are finished and documented.
 - [ ] Remove the `exclude-newer-package` exception for `soupsieve` at the monthly dependency review in December 2026, once `exclude-newer` is past 2026-11-05 (ADR-015, Dependabot alert #2)
 - [ ] On the server: the worker has no internet access (`make smoke` network check, or the command in deployment-operations.md, Security notes)
 - [ ] Search relevance with the owner's real (non-confidential) documents and typical queries (locally, never committed)
+- [ ] Search relevance in OCR text with the owner's own scans (`make relevance … OCR=1`, locally); decide again on `tessdata_best` and the rotation threshold if words are missed (ADR-034)
+- [ ] On the server after the update to 0.5.0: `baza-wiedzy ocr --pending [--max-pages 30]` for scans from before 0.5.0; check OCR speed on the server CPU (`docker compose logs ocr-worker`, `seconds=` per document)
 - [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); failed versions findable by title (a dictionary without diacritics was evaluated and rejected, ADR-028)
 - [ ] Search under concurrency: fewer relations per statement or PostgreSQL 18, if more than ~10 searches/s are needed (ADR-028); memory settings before 100,000 documents
 - [ ] Delete or shorten old proxy logs from before 0.4.0 if they may contain CSRF tokens (changelog 0.4.0, Security)

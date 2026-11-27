@@ -1,6 +1,6 @@
 # Moduł: search
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 ## Zakres
 

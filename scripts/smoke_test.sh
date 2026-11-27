@@ -3,7 +3,8 @@
 #   1. build app, worker, db, proxy for linux/amd64 and tag them as <prefix>-<name>:<version>
 #   2. start docker-compose.yml in a separate Compose project with generated secrets
 #   3. run `baza-wiedzy migrate`
-#   4. require /ready to answer HTTP 200 with database, redis, schema and worker all "ok";
+#   4. require /ready to answer HTTP 200 with database, redis, schema, worker and ocr-worker
+#      all "ok", and the Docker healthcheck of worker and ocr-worker to be "healthy";
 #      check the network isolation: the worker reaches db and redis, nothing outside
 #   5. create the break-glass admin (generated password, --password-stdin) and, through the
 #      proxy: refuse a wrong password, log in, open the admin panel, upload a small TXT file
@@ -100,12 +101,12 @@ try:
     data = json.loads(sys.argv[1])
 except ValueError:
     sys.exit(1)
-expected = {"database": "ok", "redis": "ok", "schema": "ok", "worker": "ok"}
+expected = {"database": "ok", "redis": "ok", "schema": "ok", "worker": "ok", "ocr-worker": "ok"}
 sys.exit(0 if data.get("status") == "ok" and data.get("checks") == expected else 1)
 PY
     then
         echo "$body"
-        echo "==> /ready reports 4 x ok"
+        echo "==> /ready reports 5 x ok"
         ready=1
         break
     fi
@@ -115,6 +116,29 @@ if [ "${ready:-0}" != "1" ]; then
     echo "Last /ready answer: ${body:-<none>}"
     exit 1
 fi
+
+echo "==> Healthcheck of worker and ocr-worker (own heartbeat)"
+for service in worker ocr-worker; do
+    health=""
+    for _ in $(seq 60); do
+        health="$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q "$service")")"
+        [ "$health" = "healthy" ] && break
+        sleep 2
+    done
+    [ "$health" = "healthy" ] || { echo "FAILED: $service is \"$health\", not healthy"; exit 1; }
+    echo "    $service: healthy"
+done
+# The check is per container: a stopped ocr-worker turns /ready to 503 while worker stays ok.
+compose stop ocr-worker >/dev/null
+stopped="$(curl -sk --max-time 5 -o /dev/null -w '%{http_code}' "https://localhost:$HTTPS_PORT/ready" || true)"
+for _ in $(seq 40); do  # its key disappears at a clean stop; at the latest after 60 s (TTL)
+    [ "$stopped" = "503" ] && break
+    sleep 2
+    stopped="$(curl -sk --max-time 5 -o /dev/null -w '%{http_code}' "https://localhost:$HTTPS_PORT/ready" || true)"
+done
+[ "$stopped" = "503" ] || { echo "FAILED: /ready is $stopped with ocr-worker stopped, expected 503"; exit 1; }
+compose start ocr-worker >/dev/null
+echo "    ocr-worker stopped: /ready 503 (ocr-worker: no heartbeat); started again"
 
 echo "==> Network isolation (ADR-024)"
 # Worker: database and Redis reachable, nothing outside (TCP to public addresses, DNS of
@@ -435,5 +459,5 @@ echo "    proxy, app, worker, ocr-worker, db logs: no search phrase; proxy log: 
 expect "logout" 303 "$(status -X POST "$BASE/logout" --data-urlencode "csrf_token=$(token /)")"
 expect "admin panel after logout" 303 "$(status "$BASE/admin/users")"
 rm -f "$JAR"
-echo "==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT, PDF and scan (OCR in ocr-worker; on hold + \"Uruchom OCR\") processed to \"ready\", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout"
+echo "==> Smoke test passed: /ready 5 x ok, worker healthchecks, network isolation, login, admin panel, TXT, PDF and scan (OCR in ocr-worker; on hold + \"Uruchom OCR\") processed to \"ready\", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout"
 exit 0

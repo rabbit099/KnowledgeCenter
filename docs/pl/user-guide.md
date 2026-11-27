@@ -1,6 +1,6 @@
 # Przewodnik użytkownika — wgrywanie i wyszukiwanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Jak wgrywać dokumenty, jak je znajdować, co wyszukiwanie potrafi, a czego nie, kto widzi co i co uruchamia administrator. Szczegóły techniczne (indeksy, ranking, pomiary): [search.md](search.md).
 
@@ -16,7 +16,7 @@ Jak wgrywać dokumenty, jak je znajdować, co wyszukiwanie potrafi, a czego nie,
 4. Możliwy duplikat to plik o treści identycznej z dokumentem, który już widzisz. Nie jest wgrywany, dopóki nie zdecydujesz: „Wgraj mimo to” go wgrywa, „Pomiń” go odrzuca. Decydujesz dla każdego pliku osobno; pozostałe pliki są już wgrane i nic nie trzeba wybierać ponownie. Pliki bez decyzji są usuwane po 24 godzinach.
 5. Odrzucony plik nigdy nie zatrzymuje pozostałych. Wgraj go ponownie po usunięciu przyczyny.
 6. Każdy nowy dokument jest szkicem, który widzisz tylko Ty i administratorzy; przetwarzanie (wyciąganie tekstu, OCR skanów) odbywa się w tle.
-7. Skany: strony z tekstem są wyszukiwalne zaraz po przetworzeniu; zeskanowane strony czekają na OCR, co widać obok „wymaga OCR”: „OCR w kolejce” (dokumenty z mniejszą liczbą stron idą pierwsze), „OCR w toku”, potem „gotowe” z „tekst z OCR”. Dokument z więcej niż 30 zeskanowanymi stronami czeka jako „OCR wstrzymany (duży dokument)”: kliknij „Uruchom OCR”, kiedy Ci pasuje. „Anuluj OCR” go zatrzymuje; „OCR nieudany” pokazuje przyczynę i „Uruchom OCR ponownie”. Numery odczytane ze skanu sprawdzaj w oryginale.
+7. Skany: strony z tekstem są wyszukiwalne zaraz po przetworzeniu; zeskanowane strony czekają na OCR, co widać obok „wymaga OCR”: „OCR w kolejce” (dokumenty z mniejszą liczbą stron idą pierwsze), „OCR w toku”, potem „gotowe” z „tekst z OCR”. Dokument z więcej niż 30 zeskanowanymi stronami czeka jako „OCR wstrzymany (duży dokument)”: kliknij „Uruchom OCR”, kiedy Ci pasuje. „Anuluj OCR” go zatrzymuje; „OCR nieudany” pokazuje przyczynę i „Uruchom OCR ponownie”. „OCR pominięty (za dużo stron)” (ponad 200 zeskanowanych stron) nie ma przycisku: poproś administratora. „OCR nieuruchomiony” oznacza skany wgrane przed wersją 0.5.0, których administrator jeszcze nie uruchomił. Numery odczytane ze skanu sprawdzaj w oryginale.
 
 Wgrywanie działa także z wyłączonym JavaScriptem (bez przeciągania i bez sprawdzania przed wysłaniem).
 
@@ -72,7 +72,8 @@ Pod „Filtry i sortowanie”: typ pliku (PDF, Word, e-mail, tekst), język teks
 - **Brak synonimów**: „kopia zapasowa” nie znajdzie „backup”, „umowa” nie znajdzie „kontrakt”. Wpisz drugie słowo albo oba: `"kopia zapasowa" or backup`.
 - **Bez polskich liter tylko dokładna forma**: `lodz` znajduje „Łódź”, ale nie „w Łodzi” (`lodzi` znajduje). Wpisz polskie litery, aby znaleźć każdą formę.
 - **Brak fragmentów słów i numerów**: `faktu` nie znajdzie „faktura” w treści; `7251` nie znajdzie „7251801126”; `1002` nie znajdzie „600 100 200”. Drobne literówki i niepełne słowa są wybaczane tylko w tytułach, nazwach plików, tematach i nadawcach maili (nigdy w numerach).
-- **Zeskanowane strony** są znajdowane dopiero po OCR (Faza 4; strona dokumentu pokazuje wtedy „wymaga OCR”). Dokumenty, których przetwarzanie zakończyło się błędem, i dokumenty bez tekstu są znajdowane tylko po tytule i nazwie pliku.
+- **Zeskanowane strony** są znajdowane dopiero po OCR (do tego czasu strona dokumentu pokazuje „wymaga OCR” ze stanem OCR). Dokumenty, których przetwarzanie zakończyło się błędem, i dokumenty bez tekstu są znajdowane tylko po tytule i nazwie pliku.
+- **OCR ma ograniczenia**: pismo odręczne nie jest rozpoznawane (strona dostaje adnotację „OCR nie znalazł żadnego tekstu…” albo „…bardzo mało tekstu…”); numery (NIP, numery kont i telefonów) mogą zostać źle odczytane, więc numer może nie znaleźć skanu: szukaj raczej słowa z dokumentu, a numer sprawdź w oryginale; bardzo słabe, ciemne lub zaszumione skany i strony przekrzywione o więcej niż około 5° tracą słowa (zeskanuj ponownie, prosto, w 200–300 dpi); obrazy w plikach DOCX i osobne pliki graficzne nie są odczytywane.
 - **Limity**: od 2 do 200 znaków; 20 wyników na stronę; najwyżej 50 stron; wyszukiwanie trwające dłużej niż 3 sekundy jest pokazywane według daty zamiast trafności z adnotacją („Zapytanie jest bardzo ogólne…”); jeśli i to jest zbyt wolne, strona prosi o zawężenie zapytania.
 
 ### Kto widzi co
@@ -106,8 +107,21 @@ Nowe dokumenty są indeksowane zaraz po przetworzeniu; publikacja, archiwizacja 
 
 ### Narzędzia lokalne (tylko komputer deweloperski)
 
-- `make relevance DIR=<dokumenty> QUERIES=<plik> AS=<użytkownik> [ONLY=1]` wgrywa własne dokumenty jako szkice do **lokalnego stosu deweloperskiego** i drukuje pierwsze wyniki każdego zapytania do ręcznej oceny. **Wynik zawiera tekst dokumentów**: nigdy go nie commituj, nie załączaj do zgłoszeń i nie wklejaj w publiczne miejsca. Repozytorium jest publiczne: trzymaj dokumenty i plik zapytań poza nim (polecenie odmawia ścieżek wewnątrz). Szczegóły: [search.md](search.md#testy-wzorcowe-golden).
+- `make relevance DIR=<dokumenty> QUERIES=<plik> AS=<użytkownik> [ONLY=1] [OCR=1]` wgrywa własne dokumenty jako szkice do **lokalnego stosu deweloperskiego** i drukuje pierwsze wyniki każdego zapytania do ręcznej oceny. **Wynik zawiera tekst dokumentów**: nigdy go nie commituj, nie załączaj do zgłoszeń i nie wklejaj w publiczne miejsca. Repozytorium jest publiczne: trzymaj dokumenty i plik zapytań poza nim (polecenie odmawia ścieżek wewnątrz). Czeka, aż skończy się OCR skanów, oznacza trafienia w tekście z OCR dopiskiem „(OCR)”, a `OCR=1` uruchamia także skany wstrzymane. Szczegóły: [search.md](search.md#testy-wzorcowe-golden).
 - `make perf N=20000` mierzy wyszukiwanie na syntetycznych dokumentach (bez prawdziwych danych); wyniki w [search.md](search.md#cel-wydajnościowy).
+- `make perf-ocr PAGES=50 [BEST=1]` mierzy szybkość i pamięć OCR na syntetycznych skanach; wyniki w [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr).
+
+### Obsługa OCR
+
+Polecenia w kontenerze aplikacji (`docker compose exec app baza-wiedzy …`); każde uruchomienie jest audytowane jako `document.ocr_request`:
+
+| Polecenie | Kiedy | Oczekiwany wynik |
+|---|---|---|
+| `ocr --pending [--max-pages N]` | raz po aktualizacji do 0.5.0: skany wgrane wcześniej („OCR nieuruchomiony”) nie startują same; z `--max-pages 30` tylko mniejsze, resztę później, gdy serwer jest mniej obciążony | `Queued for OCR: N; nothing to do: 0.` |
+| `ocr <ID dokumentu>` | jeden dokument wstrzymany albo nieudany | `Queued for OCR: 1; nothing to do: 0.` |
+| `ocr <ID dokumentu> --ignore-page-limit` | dokument „OCR pominięty (za dużo stron)”, którego użytkownik naprawdę potrzebuje (jeden długi OCR; przy kilkuset stronach podnieś `OCR_TIMEOUT_SECONDS`) | ten sam wiersz |
+
+OCR działa w usłudze `ocr-worker`, jeden dokument naraz, najkrótszy najpierw; w tym czasie wgrywanie i wyszukiwanie nie zwalniają. Jeśli dokumenty stoją w „OCR w kolejce”, sprawdź `docker compose ps ocr-worker` i `/ready` (`"ocr-worker":"ok"`). Szczegóły: [deployment-operations.md](deployment-operations.md#przetwarzanie-dokumentów-przewodnik-operatora).
 
 ### Użytkownicy i dostęp
 
@@ -116,4 +130,4 @@ Nowe dokumenty są indeksowane zaraz po przetworzeniu; publikacja, archiwizacja 
 
 ### Kontrola prywatności
 
-Wyszukiwane frazy, nazwy plików i tematy maili nigdy nie trafiają do logów, dziennika audytu ani komunikatów błędów (ADR-025). `make smoke` sprawdza to przy każdym wydaniu; na serwerze: wyszukaj unikalne słowo, potem `docker compose logs proxy app worker db | grep -c <słowo>` musi wypisać `0`.
+Wyszukiwane frazy, nazwy plików i tematy maili nigdy nie trafiają do logów, dziennika audytu ani komunikatów błędów (ADR-025). `make smoke` sprawdza to przy każdym wydaniu; na serwerze: wyszukaj unikalne słowo, potem `docker compose logs proxy app worker ocr-worker db | grep -c <słowo>` musi wypisać `0`. Tekst rozpoznany przez OCR też nigdy nie trafia do logu.

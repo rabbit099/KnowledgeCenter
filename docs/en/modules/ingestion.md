@@ -1,10 +1,10 @@
 # Module: ingestion
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 ## Scope
 
-Turns a stored file into text parts in the `worker`: runs the extractor for the version's kind (TXT, EML, DOCX, PDF, DOC, MSG; native code in child processes; OCR in Phase 4), processes e-mail attachments, chunks long text, detects the language per part, enforces the safety limits, keeps the processing status moving (retries, stuck recovery) and publishes `document.version.extracted` through its outbox. Details: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
+Turns a stored file into text parts in the `worker`: runs the extractor for the version's kind (TXT, EML, DOCX, PDF, DOC, MSG; native code in child processes; OCR of scanned pages in the service `ocr-worker`), processes e-mail attachments, chunks long text, detects the language per part, enforces the safety limits, keeps the processing status moving (retries, stuck recovery) and publishes `document.version.extracted` through its outbox. Details: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
 
 ## Dependencies
 
@@ -18,7 +18,7 @@ None of its own. "Przetwórz ponownie" (`POST /ingestion/versions/<id>/reprocess
 
 ## Tables
 
-Branch `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`):
+Branch `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`; `ingestion_0002`: `ing_parts.ocr_applied`):
 - `ing_parts`: extracted text, one row per chunk (ADR-020); `version_id` → `doc_versions` with `ON DELETE CASCADE`.
 - `ing_results`: per version the notes (detected encoding, skipped attachments, fallback reader), number of parts and characters.
 - `ing_outbox`: durable `document.version.extracted` events.
@@ -39,7 +39,7 @@ Columns: [data-model.md](../data-model.md#ingestion).
 
 Worker start hook (manifest `worker_startup`): `startup.on_worker_start` (temporary files, stuck and pending versions, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).
 
-Phase 4 stage B: `request_ocr` (queue a version for OCR, audited), `cancel_ocr`, `count_scanned_pages`. Actors: `ingestion.process_version` (queue `ingestion`, service `worker`) and `ingestion.ocr_next` (queue `ocr`, service `ocr-worker`; takes the queued version with the fewest scanned pages, ADR-033). CLI: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID>`.
+Phase 4 stage B: `request_ocr` (queue a version for OCR, audited), `cancel_ocr`, `count_scanned_pages`. Actors: `ingestion.process_version` (queue `ingestion`, service `worker`) and `ingestion.ocr_next` (queue `ocr`, service `ocr-worker`; takes the queued version with the fewest scanned pages, ADR-033). CLI: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID> [--ignore-page-limit]`.
 
 ## Extension points
 
@@ -48,4 +48,4 @@ Phase 4 stage B: `request_ocr` (queue a version for OCR, audited), `cancel_ocr`,
 
 ## Status
 
-Phase 2, stages B and C: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, extractors for TXT, EML, DOCX, PDF (child process, scanned pages marked "wymaga OCR"), DOC (LibreOffice in a child process) and MSG, limits against archive and XML bombs, parts page and "Przetwórz ponownie" (UI and CLI), the e-mail subject as default title. The worker has no internet access (ADR-024). Phase 3: search reads the parts; Phase 4: OCR.
+Phase 2, stages B and C: pipeline (claim, scan hook, extract, chunk, language, one-transaction store, outbox), statuses with retries for transient errors and stuck recovery, extractors for TXT, EML, DOCX, PDF (child process, scanned pages marked "wymaga OCR"), DOC (LibreOffice in a child process) and MSG, limits against archive and XML bombs, parts page and "Przetwórz ponownie" (UI and CLI), the e-mail subject as default title. The worker has no internet access (ADR-024). Phase 3: search reads the parts. Phase 4 (0.5.0): OCR with OCRmyPDF + Tesseract in its own queue and service (ADR-031, ADR-033), automatic up to `OCR_AUTO_MAX_PAGES`, on hold above, cancel, timeouts per document, recovery of interrupted OCR, `ocr_applied` per part for the search label and ranking (ADR-034).

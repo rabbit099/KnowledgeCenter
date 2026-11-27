@@ -1,6 +1,6 @@
 # Baza Wiedzy — Dokumentacja (polski)
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Baza Wiedzy (nazwa robocza) to wewnętrzna aplikacja webowa. Użytkownicy wgrywają dokumenty (PDF, DOCX, DOC, TXT, EML, MSG), system odczytuje ich tekst (OCR dla skanów) i wyszukuje dokumenty zawierające wpisaną frazę. Działa w Dockerze na serwerze z Linuksem.
 
@@ -82,6 +82,7 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Workflow wydań (tagi → GHCR)
 - [ ] `update.sh`, `rollback.sh`
 - [ ] `backup.sh`, `restore.sh`, procedura testu odtwarzania
+- [ ] `update.sh`, `backup.sh`, `restore.sh` obejmują `ocr-worker` (zatrzymywany na czas migracji i odtwarzania) i `/data/storage/.batches/` (w kopii plików), jak opisuje deployment-operations.md od 0.5.0
 - [ ] Kompletny poradnik dla operatora
 
 ### Faza 7 — Utwardzenie i odbiór
@@ -94,6 +95,8 @@ Zaznaczaj punkty dopiero wtedy, gdy są skończone i opisane w dokumentacji.
 - [ ] Usunięcie wyjątku `exclude-newer-package` dla `soupsieve` przy comiesięcznym przeglądzie zależności w grudniu 2026, gdy `exclude-newer` przekroczy 2026-11-05 (ADR-015, alert Dependabota #2)
 - [ ] Na serwerze: worker nie ma dostępu do internetu (sprawdzenie sieci w `make smoke` albo polecenie z deployment-operations.md, Uwagi bezpieczeństwa)
 - [ ] Trafność wyszukiwania na prawdziwych (niepoufnych) dokumentach i typowych zapytaniach właściciela (lokalnie, nigdy w repozytorium)
+- [ ] Trafność wyszukiwania w tekście z OCR na własnych skanach właściciela (`make relevance … OCR=1`, lokalnie); ponowna decyzja o `tessdata_best` i progu obrotu, jeśli giną słowa (ADR-034)
+- [ ] Na serwerze po aktualizacji do 0.5.0: `baza-wiedzy ocr --pending [--max-pages 30]` dla skanów sprzed 0.5.0; sprawdzenie szybkości OCR na procesorze serwera (`docker compose logs ocr-worker`, `seconds=` na dokument)
 - [ ] Do oceny (backlog): poprawianie literówek w treści (słownik słów z `ts_stat` + trigramy); wersje z błędem przetwarzania znajdowane po tytule (słownik bez polskich znaków oceniony i odrzucony, ADR-028)
 - [ ] Wyszukiwanie przy równoległości: mniej relacji na instrukcję albo PostgreSQL 18, jeśli potrzeba więcej niż ~10 wyszukiwań/s (ADR-028); ustawienia pamięci przed 100 000 dokumentów
 - [ ] Usunąć albo skrócić stare logi proxy sprzed 0.4.0, jeśli mogą zawierać tokeny CSRF (dziennik zmian 0.4.0, Security)

@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -10,6 +10,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 - Dostęp do `ghcr.io` (albo procedura offline opisana niżej).
 - Nazwa DNS aplikacji i certyfikat TLS (wewnętrzne CA lub Let's Encrypt — do ustalenia).
 - Osiągalność kontrolera domeny przez LDAPS (port 636) i konto serwisowe do odczytu LDAP.
+- Zalecany rozmiar: 4 vCPU i 8 GB pamięci; pod niego dobrane są wartości domyślne ([Budżet pamięci i rdzeni](#budżet-pamięci-i-rdzeni-8-gb--4-vcpu)). Najwięcej zużywa OCR: przy mniejszej liczbie rdzeni obniż `OCR_CPUS` i `OCR_JOBS`.
 - Miejsce na dysku na dokumenty (oryginały + kopie pochodne + baza). Na start zaplanuj 3× rozmiar wgrywanych plików.
 
 ## Układ na serwerze
@@ -25,7 +26,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 └── backups/             # tworzone przez backup.sh
 ```
 
-Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `storage` (pliki wgrane i pochodne, zamontowany w `/data/storage` w `app` i `worker`), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
+Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `storage` (pliki wgrane i pochodne, zamontowany w `/data/storage` w `app`, `worker` i `ocr-worker`), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
 
 ## Konfiguracja
 
@@ -45,7 +46,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `DOCKER_SUBNET`, `PROXY_IP` | Stała sieć Dockera stosu (domyślnie `172.30.70.0/24`) i adres proxy w niej (`172.30.70.10`); aplikacja ufa `X-Forwarded-For` tylko od `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
-| `BACKEND_SUBNET` | Wewnętrzna sieć `app`, `worker`, `db`, `redis` bez dostępu do internetu (domyślnie `172.30.72.0/24`; zmień, jeśli koliduje z siecią firmy, ADR-024) |
+| `BACKEND_SUBNET` | Wewnętrzna sieć `app`, `worker`, `ocr-worker`, `db`, `redis` bez dostępu do internetu (domyślnie `172.30.72.0/24`; zmień, jeśli koliduje z siecią firmy, ADR-024) |
 | `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 501, trzymaj `UPLOAD_MAX_TOTAL_MB` + 1; mniejsza wartość obniża łączny limit aplikacji do `MAX_REQUEST_MB` − 1, wartość nie większa od `MAX_UPLOAD_MB` zatrzymuje aplikację przy starcie) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Największy wgrywany plik (domyślnie 50 MB); ścieżka wolumenu plików w kontenerach (domyślnie `/data/storage`) |
 | `UPLOAD_MAX_FILES`, `UPLOAD_MAX_TOTAL_MB`, `UPLOAD_BATCH_HOURS` | Pliki w jednym formularzu (50), ich łączny rozmiar (500 MB; kontener app potrzebuje tyle wolnego miejsca tymczasowego), godziny oczekiwania możliwego duplikatu na decyzję (24) |
@@ -64,7 +65,7 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Logowanie przez Active Directory, domyślnie wyłączone (`LDAP_ENABLED=false`). `./secrets/ldap/` jest montowany tylko do odczytu w `/run/secrets/ldap/` w `app` dla certyfikatu CA i pliku z hasłem konta serwisowego. Szczegóły, normalizacja nazw i procedura testu na prawdziwym AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-przez-tls) |
 
-`ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
+`ENABLED_MODULES` musi mieć tę samą wartość dla `app`, `worker` i `ocr-worker` (wszystkie czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
 Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach. Przy pierwszym starcie z pustym wolumenem `pgdata` obraz `db` tworzy tego użytkownika i bazę z `APP_DB_USER`, `APP_DB_PASSWORD` i `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Późniejsza zmiana tych zmiennych **nie** zmienia istniejącej bazy; hasło zmień przez `ALTER ROLE` jako `postgres` i jednocześnie zaktualizuj `.env`.
 
@@ -86,7 +87,7 @@ Wartości domyślne dobrane do serwera z 8 GB pamięci i 4 vCPU. Kolumna pamięc
 | Usługa | Limit pamięci | Typowo | CPU | Od czego zależy |
 |---|---|---|---|---|
 | `db` | 2 GB (`DB_MEMORY_LIMIT`) | 0,5–1,2 GB | wspólne | `POSTGRES_SHARED_BUFFERS` 256 MB + `POSTGRES_MAX_CONNECTIONS` 40 × 35 MB (polski słownik na połączenie) + 300 MB |
-| `app` | 1 GB (`APP_MEMORY_LIMIT`) | 0,2–0,4 GB | wspólne | 2 procesy Uvicorn; wgrywane pliki są buforowane na dysku, nie w pamięci |
+| `app` | 1 GB (`APP_MEMORY_LIMIT`) | 0,2–0,4 GB | wspólne | 2 procesy Uvicorn; wgrywane pliki są buforowane na dysku, nie w pamięci: jeden formularz potrzebuje do `UPLOAD_MAX_TOTAL_MB` (500 MB) wolnego miejsca tymczasowego w kontenerze |
 | `worker` | 2 GB (`WORKER_MEMORY_LIMIT`) | < 0,5 GB | wspólne, 2 procesy | `WORKER_PROCESSES` 2; w środku LibreOffice (jeden DOC naraz, `LIBREOFFICE_MEMORY_MB` 1 GB przestrzeni adresowej) i proces potomny PDF (`INGEST_CHILD_MEMORY_MB` 1 GB) |
 | `ocr-worker` | 2 GB (`OCR_MEMORY_LIMIT`) | do około 0,5 GB w trakcie OCR (zmierzone: 468 MB przy 2 procesach Tesseracta, [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr)) | najwyżej 2 (`OCR_CPUS`) | jeden dokument naraz, `OCR_JOBS` 2 procesy Tesseracta (`OCR_MEMORY_MB` 2 GB przestrzeni adresowej każdy: sufit pamięci wirtualnej, nie faktyczne zużycie) |
 | `redis` | 256 MB (`REDIS_MEMORY_LIMIT`) | < 50 MB | wspólne | tylko kolejka zadań i heartbeaty |
@@ -114,7 +115,7 @@ Na serwerze z większą pamięcią podnieś najpierw `OCR_MEMORY_LIMIT` (duże s
 - Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
 - Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
 
-CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 4 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
+CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 5 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
 
 ## Aktualizacja
 
@@ -127,7 +128,7 @@ Co robi `update.sh`:
 1. Kontrole wstępne: Docker działa, jest wolne miejsce na dysku, nowe obrazy istnieją w rejestrze, `.env` zawiera wszystkie zmienne z nowego `.env.example` (w przeciwnym razie zatrzymuje się i wypisuje brakujące).
 2. Uruchamia `backup.sh` (baza + pliki).
 3. Pobiera nowe obrazy.
-4. Zatrzymuje `worker`, żeby podczas migracji nie szły żadne zadania (worker uruchomiony przed końcem migracji czeka na nią przed zadaniami startowymi, zobacz Pierwsza instalacja).
+4. Zatrzymuje `worker` i `ocr-worker`, żeby podczas migracji nie szły żadne zadania (worker uruchomiony przed końcem migracji czeka na nią przed zadaniami startowymi, zobacz Pierwsza instalacja).
 5. Uruchamia migracje w jednorazowym kontenerze (`baza-wiedzy migrate`).
 6. Ustawia `APP_VERSION` w `.env` i uruchamia wszystko (`docker compose up -d`).
 7. Czeka na `/ready` (do 120 s).
@@ -153,7 +154,7 @@ git checkout v1.2.0
 ./scripts/offline_bundle.sh 1.2.0 ghcr.io/<właściciel>/baza-wiedzy /tmp/bundle
 ```
 
-Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`), pobiera wszystko dla `linux/amd64` i zapisuje do jednego pliku. Dla wersji `X.Y.Z` pakiet zawiera **wszystkie** obrazy potrzebne na serwerze:
+Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`; `worker` i `ocr-worker` mają wspólny obraz, wypisany raz), pobiera wszystko dla `linux/amd64` i zapisuje do jednego pliku. Dla wersji `X.Y.Z` pakiet zawiera **wszystkie** obrazy potrzebne na serwerze:
 
 | Obraz | Odwołanie |
 |---|---|
@@ -161,8 +162,8 @@ Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`), p
 | worker | `ghcr.io/<właściciel>/baza-wiedzy-worker:X.Y.Z` |
 | db | `ghcr.io/<właściciel>/baza-wiedzy-db:X.Y.Z` |
 | proxy | `ghcr.io/<właściciel>/baza-wiedzy-proxy:X.Y.Z` |
-| redis | `redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba` |
-| clamav (profil opcjonalny) | `clamav/clamav:1.4.3@sha256:75fb5fd95fcbe1d7e6d240c369c1572b686ee2c95949d1042b5148de8eddebb4` |
+| redis | `redis:8.10.2-alpine@sha256:9f8d2d789b9a1d1e3f283f979aa9cbf393373806472e1ccd460e2f9c869b833b` |
+| clamav (profil opcjonalny) | `clamav/clamav:1.5.3@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb` |
 
 Wynik: `baza-wiedzy-images-X.Y.Z.tar` (około 0,7 GB), `.tar.sha256` i `baza-wiedzy-images-X.Y.Z.txt` (każde odwołanie z identyfikatorem obrazu). Skopiuj te trzy pliki oraz `docker-compose.yml`, `.env.example` i `scripts/` z wydania na serwer, potem:
 
@@ -213,12 +214,12 @@ Zatrzymuje `app`, `worker` i `ocr-worker`, odtwarza bazę (`pg_restore --clean -
 | Endpoint | Znaczenie |
 |---|---|
 | `/health` | Proces żyje (bez sprawdzania zależności) |
-| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera, schemat zmigrowany dla włączonych modułów. JSON; HTTP 200, gdy każde sprawdzenie ma wartość `ok`, w przeciwnym razie 503 |
+| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera (`worker`: proces obsługujący kolejkę `ingestion`; `ocr-worker`: proces obsługujący `ocr`, tylko przy `OCR_ENABLED=true`), schemat zmigrowany dla włączonych modułów. JSON; HTTP 200, gdy każde sprawdzenie ma wartość `ok`, w przeciwnym razie 503 |
 
 Przykład poprawnej odpowiedzi (`curl -k https://<PUBLIC_HOSTNAME>/ready`):
 
 ```
-{"status":"ok","version":"1.0.0","checks":{"database":"ok","redis":"ok","schema":"ok","worker":"ok"}}
+{"status":"ok","version":"1.0.0","checks":{"database":"ok","redis":"ok","schema":"ok","worker":"ok","ocr-worker":"ok"}}
 ```
 
 | Sprawdzenie | Wartość inna niż `ok` | Znaczenie i co zrobić |
@@ -226,13 +227,16 @@ Przykład poprawnej odpowiedzi (`curl -k https://<PUBLIC_HOSTNAME>/ready`):
 | `database` | `unreachable` | `docker compose ps db`, `docker compose logs db`; sprawdź `APP_DB_PASSWORD` |
 | `redis` | `unreachable` / `authentication failed` | `docker compose ps redis`; `REDIS_PASSWORD` w `.env` różni się od tego, z którym wystartował Redis: `docker compose up -d redis app worker` |
 | `schema` | `not migrated` / `outdated` / `unknown` | Uruchom `docker compose run --rm app baza-wiedzy migrate`. `ok (schema newer than application)` jest normalne przez chwilę podczas rollbacku |
-| `worker` | `no heartbeat` | Żaden proces workera nie zapisał heartbeatu w ostatnich 60 s: `docker compose ps worker`, `docker compose logs worker` |
+| `worker` | `no heartbeat` | Żaden proces `worker` nie zapisał heartbeatu w ostatnich 60 s: `docker compose ps worker`, `docker compose logs worker`. Wgrane pliki zostają „oczekuje” |
+| `ocr-worker` | `no heartbeat` | `ocr-worker` nie działa: `docker compose ps ocr-worker`, `docker compose logs ocr-worker`, `docker compose up -d ocr-worker`. Wgrywanie działa dalej; skany czekają „OCR w kolejce”. Podczas aktualizacji z 0.4.x stary worker liczy się dla każdej kolejki |
+
+`docker compose ps` pokazuje też `worker` i `ocr-worker` jako `healthy` albo `unhealthy`: ich healthcheck Dockera (`python -m baza_wiedzy.core.queue`, co 30 s) sprawdza, czy proces workera w tym kontenerze utrzymuje heartbeat (zapisuje go osobny wątek, więc długi OCR nie robi z kontenera `unhealthy`). Docker sam nie restartuje kontenera `unhealthy`; kontener, który się wywrócił, jest uruchamiany ponownie (`restart: unless-stopped`). Powód ostatnich sprawdzeń: `docker inspect --format '{{json .State.Health}}' <kontener>`.
 
 Sprawdzenie kolejki od początku do końca: `docker compose exec worker baza-wiedzy worker-ping` wysyła zadanie testowe i wypisuje `Worker answered in 0.6 s.` (kod wyjścia 0) albo `No answer from a worker within 10.0 s.` (kod wyjścia 1).
 
 Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpowiedzi. Endpoint z metrykami i długość kolejki to opcjonalne dodatki na później.
 
-Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
+Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker ocr-worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
 ## Przetwarzanie dokumentów (przewodnik operatora)
 
@@ -292,12 +296,12 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint-workflows` | Tylko sprawdzenie workflowów przez actionlint |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprawdza izolację sieci (worker sięga do db i redis, do niczego poza nimi), sprawdza, że obraz app nie zawiera bs4 ani soupsieve, a worker ma soupsieve >= 4.0, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (około 1–2 minut przy zbuforowanych warstwach) |
-| `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (Faza 2): `… passed, 2 skipped`. Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 5 × `ok` oraz `worker` i `ocr-worker` w stanie `healthy` (i `/ready` 503 przy zatrzymanym `ocr-worker`), sprawdza izolację sieci (`worker` i `ocr-worker` sięgają do db i redis, do niczego poza nimi), sprawdza, że obraz app nie zawiera bs4 ani soupsieve, a worker ma soupsieve >= 4.0, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Dalej: skan rozpoznany w `ocr-worker` (znajdowany, z etykietą „tekst z OCR”, bez tekstu w logach), skan wstrzymany i „Uruchom OCR”, formularz wielu plików bez JavaScriptu i limity wgrywania. Oczekiwany koniec: `==> Smoke test passed: /ready 5 x ok, worker healthchecks, network isolation, login, admin panel, TXT, PDF and scan (OCR in ocr-worker; on hold + "Uruchom OCR") processed to "ready", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout` (około 2 minut przy zbuforowanych warstwach) |
+| `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (0.5.0): `326 passed` (nic pominiętego: Tesseract i LibreOffice są w obrazie; około 4 minut). Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
-| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
+| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0006, ingestion_0002, search_0003).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
 | `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (26 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
@@ -317,7 +321,7 @@ Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydan
 
 Alert bezpieczeństwa dla paczki Pythona, której Dependabot nie może podnieść z powodu `exclude-newer`: (1) oceń ekspozycję (czy podatny kod jest osiągalny w tej aplikacji? zapisz wniosek, najlepiej jako test); (2) odblokuj tylko tę paczkę: dodaj ją do `exclude-newer-package` w `[tool.uv]` w `pyproject.toml` z datą tuż po wydaniu z poprawką, potem `uv lock --upgrade-package <nazwa>`; (3) sprawdź `git diff uv.lock`: zmienić się może tylko ta paczka (i, jeśli nie da się inaczej, jej bezpośrednie zależności); (4) wpis w `### Security` w `[Unreleased]` obu dzienników zmian i linia w ADR-015; (5) `make lint test test-db docs-check smoke`; (6) usuń wyjątek przy najbliższym przeglądzie miesięcznym. Przykład: alert Dependabota #1 (`opentelemetry-api` 1.45.2) w ADR-015.
 
-Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną wartość (aplikacja odrzuca wartość zastępczą); pozostałe wartości domyślne wystarczą do rozwoju. Potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. Utwórz lokalnego admina poleceniem `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` i zaloguj się na `https://localhost/login`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
+Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną wartość (aplikacja odrzuca wartość zastępczą); pozostałe wartości domyślne wystarczą do rozwoju. Potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app`, `worker` i `ocr-worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi pięcioma sprawdzeniami `ok`. Utwórz lokalnego admina poleceniem `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` i zaloguj się na `https://localhost/login`. W dev `app`, `worker` i `ocr-worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker ocr-worker`.
 
 ## Rozwiązywanie problemów
 
@@ -353,8 +357,8 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 ## Uwagi bezpieczeństwa dla operatorów
 
 - Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci; Redis wymaga też hasła (`REDIS_PASSWORD`).
-- `worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
-- Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
+- `worker`, `ocr-worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
+- Kontenery działają bez roota: `app`, `worker` i `ocr-worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker`, `ocr-worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
 - Logi nigdy nie zawierają wyszukiwanych fraz, treści dokumentów, nazw plików ani tematów maili (ADR-025): log proxy usuwa parametry zapytania, `Referer`, `HX-Current-URL`, cele przekierowań, `Content-Disposition` i `X-CSRF-Token`; log dostępu aplikacji usuwa parametry zapytania; błędy bazy są logowane tylko z typem i SQLSTATE. Żądanie wygląda więc w logu proxy jak `"uri":"/documents?[removed]"`. Jeśli dodajesz własne zbieranie logów (na przykład kolejne proxy przed tym), skonfiguruj to samo; `make smoke` to sprawdza. Przeglądarki zapisują adresy wyszukiwań we własnej historii; to jest poza serwerem.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.

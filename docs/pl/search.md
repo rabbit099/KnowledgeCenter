@@ -1,6 +1,6 @@
 # Wyszukiwanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Wyszukiwanie to pełnotekstowe wyszukiwanie PostgreSQL (FTS), a nie OCR. OCR tylko zamienia zeskanowane strony na tekst; potem każdy dokument jest przeszukiwany tak samo.
 

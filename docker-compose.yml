@@ -16,6 +16,16 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Worker containers: healthy while one of their worker processes keeps its heartbeat in Redis
+# (written every 15 s by a separate thread, also during a long OCR). `docker compose ps` shows it;
+# /ready checks the same per queue (worker: ingestion, ocr-worker: ocr).
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "python", "-m", "baza_wiedzy.core.queue"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+
 x-app-env: &app-env
   APP_NAME: ${APP_NAME:-Baza Wiedzy}
   ENABLED_MODULES: ${ENABLED_MODULES:-documents,ingestion,search}
@@ -171,6 +181,7 @@ services:
       resources:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-2g}
+    healthcheck: *worker-healthcheck
     logging: *logging
 
   # OCR of scanned pages (Phase 4 stage B, ADR-033): the worker image, only the queue "ocr", one
@@ -202,6 +213,7 @@ services:
         limits:
           memory: ${OCR_MEMORY_LIMIT:-2g}
           cpus: "${OCR_CPUS:-2}"
+    healthcheck: *worker-healthcheck
     logging: *logging
 
   db:

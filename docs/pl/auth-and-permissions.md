@@ -1,6 +1,6 @@
 # Uwierzytelnianie, uprawnienia i audyt
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-23
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 ## Uwierzytelnianie
 
@@ -171,7 +171,7 @@ Jeśli żadne konto admina nie nadaje się do użycia, `create-admin` przywraca 
 
 Właściciel widzi swoje dokumenty we wszystkich stanach. **Autorów** cudzych dokumentów (kolumna „Autor” w „Moich dokumentach”, autor w wynikach wyszukiwania, filtr autora) widzą tylko posiadacze `documents.read_drafts`, `documents.publish_any` albo `documents.edit_any` (ADR-030); dla pozostałych autor nie jest nawet odczytywany z bazy, a parametr `author` w adresie jest ignorowany, więc nikt nie może sondować kont. `documents.publish_any` i `documents.edit_any` same nie pokazują cudzych szkiców (wymagają `documents.read_drafts`, patrz wyżej). Jest to wymuszane w SQL dla list, strony dokumentu, wyszukiwania i pobierania (`documents/visibility.py`). Testy obejmują macierz rola × akcja.
 
-„Przetwórz ponownie”: właściciel z `documents.upload` dla własnych dokumentów, posiadacze `documents.edit_any` dla każdego dokumentu, który widzą; pozostali dostają 404 (dokument niewidoczny) albo 403. Wyodrębniony tekst i nagłówki maila widzi każdy, kto widzi dokument.
+„Przetwórz ponownie” oraz przyciski OCR „Uruchom OCR”, „Uruchom OCR ponownie” i „Anuluj OCR”: właściciel z `documents.upload` dla własnych dokumentów, posiadacze `documents.edit_any` dla każdego dokumentu, który widzą; pozostali dostają 404 (dokument niewidoczny) albo 403. Dokument „OCR pominięty (za dużo stron)” nie ma przycisku dla nikogo: uruchamia go tylko operator (`baza-wiedzy ocr <ID> --ignore-page-limit`). Wgrywanie wielu plików: „Wgraj mimo to” / „Pomiń” dla możliwego duplikatu tylko użytkownik, który go wgrał (`documents.upload`; partia innego użytkownika odpowiada 404); „Wgraj mimo to” jest audytowane jako `document.upload`, „Pomiń” niczego nie wgrywa i nie jest audytowane. Możliwy duplikat jest liczony tylko wśród dokumentów, które wgrywający widzi, więc nigdy nie zdradza cudzego szkicu. Wyodrębniony tekst i nagłówki maila widzi każdy, kto widzi dokument.
 
 ### Publikowanie, archiwizacja i pobieranie
 
@@ -201,7 +201,7 @@ Akcje zapisywane od Fazy 1:
 | Role | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | Mapowanie AD | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audyt | `audit.export` (`filters`, `rows`, `truncated`) |
-| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli` albo `cli_override` dla `--ignore-page-limit`), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
+| Dokumenty | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; bez nazwy pliku i treści), `document.reprocess` (`version_id`, `sha256`; wykonawca `cli` z wiersza poleceń), `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli`, `cli_override` dla `--ignore-page-limit` albo `relevance` z `make relevance OCR=1` na stosie deweloperskim; automatyczne uruchomienie nie jest audytowane), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; tylko po pozytywnym sprawdzeniu, odmowa nie jest zapisywana) |
 | Wiersz poleceń | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (wykonawca `cli`) |
 
 Reset hasła z wiersza poleceń: `user.password_reset_cli` (`username`, `revoked_sessions`). Wyszukiwania nie są audytowane, a wyszukiwane frazy nigdy nie są zapisywane (ADR-025). Kolejne akcje dokumentów (`delete`, zmiany wersji) dojdą w Fazie 5.

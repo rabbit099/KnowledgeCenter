@@ -1,6 +1,6 @@
 # Search
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-23
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 Search is PostgreSQL full-text search (FTS), not OCR. OCR only produces text from scanned pages; after that, every document is searched the same way.
 

@@ -1,6 +1,6 @@
 # Authentication, permissions and audit
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-23
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 ## Authentication
 
@@ -171,7 +171,7 @@ If every admin account is unusable, `create-admin` restores access (it reactivat
 
 The owner sees their own documents in every state. **Authors** of other people's documents (the "Autor" column of "Moje dokumenty", the author in search results, the author filter) are shown only to holders of `documents.read_drafts`, `documents.publish_any` or `documents.edit_any` (ADR-030); for everyone else the author is not even read from the database and an `author` parameter in the address is ignored, so nobody can probe for accounts. `documents.publish_any` and `documents.edit_any` do not show other people's drafts by themselves (they require `documents.read_drafts`, see above). This is enforced in SQL for lists, the document page, search and downloads (`documents/visibility.py`). Tests cover the role × action matrix.
 
-"Przetwórz ponownie" (process a document again): the owner with `documents.upload` for own documents, holders of `documents.edit_any` for any document they can see; others get 404 (document not visible) or 403. The extracted text and e-mail headers are shown to everyone who can see the document.
+"Przetwórz ponownie" (process a document again) and the OCR buttons "Uruchom OCR", "Uruchom OCR ponownie" and "Anuluj OCR": the owner with `documents.upload` for own documents, holders of `documents.edit_any` for any document they can see; others get 404 (document not visible) or 403. A document "OCR pominięty (za dużo stron)" has no button for anyone: only the operator starts it (`baza-wiedzy ocr <ID> --ignore-page-limit`). Upload of several files: "Wgraj mimo to" / "Pomiń" for a possible duplicate only by the user who uploaded it (`documents.upload`; another user's batch answers 404); "Wgraj mimo to" is audited as `document.upload`, "Pomiń" uploads nothing and is not audited. A possible duplicate is computed only against documents the uploader can see, so it never reveals another user's draft. The extracted text and e-mail headers are shown to everyone who can see the document.
 
 ### Publishing, archiving and download
 
@@ -201,7 +201,7 @@ Actions recorded since Phase 1:
 | Roles | `role.create`, `role.update` (`before`/`after`), `role.permissions_change` (`before`, `after`, `added`, `removed`), `role.delete` (`affected_users`) |
 | AD mapping | `ad_map.create` (`verification`), `ad_map.delete` |
 | Audit | `audit.export` (`filters`, `rows`, `truncated`) |
-| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli` or `cli_override` for `--ignore-page-limit`), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
+| Documents | `document.upload` (`version_id`, `sha256`, `size_bytes`, `kind`; no file name, no content), `document.reprocess` (`version_id`, `sha256`; actor `cli` from the command line), `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli`, `cli_override` for `--ignore-page-limit`, or `relevance` from `make relevance OCR=1` on a development stack; the automatic start is not audited), `document.ocr_cancel` (`version_id`, `pages`), `document.publish`, `document.unpublish`, `document.archive`, `document.restore` (`version_id`, `from`, `to`), `document.download` (`version_id`; only completed checks, a refused download is not recorded) |
 | Command line | `cli.create_admin`, `cli.reset_password`, `cli.unlock_login` (actor `cli`) |
 
 Password resets from the command line: `user.password_reset_cli` (`username`, `revoked_sessions`). Searches are not audited and search phrases are never stored (ADR-025). Further document actions (`delete`, version changes) are added with Phase 5.

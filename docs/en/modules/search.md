@@ -1,6 +1,6 @@
 # Module: search
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-23
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 ## Scope
 
