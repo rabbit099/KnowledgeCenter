@@ -1,6 +1,6 @@
 # Moduł: search
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 ## Zakres
 
@@ -16,7 +16,7 @@ Brak własnych. Wyszukiwanie wymaga `documents.read`; widzenie szkiców wymaga `
 
 ## Tabele
 
-`srch_parts` (jeden wiersz na część tekstu: `text_content`, `ident_terms`, trzy generowane kolumny `tsv_*`, pochodzenie, strona, język) i `srch_documents` (jeden wiersz na wersję: metadane z wagami, `meta_fold` z indeksem trigramowym), obie z `search_0002`. Zobacz [data-model.md](../data-model.md).
+`srch_parts` (jeden wiersz na część tekstu: `text_content`, `ident_terms`, trzy generowane kolumny `tsv_*`, pochodzenie, strona, język) i `srch_documents` (jeden wiersz na wersję: metadane z wagami, `meta_fold` z indeksem trigramowym), obie z `search_0002`; `srch_parts.ocr_applied` z `search_0003` (ranking × 0,9 i etykieta „tekst z OCR”, ADR-034). Zobacz [data-model.md](../data-model.md).
 
 ## Zdarzenia
 

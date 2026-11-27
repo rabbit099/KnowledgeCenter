@@ -34,7 +34,7 @@ Out of scope unless explicitly requested: SSO/Kerberos, per-category access cont
 | Web | FastAPI + Jinja2 + HTMX (server-rendered, no SPA, no Node build step if avoidable) |
 | DB access | SQLAlchemy 2.x (sync) + psycopg 3, Alembic migrations |
 | Database | PostgreSQL 16 (custom image with the Polish Hunspell dictionary), extensions `pg_trgm`, `unaccent` |
-| Queue | Dramatiq + Redis (OCR and parsing run in the `worker` service) |
+| Queue | Dramatiq + Redis (parsing in the `worker` service, OCR in `ocr-worker`, queue `ocr`; ADR-033) |
 | PDF text | pypdfium2 (per page) |
 | OCR | OCRmyPDF + Tesseract (`pol` + `eng`) |
 | DOCX | python-docx with a raw-XML fallback |
@@ -64,7 +64,7 @@ baza-wiedzy/
 ├── alembic/                   # migrations
 ├── docker/
 │   ├── app/Dockerfile
-│   ├── worker/Dockerfile      # + tesseract pol/eng, ocrmypdf, libreoffice; target `test` (never released, ADR-023)
+│   ├── worker/Dockerfile      # worker and ocr-worker: + tesseract pol/eng, ocrmypdf, libreoffice; target `test` (never released, ADR-023)
 │   ├── db/                    # Dockerfile, dictionary/ (Hunspell pl + licence, polish.stop), initdb/ (app role only), spike.sql
 │   └── caddy/                 # Dockerfile (non-root) + Caddyfile
 ├── src/baza_wiedzy/
@@ -78,8 +78,8 @@ baza-wiedzy/
 │   │   ├── admin/         # admin panel skeleton
 │   │   └── web/           # base templates, static/, locale/ (gettext)
 │   └── modules/
-│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, services/api.py, storage
-│       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py, services/api.py (ocr.py: Phase 4)
+│       ├── documents/     # module.py, routes, models, visibility.py, lifecycle.py, download.py, batches.py (multi-upload results), services/api.py, storage
+│       ├── ingestion/     # module.py, extractors/, pipeline.py, sandbox.py, outbox.py, language.py, tasks.py (queues ingestion, ocr), ocr.py, services/api.py
 │       └── search/        # module.py, models.py, backend.py (SearchBackend), postgres.py (queries, ranking), identifiers.py, indexer.py, snippets.py, routes, services/api.py
 ├── tests/             # unit/, integration/, search_golden/, fixtures/ (synthetic generators: samples.py, ole2.py, msg.py; search_corpus.py: golden corpus + make probki)
 ├── scripts/           # check_docs.py, check_release.py, smoke_test.sh, offline_bundle.sh, make_samples.py; later update.sh, rollback.sh, backup.sh, restore.sh
@@ -91,7 +91,7 @@ baza-wiedzy/
 
 ## 5. Commands (keep the Makefile as the single entry point)
 
-`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user>` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
+`make up` · `make down` · `make logs` · `make test` · `make test-db` · `make smoke` · `make lint` (incl. `make lint-workflows`) · `make fmt` · `make migrate` · `make revision branch=<branch> m="message"` · `make shell` · `make seed-samples` · `make probki DIR=<dir>` · `make perf N=<docs>` (manual) · `make perf-ocr PAGES=<n> [BEST=1]` (manual) · `make relevance DIR=<docs> QUERIES=<file> AS=<user> [OCR=1]` (local only; company files never inside the public repository) · `make docs-check` · `make messages` · `make build`
 
 If you add or rename a command, update this section and `docs/*/deployment-operations.md`.
 
@@ -141,9 +141,9 @@ One codebase, one container image per role (`app`, `worker`), modules selected a
 - Validate uploads by content (own signature and structure checks, ADR-021), not only by extension. Enforce `MAX_UPLOAD_MB`. Store files under a generated UUID key, never under the user-supplied name. Beware path traversal in file names.
 - Limit decompression and nesting: DOCX is a ZIP (zip-bomb limits), e-mail attachment depth ≤ 3, total extracted size limit, OCR and LibreOffice timeouts, isolated temp directories.
 - Never render the HTML body of an e-mail as HTML. Convert to text.
-- Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/unit/test_route_inventory.py` (`/health`, `/ready`, `/login`, `/static`); that test fails for any new unprotected route, also in modules.
+- Every route requires `require_user` or `require_permission` (HTMX fragments included), except the public list in `tests/route_helpers.py` (`/health`, `/ready`, `/login`, `/static`, `GET /logout`, which only redirects to `/login`); that test fails for any new unprotected route, also in modules.
 - CSRF protection on every state-changing request (HTMX included). Session cookie: HttpOnly, Secure, SameSite=Lax. Rate-limit login. Escape every LDAP filter value.
-- Containers run as non-root. Postgres and Redis are not published on host ports. The worker needs two database connections per process (job + event handler during outbox delivery; ADR-026). `worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
+- Containers run as non-root. Postgres and Redis are not published on host ports. The worker and the ocr-worker need two database connections per process (job + event handler during outbox delivery; ADR-026). `worker`, `ocr-worker`, `db` and `redis` live only on the internal network `backend` (no internet); `app` is on `backend` and `default`; the proxy is the only entry point (ADR-024).
 - Audit log every login, upload, publish/unpublish, archive/restore, download, delete, role/permission change, setting change, CLI password reset. Searches are never audited.
 - Authors of other people's documents (list column, search results, author filter) only for `documents.services.api.can_see_authors` (ADR-030); for others the author is not read and an `author` parameter is ignored (no 403). Local passwords are reset with `baza-wiedzy users set-password` (local accounts only, never as an argument); no e-mail reset (ADR-029).
 - Logs, audit and error messages never contain document content, file names, e-mail subjects or search phrases. Search phrases travel in URLs, so the proxy log drops query strings, `Referer`, `HX-Current-URL`, redirect targets, `Content-Disposition` and `X-CSRF-Token`, the app access log drops query strings, and database exceptions are logged without their message (ADR-025). `make smoke` checks it.

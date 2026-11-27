@@ -1,0 +1,36 @@
+{% from "admin/_macros.html" import csrf with context %}
+{% set c = batch.counts %}
+<section class="upload-batch" aria-labelledby="batch-heading">
+<h2 id="batch-heading">{{ _("Upload result") }}</h2>
+<p class="{{ 'ok' if not c.held and not c.rejected else 'warn' }}" role="status">
+  {{ _("Uploaded: %(n)s", n=c.uploaded) }}{% if c.held %} · {{ _("waiting for your decision (possible duplicates): %(n)s", n=c.held) }}{% endif %}{% if c.skipped %} · {{ _("skipped: %(n)s", n=c.skipped) }}{% endif %}{% if c.rejected %} · {{ _("refused: %(n)s", n=c.rejected) }}{% endif %}
+</p>
+<table class="grid">
+  <thead><tr><th>{{ _("File") }}</th><th>{{ _("Result") }}</th><th>{{ _("Details") }}</th></tr></thead>
+  <tbody>
+  {% for row in batch.rows %}
+    <tr>
+      <td>{% if row.status == "uploaded" %}<a href="/documents/{{ row.document_id }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+      {% if row.status == "uploaded" %}
+      <td><span class="badge badge-ok">{{ _("uploaded") }}</span></td><td></td>
+      {% elif row.status == "held" %}
+      <td><span class="badge badge-warn">{{ _("possible duplicate") }}</span></td>
+      <td>
+        {{ _("A file with identical content already exists in:") }}
+        {% for d in row.duplicates %}<a href="/documents/{{ d.id }}">{{ d.title }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        <div class="actions">
+          <form method="post" action="/documents/upload/batches/{{ batch.id }}/{{ loop.index0 }}" class="inline">{{ csrf() }}<input type="hidden" name="decision" value="keep"><button type="submit">{{ _("Upload anyway") }}</button></form>
+          <form method="post" action="/documents/upload/batches/{{ batch.id }}/{{ loop.index0 }}" class="inline">{{ csrf() }}<input type="hidden" name="decision" value="skip"><button type="submit" class="secondary">{{ _("Skip") }}</button></form>
+        </div>
+      </td>
+      {% elif row.status == "skipped" %}
+      <td><span class="badge">{{ _("skipped") }}</span></td><td class="muted">{{ _("Not uploaded: identical content already exists.") }}</td>
+      {% else %}
+      <td><span class="badge badge-fail">{{ _("refused") }}</span></td><td>{{ _(row.reason, **row["values"]) }}</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if c.held %}<p class="muted">{{ _("Files waiting for a decision are kept for %(hours)s hours; then they are removed without uploading.", hours=batch.hours) }}</p>{% endif %}
+</section>

@@ -1,21 +1,23 @@
 # Architecture
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 ## Overview
 
-A server-rendered web application. The browser talks only to the reverse proxy. Heavy work (text extraction, OCR) runs in a separate worker so uploads return immediately.
+A server-rendered web application. The browser talks only to the reverse proxy. Heavy work runs in separate workers so uploads return immediately: text extraction in `worker`, OCR of scanned pages in `ocr-worker` (ADR-033).
 
 ```
 Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
                               │        │
-                              │        └──► Redis (job queue) ──► worker (Dramatiq)
-                              │                                      │  pypdfium2, OCRmyPDF/Tesseract,
-                              ▼                                      │  LibreOffice, extract-msg
-                          PostgreSQL ◄───────────────────────────────┘
+                              │        └──► Redis ─┬─ queue ingestion ──► worker (Dramatiq)
+                              │                    │                       pypdfium2, LibreOffice, extract-msg
+                              │                    └─ queue ocr ────────► ocr-worker (Dramatiq)
+                              │                                            OCRmyPDF + Tesseract
+                              ▼
+                          PostgreSQL ◄── worker, ocr-worker (text, status, outbox)
                      (data + full-text index)
 
-                 Shared volume: /data/storage (original and derived files)
+                 Shared volume: /data/storage (original files; app, worker, ocr-worker)
                  App ──LDAPS──► Active Directory
 ```
 
@@ -25,9 +27,10 @@ Browser ──HTTPS──► Caddy ──► app (FastAPI + Jinja2 + HTMX)
 |---|---|---|---|
 | `proxy` | `baza-wiedzy-proxy` (Caddy, from `docker/caddy`) | TLS termination, reverse proxy, request size limit; runs as non-root on 8080/8443 inside the container | 80, 443 |
 | `app` | `baza-wiedzy-app` | Web UI, API, permissions, search queries | internal |
-| `worker` | `baza-wiedzy-worker` | Extraction, OCR, indexing (Tesseract, LibreOffice inside) | none |
+| `worker` | `baza-wiedzy-worker` | Text extraction and indexing (queue `ingestion`; LibreOffice and pdfium in child processes); never runs OCR | none |
+| `ocr-worker` | `baza-wiedzy-worker` | OCR of scanned pages (queue `ocr`, one document at a time, own memory and CPU limits; ADR-033) | none |
 | `db` | `baza-wiedzy-db` | PostgreSQL 16 + Polish Hunspell dictionary | none |
-| `redis` | `redis` 8.2 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
+| `redis` | `redis` 8.10 | Job queue only (no business data); append-only file on, so queued jobs survive a restart; password required | none |
 | `clamav` | `clamav` | Optional virus scan, compose profile `antivirus`, off by default | none |
 
 Networks (ADR-024):
@@ -35,17 +38,17 @@ Networks (ADR-024):
 | Network | Members | Internet |
 |---|---|---|
 | `default` (`DOCKER_SUBNET`, default `172.30.70.0/24`; proxy at `PROXY_IP`) | `proxy`, `app` (`clamav` with the `antivirus` profile, for signature updates) | yes: incoming only through the proxy's published ports; outgoing for `app` (Active Directory over LDAPS) |
-| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
+| `backend` (`internal: true`, `BACKEND_SUBNET`, default `172.30.72.0/24`) | `app`, `worker`, `ocr-worker`, `db`, `redis` (`clamav`) | none: Docker creates no gateway; public names do not even resolve |
 
-The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
+The worker, which parses untrusted files with native code, can reach only the database, Redis and the app; the proxy is the only entry point. `make smoke` checks it: from the worker and from `ocr-worker` `db` and `redis` answer, `1.1.1.1:443`, `8.8.8.8:53` and the name `example.com` do not.
 
 Redis licence: Redis 8 is offered under AGPLv3 (among others), which is acceptable for internal, unmodified use. If that is ever in doubt, [Valkey](https://valkey.io) (BSD-3-Clause) is a 1:1 replacement: change the `redis` image to `valkey/valkey` with a pinned tag; nothing else changes.
 
-`app` and `worker` share the same Python code base and database models; they differ in image contents (the worker image carries OCR and LibreOffice) and start command.
+`app`, `worker` and `ocr-worker` share the same Python code base and database models; they differ in image contents (the worker image carries Tesseract and LibreOffice; `ocr-worker` runs the same image) and start command (`--queues ingestion` / `--queues ocr`).
 
 ## Modular structure
 
-The application is a modular monolith: one codebase and one image per role (`app`, `worker`), made of an always-on **core** and optional **modules**. `ENABLED_MODULES` in `.env` selects the modules; `app` and `worker` must use the same value.
+The application is a modular monolith: one codebase and one image per role (`app`, `worker`), made of an always-on **core** and optional **modules**. `ENABLED_MODULES` in `.env` selects the modules; `app`, `worker` and `ocr-worker` must use the same value.
 
 | Part | Requires | Owns tables | Publishes events | Subscribes to |
 |---|---|---|---|---|
@@ -70,10 +73,10 @@ See `CLAUDE.md` section 3 for the authoritative table. Short version: Python 3.1
 ## Main flows
 
 ### Upload
-1. User with `documents.upload` sends a file.
+1. User with `documents.upload` sends one or more files (one form, at most `UPLOAD_MAX_FILES`; each file is handled on its own, a file identical to a visible document waits for the user's decision, ADR-032).
 2. `app` validates it (size, type by content), stores it under a UUID key, writes `doc_documents` and `doc_versions` rows with `processing_status = pending`, publishes the event `document.version.uploaded` (the `ingestion` module enqueues `process_version(version_id)`), writes an audit entry.
 3. The browser polls the status of the version (HTMX) and shows progress.
-4. `worker` extracts text, runs OCR if needed (Phase 4), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event: the `search` module copies the parts into `srch_parts` through `ingestion.services.api` (the worker needs two database connections per process for this, see deployment-operations.md). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+4. `worker` extracts text (scanned pages are marked and, up to `OCR_AUTO_MAX_PAGES`, queued for `ocr-worker`, which recognises them and stores the parts again the same way; ADR-033), detects language, stores the parts in `ing_parts`, sets status `done` or `failed` through `documents.services.api` and writes `document.version.extracted` to the outbox, all in one transaction; then delivers the event: the `search` module copies the parts into `srch_parts` through `ingestion.services.api` (the worker needs two database connections per process for this, see deployment-operations.md). Transient errors are retried with a delay; a worker start recovers stuck and waiting versions. Details: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 ### Publish
 A user with `documents.publish` (own documents) or `documents.publish_any` publishes a version: `doc_documents.published_version_id` is set and status becomes `published`. Only then do readers see and find it.
@@ -89,11 +92,13 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 ```
 /data/storage/originals/<aa>/<bb>/<key>    original file (immutable, read-only, key = random UUID)
 /data/storage/.incoming/<uuid>.part        upload in progress (same volume, then atomic rename)
-/data/storage/derived/<key>.pdf            OCR'd (searchable) PDF, previews (Phase 4)
-/data/tmp/                                 worker scratch space (cleaned after each job)
+/data/storage/.batches/<id>.json, <id>/    result of a multi-file upload, possible duplicates
+                                           waiting for a decision (UPLOAD_BATCH_HOURS, ADR-032)
+/data/storage/.work/<attempt>/             temporary directory of one processing or OCR attempt
+                                           (removed afterwards, leftovers at worker start)
 ```
 
-`<aa>/<bb>` are the first characters of the key, to avoid huge directories. The user's file name is never part of a path. `.incoming/` lives on the same volume as `originals/`, so the final move is an atomic rename; files older than an hour there are orphans of interrupted uploads and are removed (at every upload and with `baza-wiedzy storage-cleanup`). The storage belongs to the `documents` module (`modules/documents/storage.py`).
+`<aa>/<bb>` are the first characters of the key, to avoid huge directories. The user's file name is never part of a path. `.incoming/` lives on the same volume as `originals/`, so the final move is an atomic rename; files older than an hour there are orphans of interrupted uploads and are removed (at every upload and with `baza-wiedzy storage-cleanup`, which also removes expired `.batches/`). There are no derived files: OCR stores only the recognised text in the database (ADR-031), "Pobierz oryginał" always returns the uploaded file. The storage belongs to the `documents` module (`modules/documents/storage.py`).
 
 ## Cross-cutting rules
 
@@ -103,6 +108,6 @@ Active Directory over LDAPS (service account finds the user, then a bind with th
 - Config through environment variables only.
 - UI text: message ids are English and wrapped in `_()` in templates and code; the Polish catalog is `src/baza_wiedzy/core/web/locale/pl/LC_MESSAGES/messages.po`. It is compiled in memory at startup (no `.mo` files in the repository or the image). After changing UI text run `make messages` and translate the new `msgstr` entries; a unit test fails while any string is untranslated. `APP_NAME` comes from configuration and is never hard-coded.
 - Static files (CSS, HTMX) are served by `app` from `src/baza_wiedzy/core/web/static/`; nothing is loaded from a CDN. HTMX 2.0.11 is vendored in `static/vendor/` with its licence (0BSD). Templates link to paths only, never to absolute URLs.
-- Background jobs: Dramatiq on Redis. Actors are declared in a module and listed in its manifest (`tasks`); at start `baza_wiedzy.worker` binds the actors of the enabled modules to the broker. Each worker process writes a heartbeat key in Redis every 15 s (expires after 60 s); `/ready` checks it. Test job: `core.ping` (`baza-wiedzy worker-ping`).
+- Background jobs: Dramatiq on Redis. Actors are declared in a module and listed in its manifest (`tasks`); at start `baza_wiedzy.worker` binds the actors of the enabled modules to the broker. Each worker process writes a heartbeat key in Redis every 15 s (expires after 60 s) whose value names the queues it consumes; `/ready` checks one for the queue `ingestion` (`worker`) and one for `ocr` (`ocr-worker`), and the Docker healthcheck of each worker container checks its own (`python -m baza_wiedzy.core.queue`). Test job: `core.ping` (`baza-wiedzy worker-ping`).
 - Logs: JSON lines (`baza_wiedzy.core.logs`) on stdout (`app`) and stderr (worker processes), collected by Docker with rotation; level from `LOG_LEVEL`.
-- Health: `/health` (process is alive), `/ready` (database, Redis, worker heartbeat, schema version).
+- Health: `/health` (process is alive), `/ready` (database, Redis, heartbeats of `worker` and `ocr-worker`, schema version).

@@ -41,7 +41,7 @@ https://{$PUBLIC_HOSTNAME} {
 	import tls-{$TLS_MODE}
 	encode zstd gzip
 	request_body {
-		max_size {$MAX_REQUEST_MB:51}MB
+		max_size {$MAX_REQUEST_MB:501}MB
 	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -51,6 +51,19 @@ https://{$PUBLIC_HOSTNAME} {
 		-Server
 	}
 	reverse_proxy app:8000
+	# A request body above MAX_REQUEST_MB is cut off here (413). The application refuses forms
+	# above UPLOAD_MAX_TOTAL_MB itself with a message in the form; this page covers the rest
+	# (browser without JavaScript, MAX_REQUEST_MB lowered), instead of an empty error response.
+	handle_errors 413 {
+		header Content-Type "text/html; charset=utf-8"
+		respond <<HTML
+			<!doctype html>
+			<html lang="pl"><head><meta charset="utf-8"><title>Za duże żądanie</title></head>
+			<body><h1>Za duże żądanie</h1>
+			<p>Wysłane pliki są razem większe niż dozwolony rozmiar ({$MAX_REQUEST_MB:501} MB). Wgraj je w kilku częściach.</p>
+			<p><a href="/documents/upload">Wróć do wgrywania</a></p></body></html>
+			HTML 413
+	}
 	# Access log without search phrases, file names and tokens (ADR-025): query strings, the
 	# Referer and HX-Current-URL request headers (full URL of the previous page), redirect
 	# targets (a login redirect carries the requested URL), Content-Disposition (the name of a

@@ -16,6 +16,16 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Worker containers: healthy while one of their worker processes keeps its heartbeat in Redis
+# (written every 15 s by a separate thread, also during a long OCR). `docker compose ps` shows it;
+# /ready checks the same per queue (worker: ingestion, ocr-worker: ocr).
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "python", "-m", "baza_wiedzy.core.queue"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+
 x-app-env: &app-env
   APP_NAME: ${APP_NAME:-Baza Wiedzy}
   ENABLED_MODULES: ${ENABLED_MODULES:-documents,ingestion,search}
@@ -33,6 +43,10 @@ x-app-env: &app-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   AUDIT_EXPORT_MAX_ROWS: ${AUDIT_EXPORT_MAX_ROWS:-10000}
   MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+  UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-50}
+  UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-500}
+  MAX_REQUEST_MB: ${MAX_REQUEST_MB:-501}
+  UPLOAD_BATCH_HOURS: ${UPLOAD_BATCH_HOURS:-24}
   STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
   INGEST_MAX_ATTEMPTS: ${INGEST_MAX_ATTEMPTS:-3}
   INGEST_RETRY_MIN_SECONDS: ${INGEST_RETRY_MIN_SECONDS:-30}
@@ -45,6 +59,16 @@ x-app-env: &app-env
   LANGUAGE_MIN_LETTERS: ${LANGUAGE_MIN_LETTERS:-40}
   INGEST_MAX_PAGES: ${INGEST_MAX_PAGES:-2000}
   OCR_MIN_CHARS: ${OCR_MIN_CHARS:-25}
+  OCR_ENABLED: ${OCR_ENABLED:-true}
+  OCR_LANGUAGES: ${OCR_LANGUAGES:-pol+eng}
+  OCR_AUTO_MAX_PAGES: ${OCR_AUTO_MAX_PAGES:-30}
+  OCR_MAX_PAGES: ${OCR_MAX_PAGES:-200}
+  OCR_TIMEOUT_SECONDS: ${OCR_TIMEOUT_SECONDS:-1800}
+  OCR_PAGE_TIMEOUT_SECONDS: ${OCR_PAGE_TIMEOUT_SECONDS:-120}
+  OCR_JOBS: ${OCR_JOBS:-2}
+  OCR_MEMORY_MB: ${OCR_MEMORY_MB:-2048}
+  OCR_MAX_IMAGE_MPIXELS: ${OCR_MAX_IMAGE_MPIXELS:-200}
+  OCR_ROTATE_THRESHOLD: ${OCR_ROTATE_THRESHOLD:-5}
   INGEST_CHILD_MEMORY_MB: ${INGEST_CHILD_MEMORY_MB:-1024}
   INGEST_CHILD_TIMEOUT_SECONDS: ${INGEST_CHILD_TIMEOUT_SECONDS:-300}
   LIBREOFFICE_MEMORY_MB: ${LIBREOFFICE_MEMORY_MB:-1024}
@@ -87,7 +111,7 @@ services:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       TLS_MODE: ${TLS_MODE:-internal}
       ACME_EMAIL: ${ACME_EMAIL:-}
-      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-51}
+      MAX_REQUEST_MB: ${MAX_REQUEST_MB:-501}
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -134,8 +158,9 @@ services:
     <<: *hardening
     # Two database connections per worker process (ADR-016, ADR-026): the job, and the handler
     # of an outbox event (search indexing) that runs while the delivery holds the outbox row.
-    # One thread per process.
-    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "${WORKER_PROCESSES:-2}", "--threads", "1"]
+    # One thread per process. Only the queue "ingestion": OCR has its own service (ocr-worker),
+    # so ordinary uploads never wait behind a long OCR (ADR-033).
+    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "${WORKER_PROCESSES:-2}", "--threads", "1", "--queues", "ingestion"]
     environment:
       <<: *app-env
       DB_POOL_SIZE: "2"
@@ -156,6 +181,39 @@ services:
       resources:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-2g}
+    healthcheck: *worker-healthcheck
+    logging: *logging
+
+  # OCR of scanned pages (Phase 4 stage B, ADR-033): the worker image, only the queue "ocr", one
+  # process with one thread (one document at a time; OCR_JOBS Tesseract processes inside it, one
+  # thread each). Own memory and CPU limits, so OCR never starves the ordinary worker or the
+  # database. Same isolation as the worker: internal network only.
+  ocr-worker:
+    image: ${IMAGE_PREFIX:-ghcr.io/change-me/baza-wiedzy}-worker:${APP_VERSION:?set APP_VERSION in .env}
+    restart: unless-stopped
+    <<: *hardening
+    command: ["dramatiq", "baza_wiedzy.worker", "--processes", "1", "--threads", "1", "--queues", "ocr"]
+    environment:
+      <<: *app-env
+      DB_POOL_SIZE: "2"
+      DB_MAX_OVERFLOW: "0"
+      OMP_THREAD_LIMIT: "1"
+    networks:
+      - backend
+    stop_grace_period: 60s
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${OCR_MEMORY_LIMIT:-2g}
+          cpus: "${OCR_CPUS:-2}"
+    healthcheck: *worker-healthcheck
     logging: *logging
 
   db:

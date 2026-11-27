@@ -1,6 +1,6 @@
 # Ingestion and OCR
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 How an uploaded file becomes searchable text. Upload validation and storage belong to the `documents` module; the processing described here belongs to the `ingestion` module (see [modules/ingestion.md](modules/ingestion.md)).
 
@@ -14,15 +14,19 @@ How an uploaded file becomes searchable text. Upload validation and storage belo
 | PDF with text | pypdfium2 in a child process, one part per page | Phase 2 |
 | DOC | LibreOffice headless converts to DOCX in a child process, then the DOCX extractor | Phase 2 |
 | MSG | `extract-msg`: headers, plain / HTML / RTF body, attachments, attached messages | Phase 2 |
-| PDF scanned | pages without a text layer are marked "wymaga OCR" now; OCRmyPDF + Tesseract (`pol+eng`) | Phase 4 |
+| PDF scanned | pages without a text layer are recognised by OCR (OCRmyPDF + Tesseract, `pol+eng`) in the service `ocr-worker`, also in e-mail attachments; text only | Phase 4 |
 
 Attachments of EML/MSG that are themselves supported files are extracted recursively (depth ≤ `INGEST_MAX_DEPTH`, default 3) and stored as parts of type `attachment` (or `page` for PDF pages) in `ing_parts`; attached Outlook messages count as one level each. Other attachments (images, archives) and password-protected ones are skipped with a note on the document page. OCR of standalone images is out of scope for the MVP.
 
 ## Upload validation (in `app`)
 
-Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `documents.upload`). Uploading needs JavaScript: HTMX sends the CSRF token in the `X-CSRF-Token` header (the CSRF middleware does not read multipart bodies); without JavaScript the page shows a `<noscript>` notice.
+Page "Moje dokumenty" → "Wgraj dokumenty" (`/documents/upload`, permission `documents.upload`). One form takes several files (ADR-032); each file goes through the steps below **on its own** (own transaction, audit entry and event), so a refused or failing file never stops the others. The form is a plain multipart POST and works without JavaScript: the CSRF token is its **first** field, which the CSRF middleware reads from the beginning of the body (the files stream on untouched); HTMX sends it in the `X-CSRF-Token` header as well. A small script (`static/js/upload.js`) adds drag and drop and checks the limits before sending.
 
-1. Size: the request is refused early when `Content-Length` exceeds `MAX_UPLOAD_MB` (default 50), and the copy stops as soon as the real size passes it (HTTP 413, "Plik jest większy niż dozwolony rozmiar."). The proxy refuses bodies above `MAX_REQUEST_MB` (default 51: the file plus multipart overhead); keep it one MB above `MAX_UPLOAD_MB`.
+Limits of one form: at most `UPLOAD_MAX_FILES` files (default 50; further files are refused per file, more than 50 above the limit refuse the whole form) and `UPLOAD_MAX_TOTAL_MB` together (default 500, capped at `MAX_REQUEST_MB` − 1; a larger `Content-Length` refuses the form with "Pliki są razem większe niż dozwolony rozmiar (… MB). Wgraj je w kilku częściach."). The proxy cuts bodies above `MAX_REQUEST_MB` (default 501) and answers with a Polish page instead of an empty error. The files are spooled by Starlette to the app container's temporary directory: keep `UPLOAD_MAX_TOTAL_MB` of free disk there.
+
+Results: one file uploaded → its document page, as before; one file refused → the form with the message, as before; otherwise the browser goes to "Moje dokumenty" with the table "Wynik wgrywania" (per file: uploaded, possible duplicate, skipped, refused with the reason) and a summary. The table is a small JSON file `/data/storage/.batches/<random id>.json` readable only by the uploader, kept `UPLOAD_BATCH_HOURS` (default 24) and removed at a later upload.
+
+1. Size: the request is refused early when `Content-Length` exceeds `MAX_UPLOAD_MB` (default 50), and the copy stops as soon as the real size passes it (HTTP 413, "Plik jest większy niż dozwolony rozmiar."; with several files: that file is refused, the others continue).
 2. The body is parsed by Starlette (at most 1 MB in memory, the rest in a temporary spool file, never the whole file in memory); the file is copied in 1 MB chunks to `/data/storage/.incoming/` while SHA-256 and the size are computed.
 3. Type **by content**, never by extension or `Content-Type` (ADR-021): the extension must be in the allow-list (pdf, docx, doc, txt, eml, msg) **and** match the detected type:
 
@@ -43,7 +47,7 @@ Page "Moje dokumenty" → "Wgraj dokument" (`/documents/upload`, permission `doc
    - for EML and MSG without a typed title, processing replaces it with the subject of the message (same cleaning); until then, or when the subject is empty, the file name stays.
 
    Upper and lower case are never changed anywhere: the title shows the case of what was typed, of the file name or of the subject. The origin is kept in `doc_documents.title_source` (`user`, `filename`, `subject`), so a typed title is never replaced.
-6. Duplicates: the document page shows "Możliwy duplikat" with links when another document **visible to the uploader** has a version with the same SHA-256. Other people's drafts are never compared, so the warning reveals nothing. The upload is not blocked; removing a duplicate comes with the lifecycle (Phase 5).
+6. Duplicates: when another document **visible to the uploader** has a version with the same SHA-256, the file is not stored yet but **held** (`/data/storage/.batches/<id>/<n>.part`, same volume) as "możliwy duplikat" with links to those documents; the uploader chooses "Wgraj mimo to" (the held file is stored and steps 4, 5, 7 run; the document page then shows "Możliwy duplikat" as before) or "Pomiń" (the held file is deleted). Each decision is a POST to `/documents/upload/batches/<id>/<n>` (CSRF, permission `documents.upload`, only the uploader's own batch; a second decision is a no-op). Other people's drafts are never compared, so the hold reveals nothing.
 7. Audit `document.upload` with the document id, `version_id`, `sha256`, `size_bytes` and `kind` (no file name, no content). After the commit the event `document.version.uploaded` is published and the `ingestion` module enqueues processing.
 8. Virus scan: a step of the processing pipeline, disabled by default ([Virus scan hook](#virus-scan-hook)); ClamAV is not wired in Phase 2.
 
@@ -105,7 +109,7 @@ If the check fails (for example the DOS code page CP852, or binary data), the ve
 ### PDF, DOC and MSG
 
 - **PDF**: one part per page with the origin "strona N" (inside an e-mail "załącznik: raport.pdf › strona 2"); the page count is stored on the version. A page with text becomes a part; a page with fewer than `OCR_MIN_CHARS` (25) non-space characters that contains an image is a scanned page: kept as a part marked `needs_ocr` (with its little text); a blank page (no text, no image) is skipped.
-- **Status of scans** (proposal for Phase 4, no migration needed): a version with at least one marked page ends as `needs_ocr` ("wymaga OCR") instead of `done`; its text pages are already stored and will be searchable. Phase 4 takes the `needs_ocr` versions, runs OCR only on the marked pages (`--skip-text`), replaces those parts, sets `ocr_applied` and moves the version to `done`. "Przetwórz ponownie" works for them like for any other version.
+- **Status of scans** (Phase 4): the text pass ends as `needs_ocr` ("wymaga OCR") with the scanned pages marked and an OCR state; the OCR pass in `ocr-worker` recognises them and moves the version to `done` with `ocr_applied` (section [OCR](#ocr)). The text pages are stored and searchable either way.
 - **DOC**: LibreOffice converts to DOCX, then the DOCX extractor reads it (tables "A | B", headers, footers).
 - **MSG**: like EML. Body: plain text, else HTML converted to text, else RTF (HTML encapsulated in RTF through extract-msg, plain RTF with `rtf_text.py`). Attachments stored by value go through the same registry (type by content, origin "załącznik: nazwa"); attached Outlook messages are processed as nested messages (one depth level each); other kinds (OLE objects, links) are skipped with a note. The libraries' own loggers are silenced so that nothing from a message reaches the log. Without a typed title the subject becomes the title; a document page opened during processing shows the new title as soon as processing ends (the status polling also replaces the heading).
 
@@ -131,22 +135,56 @@ Before extraction the pipeline calls `ingestion/scanning.py` with the path of th
 
 ## OCR
 
-Decision per PDF:
-- Extract text per page with pypdfium2.
-- A page "needs OCR" when it has fewer than `OCR_MIN_CHARS` non-whitespace characters (default 25) and contains an image.
-- If any page needs OCR, run OCRmyPDF with `--skip-text` (pages that already have text are untouched), languages `pol+eng`, `--rotate-pages`, `--deskew`, a job limit and a timeout (`OCR_TIMEOUT_SECONDS`, default 1800).
-- Re-extract text from the OCR'd pages, set `ocr_applied = true` on those parts and on the version.
-- Store the resulting PDF as the derived file (searchable copy). The original stays untouched and is what "download" returns.
+Phase 4 (ADR-031 engine, ADR-033 queue). Two passes per version, in two services:
 
-Implemented in Phase 2: the extraction per page and the marking of pages that need OCR (see [PDF, DOC and MSG](#pdf-doc-and-msg)); the OCR run itself comes in Phase 4.
+1. **Text pass** (service `worker`, queue `ingestion`, never runs OCR): text per page with pypdfium2; a page "needs OCR" when it has fewer than `OCR_MIN_CHARS` non-whitespace characters (default 25) and contains an image. Scanned pages are stored as parts marked "wymaga OCR"; the text pages are searchable at once. Then the version gets an OCR state from the number of scanned pages (attachments included):
 
-Known limits to mention to users: OCR quality depends on scan quality; handwriting is not supported; very large scans can take minutes; password-protected PDFs fail with the message "PDF is password protected".
+   | Scanned pages | OCR state | Shown as |
+   |---|---|---|
+   | 0 | `none` | "gotowe" |
+   | 1 … `OCR_AUTO_MAX_PAGES` (30) | `queued`: an OCR message is sent at once | "wymaga OCR" + "OCR w kolejce" |
+   | above `OCR_AUTO_MAX_PAGES` up to `OCR_MAX_PAGES` (200) | `on_hold` | "OCR wstrzymany (duży dokument)" + button "Uruchom OCR" |
+   | above `OCR_MAX_PAGES` | `skipped` | "OCR pominięty (za dużo stron)"; the scans stay unsearchable; only the operator can start it: `baza-wiedzy ocr <ID> --ignore-page-limit` (audited, `source: cli_override`, no button) |
+   | any, `OCR_ENABLED=false` | `none` | "OCR jest wyłączony na tym serwerze" |
+
+2. **OCR pass** (service `ocr-worker`, queue `ocr`, one document at a time): every message takes "the next queued version", the one with the **fewest scanned pages** first (then the oldest request) with `SELECT … FOR UPDATE SKIP LOCKED`, so short documents never wait behind a long one. The order lives in the database: Dramatiq's message priority would only reorder messages a worker already prefetched from Redis. The version becomes `running` ("OCR w toku"); the whole file is extracted again with OCR on (scans may sit in e-mail attachments): OCRmyPDF **only on the marked pages** (`--mode force --pages 2,5,…`) in a child process, languages `OCR_LANGUAGES` (`pol+eng`), rotation of sideways pages (`--rotate-pages`, confidence `OCR_ROTATE_THRESHOLD`, default 5), pages rasterised by pypdfium, **text only** (`--sidecar`, `--output-type none`: no derived PDF; "Pobierz oryginał" returns the original). The new parts replace the old ones in one transaction with `document.version.extracted` in the outbox (search picks up the text); the version becomes `done` ("gotowe", OCR state `done`, `ocr_applied`).
+3. **Limits**: `OCR_TIMEOUT_SECONDS` (default 1800) for the **whole document**, shared by all its PDFs; `OCR_PAGE_TIMEOUT_SECONDS` (120) per page inside Tesseract; `OCR_JOBS` (2) Tesseract processes with one thread each (`OMP_THREAD_LIMIT=1`); `OCR_MEMORY_MB` (2048) address space per process (RLIMIT_AS); `OCR_MAX_IMAGE_MPIXELS` (200); the container limits `OCR_MEMORY_LIMIT` (2g) and `OCR_CPUS` (2). Over the time limit the process group is killed and the version shows "OCR nieudany" with the message "OCR trwał dłużej niż limit czasu…"; a crash gives "OCR się nie powiódł…". The previous parts stay (text pages searchable), the document never fails because of OCR, and "Uruchom OCR ponownie", "Przetwórz ponownie" or `baza-wiedzy ocr <ID>` retries. An OCR worker killed during an attempt (memory) leaves it `running`; the next worker start marks it failed ("OCR został przerwany…") after `OCR_TIMEOUT_SECONDS` + 10 minutes, and does not retry it by itself.
+4. **Cancel**: "Anuluj OCR" (queued or running) sets "OCR wstrzymany"; a running Tesseract is killed within 2 seconds (the OCR worker polls the state) and its result is discarded. "Uruchom OCR" starts it again.
+5. **Who**: "Uruchom OCR", "Uruchom OCR ponownie" and "Anuluj OCR" for the owner with `documents.upload` (own documents) and for `documents.edit_any` (any visible document), like "Przetwórz ponownie"; audited as `document.ocr_request` (`version_id`, `pages`, `source`: `button`, `cli`, `cli_override` for `--ignore-page-limit`, `relevance` for `make relevance OCR=1` on a development stack) and `document.ocr_cancel`. The automatic start is not audited (nobody asked).
+6. **Versions from before 0.5.0** ("wymaga OCR", OCR state `none`, shown as "OCR nieuruchomiony") are **not** started by the upgrade: `baza-wiedzy ocr --pending [--max-pages N]` starts them by hand (also those on hold), `baza-wiedzy ocr <document or version ID>` one document. See [deployment-operations.md](deployment-operations.md#document-processing-operator-guide).
+
+A page from which OCR gets no character at all is noted "OCR nie znalazł żadnego tekstu na stronie …"; a page with fewer than `OCR_MIN_CHARS` characters "OCR znalazł bardzo mało tekstu: strona 2 (3 znaki)" (handwriting, a picture, a very poor scan). Messages with a number use the Polish plural forms (1 / 2–4 / 5+).
+
+The document page shows "Tekst: tekst z OCR" with a warning that words and especially numbers may contain recognition errors; the text panel marks each recognised page "tekst z OCR".
+
+Choices measured on synthetic scans (stage A, checked again in stage C, ADR-034): no `--deskew`, rotation threshold 5, no Ghostscript (not needed with the pypdfium rasteriser and text-only output; not installed). Neither the recognised text nor the messages of the OCR tools reach any log: the logs carry identifiers, page counts, durations and reasons (`ocr: done version=… pages=… recognised=… left=… seconds=…`).
+
+- **`--deskew`** (word recall on a 10-line page, without / with): skew 2° 100 / 100 %, 3° 98.4 / 100 %, 4° 100 / 100 %, 5° 95.3 / 98.4 %, 6° 65.6 / 65.6 %, 7° 31.2 / 31.2 %, 8° 0 / 0 %; low contrast 140/200 and 120/210 96.9 / 100 %. But on a short page (4 lines) with low contrast 140/200 `--deskew` gives an **empty page** (100 % → 0 %): its fixed-threshold binarisation loses the faint text. A gain of 1–4 points does not outweigh losing whole pages, and above 5° it does not help at all, so it stays off. Pages skewed more than about 5° need rescanning.
+- **Rotation threshold 5**: a page turned by 90° is detected with confidence about 6.3 and turned; upright pages (clean, small print, skewed 3°) are "facing up" (confidence about 6.9) and never turned; pages with very little text (one line, a table) give no decision at all and stay as they are. Tested in `tests/unit/test_ocr.py`.
+- **Search in OCR text** (`tests/search_golden/test_ocr_golden.py`): on all 11 synthetic scans with defects, inflected Polish forms, words without diacritics, English forms and phrases are found. Numbers are the limit: the phone number and the tax number are found on every scan except the one with 6 % noise, where OCR misreads digits. Tell users to search for words rather than numbers in scans, or check numbers in the original.
+
+**Measurements** (`make perf-ocr PAGES=50 BEST=1`, development machine, container limited like `ocr-worker`: 2 CPUs, 2 GB, `OCR_JOBS=2`; synthetic A4 pages at 200 dpi with all defects; a slower server CPU scales the times proportionally):
+
+| | Debian "fast" (in the image) | tessdata_best 4.1.0 (variant) |
+|---|---|---|
+| One document of 50 pages | 50 s, **60 pages/min** | 52 s, 57 pages/min |
+| 22 documents of 1–5 pages | p50 2.5 s, **p95 5.4 s**, max 6.3 s, 44 pages/min | p50 2.9 s, p95 6.4 s, max 6.8 s, 38 pages/min |
+| Word recall (average) | 98.0 % | 99.1 % |
+| … noise 4 % | 96.9 % | 93.8 % |
+| … small print, low contrast | 96.9 % | 100 % |
+| Largest process / peak of all OCR processes | 281 MB / **468 MB** | 273 MB / 486 MB |
+
+Decision (ADR-034): keep the "fast" models. "best" gains about one point of word recall, loses on noisy scans, is 10–20 % slower per document and would add 27 MB of models outside the Debian packages; with the inflected search the remaining misses rarely matter. Reconsider with real scans if `make relevance` shows words missed in OCR text.
+
+Recommendation for 4 vCPU / 8 GB (the defaults): `OCR_CPUS=2`, `OCR_JOBS=2` (one Tesseract process per core), `OCR_MEMORY_LIMIT=2g` (four times the measured peak, room for A3 or 300 dpi scans), `OCR_MEMORY_MB=2048`, `OCR_AUTO_MAX_PAGES=30` (about 30 s of OCR), `OCR_TIMEOUT_SECONDS=1800` (a 200-page document takes about 4 minutes here; the limit leaves room for a server 5× slower). With 8 vCPU: `OCR_CPUS=4`, `OCR_JOBS=4`, `OCR_MEMORY_LIMIT=3g`.
+
+Known limits to tell users: quality depends on the scan; handwriting is not supported; numbers (tax numbers, account and phone numbers) may be misread; large scans take minutes; password-protected PDFs fail with "PDF jest zabezpieczony hasłem".
 
 ## Safety limits
 
 | Limit | Default | Setting |
 |---|---|---|
-| Max upload size | 50 MB (proxy: `MAX_REQUEST_MB` 51) | `MAX_UPLOAD_MB` |
+| Max upload size per file; files and total size of one form | 50 MB; 50 files, 500 MB (proxy: `MAX_REQUEST_MB` 501) | `MAX_UPLOAD_MB`; `UPLOAD_MAX_FILES`, `UPLOAD_MAX_TOTAL_MB` |
 | Max e-mail attachment depth (EML, MSG, attached messages) | 3 | `INGEST_MAX_DEPTH` |
 | Max parts (chunks) per version | 2000 | `INGEST_MAX_PARTS` |
 | Max extracted text per version | 50 MB (characters) | `INGEST_MAX_TEXT_MB` |
@@ -157,7 +195,7 @@ Known limits to mention to users: OCR quality depends on scan quality; handwriti
 | LibreOffice: memory (address space), time, parallel conversions | 1024 MB, 120 s, one per worker container | `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` |
 | Time limit of one attempt | 900 s | `INGEST_TIME_LIMIT_SECONDS` |
 | Attempts (transient errors only) | 3, delay 30 s doubling up to 600 s | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS` |
-| OCR timeout | 1800 s | Phase 4 |
+| OCR: scanned pages started automatically / at most, time per document, time per page, Tesseract processes, memory (address space) per process, page image size | 30 / 200 pages, 1800 s, 120 s, 2, 2048 MB, 200 megapixels; container `ocr-worker`: 2 GB, 2 CPUs | `OCR_AUTO_MAX_PAGES` / `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`; `OCR_MEMORY_LIMIT`, `OCR_CPUS` |
 | Worker processes (one job each), worker memory | 2, 2 GB | `WORKER_PROCESSES`, `WORKER_MEMORY_LIMIT` |
 
 Password-protected files fail with "…zabezpieczony hasłem. Wgraj kopię bez hasła.": a PDF when pdfium asks for a password, a DOC by its encryption flag (before LibreOffice starts), a DOCX already at upload (an encrypted Office file is an OLE2 container with `EncryptionInfo`). As attachments they are skipped with a note.
@@ -191,5 +229,6 @@ All test files are synthetic and generated in the tests (`tests/fixtures/samples
 - Test image: target `test` of `docker/worker/Dockerfile` (the release stage plus uv; never published: release and smoke builds take the default, last stage `runtime`). `make test-db` runs the markers `integration` and `tools` (needs LibreOffice) there; `make test` on the host skips both. Building it reuses the worker's system layers: about 1 minute extra for the first build in CI, seconds with a cache; the worker image itself builds in 138 s without any cache.
 - Unit: `tests/unit/test_ingestion_extractors.py` (TXT, chunks, language, HTML, EML, DOCX) and `tests/unit/test_ingestion_formats.py`: BOM for UTF-8 and UTF-16 LE/BE, long Windows-1250 vs ISO-8859-2 text; PDF per page, scanned and mixed pages, blank pages, password-protected, damaged and truncated PDFs, page limit; isolation (timeout kills the process group, memory limit, minimal environment); DOC through LibreOffice (private profile, no leftover processes), encrypted DOC refused before LibreOffice, damaged DOC, LibreOffice timeout, a large repetitive DOC; MSG headers, plain/HTML/RTF bodies, DOCX/PDF/PNG attachments, attached messages with their own attachments, depth limit, MSG inside EML, damaged MSG; RTF to text; billion laughs, deep XML nesting, too many ZIP entries; encrypted DOCX at upload and as attachments.
 - Integration (`tests/integration/test_ingestion.py`, real worker on Redis): TXT and EML with DOCX; EML with PDF and MSG attachments; MSG with subject as title and e-mail metadata; DOC; scanned PDF → "wymaga OCR"; encrypted PDF → readable error without retry; child timeouts retried and reported; logs of PDF, MSG and damaged files without content; plus everything from stage B.
-- `make smoke` uploads a small TXT and a small text PDF through the proxy and waits for "gotowe".
+- OCR (`make test-db`, Tesseract in the test image): `tests/unit/test_ocr.py` (command line, sidecar parsing, notes, rotation decisions: upright pages never turned, a sideways page turned), `tests/integration/test_ocr_queue.py` (states, shortest first, on hold and "Uruchom OCR", cancel, timeout, interrupted OCR, `ocr --pending`, `--ignore-page-limit`, audit), `tests/search_golden/test_ocr_golden.py` (search in the text of 11 defective synthetic scans, label "tekst z OCR", ranking against a text layer).
+- `make smoke` uploads a small TXT, a small text PDF and a one-page scan through the proxy and waits for "gotowe" (the scan's word is found, marked "tekst z OCR", OCR ran in `ocr-worker`, its text in no log), then a scan above `OCR_AUTO_MAX_PAGES` on hold and "Uruchom OCR".
 - `make probki DIR=<directory>` writes one sample of each case for a manual test, with the expected results in `OCZEKIWANE.txt`.

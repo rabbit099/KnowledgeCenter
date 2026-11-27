@@ -69,7 +69,9 @@ def clients(app: FastAPI) -> dict[str, TestClient]:
     return {name: login(app, user) for name, user in users.items()}
 
 
-def upload(c: TestClient, name: str = FILENAME, data: bytes = CONTENT) -> uuid.UUID:
+def upload(c: TestClient, name: str = FILENAME, data: bytes | None = None) -> uuid.UUID:
+    # Unique content by default: identical content would be held as a possible duplicate.
+    data = data if data is not None else CONTENT + f"{uuid.uuid4()}\n".encode()
     response: httpx.Response = c.post(
         "/documents/upload",
         files={"file": (name, data, "application/octet-stream")},
@@ -320,16 +322,17 @@ def test_document_page_shows_only_allowed_actions_and_the_search_warning(
 
 
 def test_download_headers_name_and_audit(app: FastAPI, clients: dict[str, TestClient]) -> None:
-    doc_id = upload(clients["owner"])
+    content = CONTENT + f"{uuid.uuid4()}\n".encode()
+    doc_id = upload(clients["owner"], data=content)
     set_status(app, doc_id, "published")
     response = clients["reader"].get(f"/documents/{doc_id}/download")
     assert response.status_code == 200
-    assert response.content == CONTENT
+    assert response.content == content
     headers = response.headers
     assert headers["content-type"] == "application/octet-stream"
     assert headers["x-content-type-options"] == "nosniff"
     assert headers["cache-control"] == "private, no-store"
-    assert headers["content-length"] == str(len(CONTENT))
+    assert headers["content-length"] == str(len(content))
     assert "accept-ranges" not in headers
     assert headers.get_list("content-security-policy") == ["default-src 'none'; sandbox"]
     assert len(headers.get_list("cache-control")) == 1

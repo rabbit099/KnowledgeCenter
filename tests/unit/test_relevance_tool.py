@@ -34,3 +34,15 @@ def test_location_labels() -> None:
     assert relevance._where(origin, None) == "załącznik: a.pdf › strona 2"
     assert relevance._where([], 3) == "strona 3"
     assert relevance._where([], None) == "treść"
+
+
+def test_waits_for_ocr_but_not_for_documents_on_hold() -> None:
+    assert relevance._finished("done", "none")
+    assert relevance._finished("failed", "none")
+    assert not relevance._finished("pending", "none")
+    assert not relevance._finished("needs_ocr", "queued")
+    assert not relevance._finished("needs_ocr", "running")
+    for settled in ("on_hold", "failed", "skipped", "none"):
+        assert relevance._finished("needs_ocr", settled)
+    assert relevance._state("needs_ocr", "queued") == "needs_ocr/queued"
+    assert relevance._state("done", "done") == "done"

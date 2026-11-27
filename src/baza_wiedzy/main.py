@@ -90,8 +90,11 @@ def create_app(settings: Settings | None = None, *, setup_logging: bool = True) 
         "database": health.database_check(engine),
         "redis": health.redis_check(redis_client),
         "schema": schema_check(engine, settings),
-        "worker": heartbeat_check(redis_client),
+        "worker": heartbeat_check(redis_client, "ingestion"),
     }
+    if "ingestion" in registry and settings.ocr_enabled:
+        # ocr-worker (ADR-033): OCR waits silently when it is down, so /ready says so.
+        app.state.ready_checks["ocr-worker"] = heartbeat_check(redis_client, "ocr")
     # Actors of enabled modules are bound to the Redis broker so that handlers can enqueue jobs.
     setup_broker(settings, registry)
     registry.register_events(app.state.events, settings)

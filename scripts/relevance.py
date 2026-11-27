@@ -4,8 +4,11 @@ THE REPOSITORY IS PUBLIC. The documents and the query file stay outside it: `mak
 refuses paths inside the repository, and typical names are in .gitignore. This tool only talks
 to the LOCAL development stack (`make up`): it uploads every file of the directory as a DRAFT of
 the given user (seen only by that user and holders of documents.read_drafts), waits until the
-worker has processed them, runs every query of the file as that user and prints the first
-results (score, title, where the hit is, a fragment) for a manual rating. Files already uploaded
+worker has processed them and OCR (ocr-worker) has recognised their scans, runs every query of
+the file as that user and prints the first results (score, title, where the hit is, "(OCR)"
+when the hit is in text recognised by OCR, a fragment) for a manual rating. Large scans wait
+"on hold" like in the application; `--start-ocr` (make relevance ... OCR=1) starts them,
+audited as document.ocr_request by that user. Files already uploaded
 by that user (same SHA-256) are not uploaded again. Output goes to the terminal only, never to a
 log; do not paste it into issues, commits or chats outside the company.
 
@@ -39,13 +42,33 @@ from baza_wiedzy.core.queue import setup_broker
 from baza_wiedzy.core.registry import load_registry
 from baza_wiedzy.modules.documents import upload
 from baza_wiedzy.modules.documents.filetypes import UnsupportedFile
-from baza_wiedzy.modules.documents.models import DONE, FAILED, NEEDS_OCR, Document, Version
+from baza_wiedzy.modules.documents.models import (
+    DONE,
+    FAILED,
+    NEEDS_OCR,
+    OCR_ON_HOLD,
+    OCR_QUEUED,
+    OCR_RUNNING,
+    Document,
+    Version,
+)
 from baza_wiedzy.modules.documents.storage import LocalStorage
-from baza_wiedzy.modules.ingestion.tasks import enqueue
+from baza_wiedzy.modules.ingestion.services import api as ingestion
+from baza_wiedzy.modules.ingestion.tasks import enqueue, enqueue_ocr
 from baza_wiedzy.modules.search.backend import QueryProblem, SearchRequest, SearchTimeout
 from baza_wiedzy.modules.search.postgres import PostgresBackend
 
 FINAL = (DONE, NEEDS_OCR, FAILED)
+OCR_BUSY = (OCR_QUEUED, OCR_RUNNING)
+
+
+def _state(processing: str, ocr: str) -> str:
+    """One label per version for the progress line: "needs_ocr/queued" while OCR waits."""
+    return f"{processing}/{ocr}" if processing == NEEDS_OCR else processing
+
+
+def _finished(processing: str, ocr: str) -> bool:
+    return processing in FINAL and not (processing == NEEDS_OCR and ocr in OCR_BUSY)
 
 
 def _plain(snippet: str) -> str:
@@ -99,7 +122,14 @@ def main() -> int:
         "--user", required=True, help="user name of the uploading/searching account"
     )
     parser.add_argument("--top", type=int, default=5)
-    parser.add_argument("--wait", type=int, default=900, help="seconds to wait for processing")
+    parser.add_argument(
+        "--wait", type=int, default=1800, help="seconds to wait for processing and OCR"
+    )
+    parser.add_argument(
+        "--start-ocr",
+        action="store_true",
+        help="start OCR of large scans of the set that wait on hold (audited)",
+    )
     parser.add_argument(
         "--only-uploaded",
         action="store_true",
@@ -162,23 +192,46 @@ def main() -> int:
         waiting.append(version_id)
     print(f"    uploaded {len(waiting) - reused}, already there {reused}, refused {skipped}")
 
+    if args.start_ocr:
+        started_ocr = 0
+        with factory.begin() as db:
+            on_hold = db.scalars(
+                select(Version.id).where(Version.id.in_(waiting), Version.ocr_status == OCR_ON_HOLD)
+            ).all()
+            for version_id in on_hold:
+                started_ocr += ingestion.request_ocr(
+                    db, version_id, actor=actor, ip=None, source="relevance"
+                )
+        if started_ocr:
+            enqueue_ocr(settings, count=started_ocr)
+        print(f"    OCR started for {started_ocr} large scan(s) on hold")
+
     deadline = time.monotonic() + args.wait
     while True:
         with factory() as db:
-            statuses = dict(
-                db.execute(
-                    select(Version.processing_status, func.count())
-                    .where(Version.id.in_(waiting))
-                    .group_by(Version.processing_status)
-                ).all()
-            )
-        unfinished = sum(n for s, n in statuses.items() if s not in FINAL)
+            rows = db.execute(
+                select(Version.processing_status, Version.ocr_status).where(Version.id.in_(waiting))
+            ).all()
+        statuses: dict[str, int] = {}
+        for processing, ocr in rows:
+            label = _state(processing, ocr)
+            statuses[label] = statuses.get(label, 0) + 1
+        unfinished = sum(1 for processing, ocr in rows if not _finished(processing, ocr))
         print(f"    processing: {dict(sorted(statuses.items()))}", flush=True)
         if not unfinished or time.monotonic() > deadline:
             break
         time.sleep(5)
     if unfinished:
-        print("    not everything was processed in time; is the worker running (make logs)?")
+        print(
+            "    not everything was processed in time; are worker and ocr-worker running "
+            "(make logs)? Large scans: OCR takes about 2 s per page."
+        )
+    held = statuses.get(f"{NEEDS_OCR}/{OCR_ON_HOLD}", 0)
+    if held and not args.start_ocr:
+        print(
+            f"    {held} large scan(s) wait on hold (more than OCR_AUTO_MAX_PAGES pages): their "
+            "scanned pages are not searchable yet; run again with OCR=1 to start them"
+        )
 
     with factory() as db:
         mine = set(db.scalars(select(Version.document_id).where(Version.id.in_(waiting))))
@@ -214,7 +267,10 @@ def main() -> int:
         for rank, hit in enumerate(hits, start=1):
             state = {"draft": " · szkic", "archived": " · zarchiwizowany"}.get(hit.status, "")
             where = _where(hit.origin, hit.page_no) if hit.snippet else "tytuł/nazwa/nagłówki"
-            print(f"  {rank}. {hit.score:.3f}  {hit.title}  [{hit.filename}]  — {where}{state}")
+            ocr = " (OCR)" if hit.snippet and hit.ocr_applied else ""
+            print(
+                f"  {rank}. {hit.score:.3f}  {hit.title}  [{hit.filename}]  — {where}{ocr}{state}"
+            )
             if hit.snippet:
                 print(f"       {_plain(str(hit.snippet))}")
         if expected:

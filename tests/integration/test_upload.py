@@ -154,21 +154,24 @@ def test_upload_needs_the_csrf_header_and_the_permission(app: FastAPI) -> None:
     reader = login(app, make_user(app, "reader"))
     assert send(reader, "a.txt", TEXT).status_code == 403
     page = publisher.get("/documents/upload").text
-    assert "<noscript>" in page and "wymaga JavaScriptu" in page
+    assert "<noscript>" not in page  # works without JavaScript (ADR-032)
+    assert 'enctype="multipart/form-data"' in page and 'name="files" multiple' in page
 
 
-def test_duplicate_warning_only_for_documents_the_user_can_see(app: FastAPI) -> None:
+def test_duplicate_is_held_only_for_documents_the_user_can_see(app: FastAPI) -> None:
     content = f"Unikalna treść {uuid.uuid4()}".encode()
     first_owner = login(app, make_user(app, "publisher"))
     first = document_id(send(first_owner, "pierwszy.txt", content, title="Pierwszy"))
-    second = document_id(send(first_owner, "drugi.txt", content))
-    page = first_owner.get(f"/documents/{second}").text
-    assert "Możliwy duplikat" in page and f"/documents/{first}" in page
+    held = send(first_owner, "drugi.txt", content)
+    assert held.status_code == 204 and "/documents?batch=" in held.headers["hx-redirect"]
+    page = first_owner.get(held.headers["hx-redirect"]).text
+    assert "możliwy duplikat" in page and f"/documents/{first}" in page
+    assert "Wgraj mimo to" in page and "Pomiń" in page
 
     stranger = login(app, make_user(app, "publisher"))
-    third = document_id(send(stranger, "trzeci.txt", content))
-    page = stranger.get(f"/documents/{third}").text
-    assert "Możliwy duplikat" not in page  # the other person's drafts stay invisible
+    third = document_id(send(stranger, "trzeci.txt", content))  # the other person's draft:
+    page = stranger.get(f"/documents/{third}").text  # invisible, so no duplicate
+    assert "Możliwy duplikat" not in page
     assert "Pierwszy" not in page
 
 

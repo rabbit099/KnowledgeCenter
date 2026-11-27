@@ -3,6 +3,14 @@
 <span class="badge badge-{{ status }}">{{ labels.get(status, status) }}</span>
 {%- endmacro %}
 
+{# Sub-state of "needs OCR" (Phase 4 stage B): queued, running, failed, on hold, skipped. #}
+{% macro ocr_badge(version) -%}
+{%- if version.processing_status == "needs_ocr" -%}
+{% set labels = {"queued": _("OCR queued"), "running": _("OCR running"), "failed": _("OCR failed"), "on_hold": _("OCR on hold (large document)"), "skipped": _("OCR skipped (too many pages)"), "none": _("OCR not started")} %}
+{% if version.ocr_status in labels %} <span class="badge badge-ocr-{{ version.ocr_status }}">{{ labels[version.ocr_status] }}</span>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+
 {% macro state_badge(state) -%}
 {% set labels = {"draft": _("draft"), "published": _("published"), "archived": _("archived")} %}
 <span class="badge badge-state-{{ state }}">{{ labels.get(state, state) }}</span>

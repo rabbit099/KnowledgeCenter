@@ -46,6 +46,7 @@ from fixtures.samples import (
     encrypted_pdf,
     text_pdf,
 )
+from fixtures.scans import BASE_LINES, mixed_pdf, page_image
 from web_helpers import csrf, login, make_user
 
 pytestmark = pytest.mark.integration
@@ -654,13 +655,39 @@ def test_doc_upload_end_to_end(
     assert "Dokument Word 97: zażółć gęślą jaźń." in text and "Pozycja | Kwota" in text
 
 
-def test_scanned_pdf_ends_as_needs_ocr(
+def test_scanned_pdf_is_recognised_by_ocr(
     app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
 ) -> None:
+    """Phase 4: the text pass marks the scanned page, the OCR queue recognises it (ADR-033)."""
+    c = login(app, make_user(app, "publisher"))
+    scan = mixed_pdf(["Strona pierwsza ma warstwę tekstu: umowa najmu."], page_image(BASE_LINES))
+    doc_id, version_id = upload(c, "skan.pdf", scan)
+    assert wait_for(lambda: version_of(rt, version_id).processing_status == "done", timeout=120)
+    version = version_of(rt, version_id)
+    assert version.ocr_status == "done" and version.page_count == 2
+    assert version.ocr_applied
+    stored = parts(rt, version_id)
+    assert [(p.page_no, p.needs_ocr, p.ocr_applied) for p in stored] == [
+        (1, False, False),
+        (2, False, True),
+    ]
+    assert "odbioru" in stored[1].text.lower()
+    page = c.get(f"/documents/{doc_id}").text
+    assert "tekst z OCR" in page and "zwłaszcza numery" in page
+    fragment = c.get(f"/ingestion/versions/{version_id}/parts").text
+    assert fragment.count('<span class="badge badge-ocr">tekst z OCR</span>') == 1
+    assert f"/documents/{doc_id}" in c.get("/search", params={"q": "odbioru"}).text
+
+
+def test_scanned_pdf_with_ocr_off_ends_as_needs_ocr(
+    app: FastAPI, rt: runtime.Runtime, worker: dramatiq.Worker
+) -> None:
+    rt.settings = rt.settings.model_copy(update={"ocr_enabled": False})
     c = login(app, make_user(app, "publisher"))
     doc_id, version_id = upload(c, "skan.pdf", text_pdf([POLISH_TEXT, "x"], image_pages=(2,)))
     version = wait_final(rt, version_id)
     assert version.processing_status == "needs_ocr" and version.page_count == 2
+    assert not version.ocr_applied
     assert [(p.page_no, p.needs_ocr) for p in parts(rt, version_id)] == [(1, False), (2, True)]
     page = c.get(f"/documents/{doc_id}/status", headers={"HX-Request": "true"}).text
     assert "wymaga OCR" in page

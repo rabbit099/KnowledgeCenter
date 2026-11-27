@@ -1,10 +1,36 @@
-{# Polled while processing. Processing may change the title (e-mail subject), so a polled
-   response also replaces the heading (out-of-band swap). #}
+{# Polled while processing or OCR runs. Processing may change the title (e-mail subject), so a
+   polled response also replaces the heading (out-of-band swap). #}
 {% if polled %}<h1 id="document-title" hx-swap-oob="true">{{ document.title }}</h1>{% endif %}
-{% from "documents/_macros.html" import status_badge %}
+{% from "documents/_macros.html" import status_badge, ocr_badge %}
+{% from "admin/_macros.html" import csrf with context %}
 <div{% if busy %} hx-get="/documents/{{ document.id }}/status" hx-trigger="every 3s" hx-target="#processing" hx-swap="innerHTML"{% endif %}>
-  <p>{{ status_badge(version.processing_status) }}{% if version.processing_attempts %} <span class="muted">({{ _("attempts: %(n)s", n=version.processing_attempts) }})</span>{% endif %}</p>
+  <p>{{ status_badge(version.processing_status) }}{{ ocr_badge(version) }}{% if version.processing_attempts %} <span class="muted">({{ _("attempts: %(n)s", n=version.processing_attempts) }})</span>{% endif %}</p>
   {% if version.processing_error %}<p class="fail">{{ _(version.processing_error) }}</p>{% endif %}
+  {% if version.processing_status == "needs_ocr" and "ingestion" in enabled_modules %}
+    {% set pages = version.ocr_pages %}
+    {% if version.ocr_status == "queued" %}
+    <p class="muted">{% if pages %}{{ ngettext("%(num)d scanned page waits for OCR; documents with fewer pages go first.", "%(num)d scanned pages wait for OCR; documents with fewer pages go first.", pages) }}{% endif %}</p>
+    {% elif version.ocr_status == "running" %}
+    <p class="muted">{% if pages %}{{ ngettext("OCR is reading %(num)d scanned page.", "OCR is reading %(num)d scanned pages.", pages) }}{% endif %}</p>
+    {% elif version.ocr_status == "on_hold" %}
+    <p class="warn">{% if pages %}{{ ngettext("The document has %(num)d scanned page, more than OCR starts by itself (%(auto)s). Start it when the server is not busy.", "The document has %(num)d scanned pages, more than OCR starts by itself (%(auto)s). Start it when the server is not busy.", pages, auto=ocr_auto_max_pages) }}{% else %}{{ _("OCR was stopped. Start it again when needed.") }}{% endif %}</p>
+    {% elif version.ocr_status == "failed" %}
+    <p class="fail">{% if version.ocr_error %}{{ _(version.ocr_error) }}{% else %}{{ _("OCR failed.") }}{% endif %}</p>
+    {% elif version.ocr_status == "skipped" %}
+    <p class="warn">{% if pages %}{{ ngettext("%(num)d scanned page, more than OCR handles (%(max)s): the scans are not searchable.", "%(num)d scanned pages, more than OCR handles (%(max)s): the scans are not searchable.", pages, max=ocr_max_pages) }}{% endif %}</p>
+    {% elif version.ocr_status == "none" %}
+    <p class="muted">{% if ocr_enabled %}{{ _("OCR of the scanned pages has not been started.") }}{% else %}{{ _("OCR is switched off on this server.") }}{% endif %}</p>
+    {% endif %}
+    {% if can_act and ocr_enabled %}
+    <div class="actions">
+      {% if version.ocr_status in ("none", "on_hold", "failed") %}
+      <form method="post" action="/ingestion/versions/{{ version.id }}/ocr" class="inline">{{ csrf() }}<button type="submit">{{ _("Start OCR") if version.ocr_status != "failed" else _("Start OCR again") }}</button></form>
+      {% elif version.ocr_status in ("queued", "running") %}
+      <form method="post" action="/ingestion/versions/{{ version.id }}/ocr/cancel" class="inline">{{ csrf() }}<button type="submit" class="secondary">{{ _("Cancel OCR") }}</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endif %}
 </div>
 {% if not busy and "ingestion" in enabled_modules %}
 <div id="parts" hx-get="/ingestion/versions/{{ version.id }}/parts" hx-trigger="load" hx-swap="innerHTML"><p class="muted">{{ _("Loading the extracted text…") }}</p></div>

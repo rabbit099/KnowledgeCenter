@@ -59,6 +59,26 @@ def test_worker_has_a_connection_for_the_job_and_one_for_event_handlers() -> Non
     assert int(env["DB_POOL_SIZE"]) + int(env["DB_MAX_OVERFLOW"]) >= 2
 
 
+def test_production_compose_runs_ocr_worker_with_limits_and_a_healthcheck() -> None:
+    """Release 0.5.0 (ADR-033): ocr-worker = the worker image, queue "ocr" only, own memory and
+    CPU limits, internal network only, a healthcheck; worker consumes only "ingestion"."""
+    import yaml
+
+    services = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))["services"]
+    worker, ocr = services["worker"], services["ocr-worker"]
+    assert ocr["image"] == worker["image"] and "-worker:" in ocr["image"]
+    assert ocr["command"][-2:] == ["--queues", "ocr"]
+    assert worker["command"][-2:] == ["--queues", "ingestion"]
+    assert ocr["networks"] == ["backend"]
+    limits = ocr["deploy"]["resources"]["limits"]
+    assert limits["memory"] == "${OCR_MEMORY_LIMIT:-2g}" and limits["cpus"] == "${OCR_CPUS:-2}"
+    env = ocr["environment"]
+    assert int(env["DB_POOL_SIZE"]) + int(env["DB_MAX_OVERFLOW"]) >= 2
+    for service in (worker, ocr):
+        assert service["healthcheck"]["test"] == ["CMD", "python", "-m", "baza_wiedzy.core.queue"]
+        assert "storage:/data/storage" in service["volumes"]
+
+
 def test_relevance_inputs_are_ignored_and_refused_inside_the_repository() -> None:
     """The repository is public: company documents and queries for `make relevance` never get
     in (Makefile refuses paths inside it; .gitignore is the second net)."""

@@ -59,6 +59,20 @@ async def receive(chunks: AsyncIterator[bytes], storage: LocalStorage, max_bytes
     return Received(path=path, size=size, sha256=digest.hexdigest())
 
 
+def check(received: Received, raw_filename: str) -> tuple[str, str]:
+    """(sanitised file name, kind) after the content check; a refused file is removed."""
+    filename = filenames.sanitize(raw_filename)
+    try:
+        kind = filetypes.detect(received.path, filename)
+    except UnsupportedFile:
+        received.path.unlink(missing_ok=True)
+        raise
+    if received.size == 0:
+        received.path.unlink(missing_ok=True)
+        raise UnsupportedFile(N_("The file is empty."))
+    return filename, kind
+
+
 @dataclass(frozen=True)
 class Uploaded:
     document: Document
@@ -76,15 +90,7 @@ def create(
     ip: str | None,
 ) -> Uploaded:
     """Validate by content, store and create the rows (the caller commits)."""
-    filename = filenames.sanitize(raw_filename)
-    try:
-        kind = filetypes.detect(received.path, filename)
-    except UnsupportedFile:
-        received.path.unlink(missing_ok=True)
-        raise
-    if received.size == 0:
-        received.path.unlink(missing_ok=True)
-        raise UnsupportedFile(N_("The file is empty."))
+    filename, kind = check(received, raw_filename)
     assert actor.user_id is not None
     key = storage.store(received.path)
     typed = " ".join(title.split())[:MAX_TITLE]

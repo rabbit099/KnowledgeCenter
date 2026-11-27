@@ -3,8 +3,10 @@
 Runs in the test image (LibreOffice for the DOC file). Every file is generated here from
 invented text with example.com addresses; nothing comes from real documents or mail.
 OCZEKIWANE.txt in the target directory lists the expected result of each file.
-The subdirectory wyszukiwanie/ holds the search corpus (tests/fixtures/search_corpus.py, the
-same files the golden search tests use) and OCZEKIWANE-wyszukiwanie.txt with the queries.
+The subdirectory ocr/ holds synthetic scans for OCR (tests/fixtures/scans.py) with
+OCZEKIWANE-ocr.txt; the subdirectory wyszukiwanie/ holds the search corpus
+(tests/fixtures/search_corpus.py, the same files the golden search tests use) and
+OCZEKIWANE-wyszukiwanie.txt with the queries.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from fixtures import search_corpus
+from fixtures import scans, search_corpus
 from fixtures.msg import Attachment, Msg, msg_bytes
 from fixtures.samples import (
     ENGLISH_TEXT,
@@ -22,7 +24,6 @@ from fixtures.samples import (
     docx_bytes,
     eml_bytes,
     encrypted_pdf,
-    scanned_pdf,
     text_pdf,
 )
 
@@ -36,7 +37,8 @@ EXPECTED = """Próbki do ręcznego testu (syntetyczne). Oczekiwany wynik po wgra
 03-umowa.docx               gotowe; tekst z tabelą „Pozycja | Kwota”, nagłówek strony
 04-stary-word.doc           gotowe (LibreOffice); tekst z tabelą „Pozycja | Kwota”
 05-raport.pdf               gotowe; 2 części „strona 1” (polski) i „strona 2” (angielski)
-06-skan.pdf                 wymaga OCR; 2 strony oznaczone do OCR (Faza 4)
+06-skan.pdf                 gotowe po OCR (Faza 4); 2 strony z etykietą „tekst z OCR”;
+                            szukaj „chłodniczych” (więcej skanów: katalog ocr/)
 07-zaszyfrowany.pdf         błąd: „PDF jest zabezpieczony hasłem…”
 08-mail-z-zalacznikami.eml  gotowe; tytuł = temat; treść + załączniki: raport.pdf (strony),
                             umowa.docx, notatka.msg; logo.png pominięte z adnotacją
@@ -63,7 +65,9 @@ def main(target: Path) -> int:
         ),
         "04-stary-word.doc": doc_bytes(work, ["Dokument Word 97: zażółć gęślą jaźń."], TABLE),
         "05-raport.pdf": text_pdf([POLISH_TEXT, ENGLISH_TEXT]),
-        "06-skan.pdf": scanned_pdf(2),
+        "06-skan.pdf": scans.scan_pdf(
+            scans.page_image(scans.BASE_LINES), scans.page_image(scans.BASE_LINES[::-1])
+        ),
         "07-zaszyfrowany.pdf": encrypted_pdf(),
         "08-mail-z-zalacznikami.eml": eml_bytes(
             subject="Przegląd urządzeń – materiały",
@@ -97,9 +101,15 @@ def main(target: Path) -> int:
     (target / "OCZEKIWANE-wyszukiwanie.txt").write_text(
         search_corpus.expected_text("wyszukiwanie"), encoding="utf-8"
     )
+    ocr_dir = target / "ocr"
+    ocr_dir.mkdir(exist_ok=True)
+    for scan in (*scans.SCANS, *scans.EXTRA_SCANS):
+        (ocr_dir / scan.filename).write_bytes(scan.build())
+    (target / "OCZEKIWANE-ocr.txt").write_text(scans.expected_text("ocr"), encoding="utf-8")
     print(
         f"{len(files)} sample files written to {target}, "
-        f"{len(search_corpus.DOCS)} search samples to {corpus}"
+        f"{len(search_corpus.DOCS)} search samples to {corpus}, "
+        f"{len(scans.SCANS) + len(scans.EXTRA_SCANS)} scans to {ocr_dir}"
     )
     return 0
 

@@ -97,6 +97,13 @@ def login(
     return response
 
 
+@router.get("/logout", include_in_schema=False)
+def logout_page() -> Response:
+    """A typed or bookmarked /logout lands on the login page instead of "Method Not Allowed".
+    It logs nobody out: logging out changes state, so it stays a POST with the CSRF token."""
+    return RedirectResponse("/login", status_code=303)
+
+
 @router.post("/logout", include_in_schema=False)
 def logout(
     request: Request, db: Db, user: Annotated[CurrentUser, Depends(require_user)]

@@ -1,6 +1,6 @@
 # Wdrożenie i utrzymanie
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rollback, backup, odtwarzanie, monitoring.
 
@@ -10,6 +10,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 - Dostęp do `ghcr.io` (albo procedura offline opisana niżej).
 - Nazwa DNS aplikacji i certyfikat TLS (wewnętrzne CA lub Let's Encrypt — do ustalenia).
 - Osiągalność kontrolera domeny przez LDAPS (port 636) i konto serwisowe do odczytu LDAP.
+- Zalecany rozmiar: 4 vCPU i 8 GB pamięci; pod niego dobrane są wartości domyślne ([Budżet pamięci i rdzeni](#budżet-pamięci-i-rdzeni-8-gb--4-vcpu)). Najwięcej zużywa OCR: przy mniejszej liczbie rdzeni obniż `OCR_CPUS` i `OCR_JOBS`.
 - Miejsce na dysku na dokumenty (oryginały + kopie pochodne + baza). Na start zaplanuj 3× rozmiar wgrywanych plików.
 
 ## Układ na serwerze
@@ -25,7 +26,7 @@ Wszystko, czego potrzebuje operator: instalacja, konfiguracja, aktualizacje, rol
 └── backups/             # tworzone przez backup.sh
 ```
 
-Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `storage` (pliki wgrane i pochodne, zamontowany w `/data/storage` w `app` i `worker`), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
+Dane są w nazwanych wolumenach Dockera projektu Compose `baza-wiedzy`: `pgdata` (baza), `storage` (pliki wgrane i pochodne, zamontowany w `/data/storage` w `app`, `worker` i `ocr-worker`), `redis-data` (kolejka), `caddy-data` i `caddy-config` (certyfikaty, w tym wewnętrzne CA Caddy), `clamav-db` (tylko z profilem `antivirus`). Lista: `docker volume ls --filter name=baza-wiedzy`. `docker compose down` je zachowuje; `docker compose down -v` **usuwa wszystkie dane**.
 
 ## Konfiguracja
 
@@ -45,9 +46,10 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `DOCKER_SUBNET`, `PROXY_IP` | Stała sieć Dockera stosu (domyślnie `172.30.70.0/24`) i adres proxy w niej (`172.30.70.10`); aplikacja ufa `X-Forwarded-For` tylko od `PROXY_IP` |
 | `HTTP_PORT`, `HTTPS_PORT` | Porty hosta dla proxy (domyślnie 80, 443) |
 | `IMAGE_PREFIX` | Rejestr i prefiks nazw obrazów, na przykład `ghcr.io/<właściciel>/baza-wiedzy` |
-| `BACKEND_SUBNET` | Wewnętrzna sieć `app`, `worker`, `db`, `redis` bez dostępu do internetu (domyślnie `172.30.72.0/24`; zmień, jeśli koliduje z siecią firmy, ADR-024) |
-| `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 51, trzymaj `MAX_UPLOAD_MB` + 1) |
+| `BACKEND_SUBNET` | Wewnętrzna sieć `app`, `worker`, `ocr-worker`, `db`, `redis` bez dostępu do internetu (domyślnie `172.30.72.0/24`; zmień, jeśli koliduje z siecią firmy, ADR-024) |
+| `ACME_EMAIL`, `MAX_REQUEST_MB` | Kontakt dla Let's Encrypt (`TLS_MODE=acme`); największe ciało żądania przyjmowane przez proxy (domyślnie 501, trzymaj `UPLOAD_MAX_TOTAL_MB` + 1; mniejsza wartość obniża łączny limit aplikacji do `MAX_REQUEST_MB` − 1, wartość nie większa od `MAX_UPLOAD_MB` zatrzymuje aplikację przy starcie) |
 | `MAX_UPLOAD_MB`, `STORAGE_DIR` | Największy wgrywany plik (domyślnie 50 MB); ścieżka wolumenu plików w kontenerach (domyślnie `/data/storage`) |
+| `UPLOAD_MAX_FILES`, `UPLOAD_MAX_TOTAL_MB`, `UPLOAD_BATCH_HOURS` | Pliki w jednym formularzu (50), ich łączny rozmiar (500 MB; kontener app potrzebuje tyle wolnego miejsca tymczasowego), godziny oczekiwania możliwego duplikatu na decyzję (24) |
 | `INGEST_MAX_ATTEMPTS`, `INGEST_RETRY_MIN_SECONDS`, `INGEST_RETRY_MAX_SECONDS`, `INGEST_TIME_LIMIT_SECONDS`, `INGEST_STALE_MINUTES` | Przetwarzanie w workerze: liczba prób przy błędach przejściowych (3), opóźnienie między nimi (30 s, podwajane do 600 s), limit czasu jednej próby (900 s), wiek, po którym wersja wciąż „przetwarzana” uchodzi za przerwaną (30 min, trzymaj powyżej limitu czasu) |
 | `INGEST_MAX_DEPTH`, `INGEST_MAX_PARTS`, `INGEST_MAX_TEXT_MB`, `LANGUAGE_MIN_LETTERS` | Limity ekstrakcji na plik: głębokość załączników maila (3), liczba części (2000), tekst (50 MB); liczba liter potrzebna do wykrycia języka (40) |
 | `OUTBOX_RETENTION_DAYS`, `SCAN_HOOK` | Liczba dni, przez które dostarczone zdarzenie zostaje w `ing_outbox` (7); krok skanowania antywirusowego przed ekstrakcją (`none`, na razie jedyna wartość) |
@@ -56,12 +58,14 @@ Wszystkie ustawienia to zmienne środowiskowe w `.env`; `.env.example` w repozyt
 | `POSTGRES_MAX_CONNECTIONS`, `POSTGRES_SHARED_BUFFERS` | Jawny limit połączeń i bufory współdzielone (zob. niżej) |
 | `DB_MEMORY_LIMIT`, `APP_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `REDIS_MEMORY_LIMIT`, `CLAMAV_MEMORY_LIMIT` | Limity pamięci kontenerów |
 | `WORKER_PROCESSES` | Liczba procesów workera (domyślnie 2; każdy ma jeden wątek i jedno połączenie z bazą; nie więcej niż rdzeni CPU). Pamięć zmierzona przy 2 procesach: 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem; trzymaj `WORKER_MEMORY_LIMIT` (domyślnie 2g) na co najmniej 1,4 GB + 0,6 GB na proces ([ingestion-and-ocr.md](ingestion-and-ocr.md#kod-natywny-w-procesach-potomnych)) |
+| `OCR_MEMORY_LIMIT`, `OCR_CPUS` | Limity pamięci (domyślnie 2g) i CPU (domyślnie 2) usługi `ocr-worker` (jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta). Rdzenie serwera ≈ `WORKER_PROCESSES` + `OCR_CPUS` to dobry punkt wyjścia |
 | `INGEST_MAX_PAGES`, `OCR_MIN_CHARS`, `INGEST_CHILD_MEMORY_MB`, `INGEST_CHILD_TIMEOUT_SECONDS`, `LIBREOFFICE_MEMORY_MB`, `LIBREOFFICE_TIMEOUT_SECONDS` | Limit stron PDF (2000) i próg stron „wymaga OCR” (25 znaków); limity pamięci i czasu procesu potomnego PDF (1024 MB, 300 s) i LibreOffice (1024 MB, 120 s) |
+| `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS`, `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD` | OCR zeskanowanych stron (true, `pol+eng`, automatycznie do 30 zeskanowanych stron, najwyżej 200, 1800 s na dokument, 120 s na stronę, 2 procesy Tesseracta, po 2048 MB, 200 megapikseli, pewność obrotu 5); zobacz ingestion-and-ocr.md |
 | `REDIS_PASSWORD` | Hasło wymagane przez Redis (`requirepass`); tylko znaki bezpieczne w URL. `REDIS_URL` jest z niego składany w `docker-compose.yml` |
 | `MAX_UPLOAD_MB` i inne limity | Zobacz [ingestion-and-ocr.md](ingestion-and-ocr.md) |
 | `LDAP_*` | Logowanie przez Active Directory, domyślnie wyłączone (`LDAP_ENABLED=false`). `./secrets/ldap/` jest montowany tylko do odczytu w `/run/secrets/ldap/` w `app` dla certyfikatu CA i pliku z hasłem konta serwisowego. Szczegóły, normalizacja nazw i procedura testu na prawdziwym AD: [auth-and-permissions.md](auth-and-permissions.md#active-directory-ldap-przez-tls) |
 
-`ENABLED_MODULES` musi mieć tę samą wartość dla `app` i `worker` (oba czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
+`ENABLED_MODULES` musi mieć tę samą wartość dla `app`, `worker` i `ocr-worker` (wszystkie czytają ten sam `.env`). Przy starcie aplikacja sprawdza zależności modułów i odmawia uruchomienia z komunikatem w rodzaju `module 'search' requires 'documents', which is not enabled`. `baza-wiedzy migrate` stosuje migracje rdzenia i **wszystkich** modułów, niezależnie od `ENABLED_MODULES`: schemat jest zawsze kompletny, więc późniejsze włączenie modułu nie wymaga migracji, a `/ready` porównuje bazę ze wszystkimi głowami migracji. Wyłączenie modułu nie usuwa jego tabel ani danych.
 
 Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się jako jeden użytkownik bazy, który **nie** jest superużytkownikiem, ale **jest właścicielem bazy aplikacji**. To wystarcza do wszystkiego, co robią migracje: `CREATE EXTENSION pg_trgm` i `CREATE EXTENSION unaccent` (oba rozszerzenia są „zaufane” od PostgreSQL 13, więc właściciel bazy może je utworzyć; pliki rozszerzeń są już w obrazie `db`) oraz `CREATE TEXT SEARCH DICTIONARY` / `CREATE TEXT SEARCH CONFIGURATION` (wymagają `CREATE` na schemacie `public`, które właściciel bazy ma od PostgreSQL 15). Jeśli bazę zakłada ktoś inny, nadaj: `GRANT CREATE ON DATABASE <baza> TO <użytkownik>; GRANT CREATE ON SCHEMA public TO <użytkownik>;`. `make test-db` tworzy obiekty wyszukiwania właśnie jako taki zwykły użytkownik, więc regresja wyjdzie w testach. Przy pierwszym starcie z pustym wolumenem `pgdata` obraz `db` tworzy tego użytkownika i bazę z `APP_DB_USER`, `APP_DB_PASSWORD` i `APP_DB_NAME` (`docker/db/initdb/10-app-role.sh`). Późniejsza zmiana tych zmiennych **nie** zmienia istniejącej bazy; hasło zmień przez `ALTER ROLE` jako `postgres` i jednocześnie zaktualizuj `.env`.
 
@@ -71,10 +75,26 @@ Użytkownik bazy i uprawnienia: aplikacja i `baza-wiedzy migrate` łączą się 
 
 Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu i trzyma go w pamięci: około 27–30 MB na połączenie (zmierzone w spike'u, zob. [search.md](search.md)). Dlatego limit połączeń jest ustawiony jawnie, a limit pamięci `db` z niego wynika:
 
-- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 6 = 30, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
+- Budżet połączeń: app 5 + 5 nadmiarowych na proces aplikacji, worker 2 na proces workera (zadanie oraz indeksowanie wyszukiwania, które działa, gdy dostarczanie z outboxu trzyma swój wiersz; przy 1 indeksowanie czekałoby na połączenie, które się nie zwolni), `ocr-worker` 2 (jeden proces), plus kilka na migracje, backupy i ręczny `psql`. Przy 2 procesach app i 2 procesach workera: 2 × 10 + 2 × 2 + 2 + 6 = 32, więc domyślne `POSTGRES_MAX_CONNECTIONS=40` zostawia zapas.
 - Pamięć: `DB_MEMORY_LIMIT` ≥ `POSTGRES_SHARED_BUFFERS` + `POSTGRES_MAX_CONNECTIONS` × 35 MB + 300 MB. Domyślnie: 256 MB + 40 × 35 MB + 300 MB ≈ 1,95 GB → `DB_MEMORY_LIMIT=2g`.
 - Jeśli zwiększasz `POSTGRES_MAX_CONNECTIONS`, zwiększ `DB_MEMORY_LIMIT` o 35 MB na każde dodatkowe połączenie. Inaczej jądro może zabić PostgreSQL (`docker compose ps` pokazuje restartujący się `db`; `docker inspect baza-wiedzy-db-1 --format '{{.State.OOMKilled}}'` wypisuje `true`).
 - Sprawdzenie aktualnych wartości: `docker compose exec db psql -U postgres -c 'SHOW max_connections' -c 'SELECT count(*) FROM pg_stat_activity'`.
+
+### Budżet pamięci i rdzeni (8 GB / 4 vCPU)
+
+Wartości domyślne dobrane do serwera z 8 GB pamięci i 4 vCPU. Kolumna pamięci to limit Dockera każdego kontenera (`*_MEMORY_LIMIT`), czyli najwięcej, ile może zająć; typowe zużycie jest dużo niższe i nie wszystkie usługi mają szczyt jednocześnie. `OCR_CPUS` to jedyny limit CPU: OCR nigdy nie zajmie więcej niż 2 rdzenie, więc aplikacji, bazie i zwykłemu przetwarzaniu zostają co najmniej 2.
+
+| Usługa | Limit pamięci | Typowo | CPU | Od czego zależy |
+|---|---|---|---|---|
+| `db` | 2 GB (`DB_MEMORY_LIMIT`) | 0,5–1,2 GB | wspólne | `POSTGRES_SHARED_BUFFERS` 256 MB + `POSTGRES_MAX_CONNECTIONS` 40 × 35 MB (polski słownik na połączenie) + 300 MB |
+| `app` | 1 GB (`APP_MEMORY_LIMIT`) | 0,2–0,4 GB | wspólne | 2 procesy Uvicorn; wgrywane pliki są buforowane na dysku, nie w pamięci: jeden formularz potrzebuje do `UPLOAD_MAX_TOTAL_MB` (500 MB) wolnego miejsca tymczasowego w kontenerze |
+| `worker` | 2 GB (`WORKER_MEMORY_LIMIT`) | < 0,5 GB | wspólne, 2 procesy | `WORKER_PROCESSES` 2; w środku LibreOffice (jeden DOC naraz, `LIBREOFFICE_MEMORY_MB` 1 GB przestrzeni adresowej) i proces potomny PDF (`INGEST_CHILD_MEMORY_MB` 1 GB) |
+| `ocr-worker` | 2 GB (`OCR_MEMORY_LIMIT`) | do około 0,5 GB w trakcie OCR (zmierzone: 468 MB przy 2 procesach Tesseracta, [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr)) | najwyżej 2 (`OCR_CPUS`) | jeden dokument naraz, `OCR_JOBS` 2 procesy Tesseracta (`OCR_MEMORY_MB` 2 GB przestrzeni adresowej każdy: sufit pamięci wirtualnej, nie faktyczne zużycie) |
+| `redis` | 256 MB (`REDIS_MEMORY_LIMIT`) | < 50 MB | wspólne | tylko kolejka zadań i heartbeaty |
+| `proxy` | bez limitu | < 50 MB | wspólne | Caddy |
+| **Suma limitów** | **7,25 GB** | około 2–3 GB | 4 vCPU | zostaje około 0,75 GB dla systemu i proxy |
+
+Na serwerze z większą pamięcią podnieś najpierw `OCR_MEMORY_LIMIT` (duże skany), potem `DB_MEMORY_LIMIT` razem z `POSTGRES_MAX_CONNECTIONS`. Przy większej liczbie rdzeni podnieś razem `OCR_CPUS` i `OCR_JOBS` (jeden proces Tesseracta na rdzeń).
 
 ## Pierwsza instalacja
 
@@ -95,7 +115,7 @@ Każde połączenie z PostgreSQL ładuje polski słownik przy pierwszym użyciu 
 - Co działa na serwerze: `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <obraz>`.
 - Bezpieczeństwo workflow: akcje są przypięte do SHA commitów; domyślny token ma tylko odczyt (`contents: read`), wyłącznie zadanie publikacji w `release.yml` dostaje `packages: write`; CI nie używa sekretów, więc pull requesty z forków nie mają czego wykraść.
 
-CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 4 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
+CI (`.github/workflows/ci.yml`, przy pushu na `main` i przy pull requestach) uruchamia trzy zadania: `quality` (`make lint`: ruff, mypy, import-linter; `make test`; `make docs-check`), `integration` (`make test-db`: PostgreSQL z obrazu projektu i Redis) oraz `images` (`make smoke`: buduje cztery obrazy dla `linux/amd64`, uruchamia `docker-compose.yml`, migruje, wymaga, żeby `/ready` zwrócił 5 × `ok`, potem tworzy admina awaryjnego i sprawdza przez proxy: złe hasło 401, logowanie, panel admina i dziennik audytu 200, wylogowanie). Przed pushem uruchom to samo lokalnie.
 
 ## Aktualizacja
 
@@ -108,7 +128,7 @@ Co robi `update.sh`:
 1. Kontrole wstępne: Docker działa, jest wolne miejsce na dysku, nowe obrazy istnieją w rejestrze, `.env` zawiera wszystkie zmienne z nowego `.env.example` (w przeciwnym razie zatrzymuje się i wypisuje brakujące).
 2. Uruchamia `backup.sh` (baza + pliki).
 3. Pobiera nowe obrazy.
-4. Zatrzymuje `worker`, żeby podczas migracji nie szły żadne zadania (worker uruchomiony przed końcem migracji czeka na nią przed zadaniami startowymi, zobacz Pierwsza instalacja).
+4. Zatrzymuje `worker` i `ocr-worker`, żeby podczas migracji nie szły żadne zadania (worker uruchomiony przed końcem migracji czeka na nią przed zadaniami startowymi, zobacz Pierwsza instalacja).
 5. Uruchamia migracje w jednorazowym kontenerze (`baza-wiedzy migrate`).
 6. Ustawia `APP_VERSION` w `.env` i uruchamia wszystko (`docker compose up -d`).
 7. Czeka na `/ready` (do 120 s).
@@ -134,7 +154,7 @@ git checkout v1.2.0
 ./scripts/offline_bundle.sh 1.2.0 ghcr.io/<właściciel>/baza-wiedzy /tmp/bundle
 ```
 
-Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`), pobiera wszystko dla `linux/amd64` i zapisuje do jednego pliku. Dla wersji `X.Y.Z` pakiet zawiera **wszystkie** obrazy potrzebne na serwerze:
+Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`; `worker` i `ocr-worker` mają wspólny obraz, wypisany raz), pobiera wszystko dla `linux/amd64` i zapisuje do jednego pliku. Dla wersji `X.Y.Z` pakiet zawiera **wszystkie** obrazy potrzebne na serwerze:
 
 | Obraz | Odwołanie |
 |---|---|
@@ -142,8 +162,8 @@ Skrypt bierze listę obrazów z `docker-compose.yml` (z profilem `antivirus`), p
 | worker | `ghcr.io/<właściciel>/baza-wiedzy-worker:X.Y.Z` |
 | db | `ghcr.io/<właściciel>/baza-wiedzy-db:X.Y.Z` |
 | proxy | `ghcr.io/<właściciel>/baza-wiedzy-proxy:X.Y.Z` |
-| redis | `redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba` |
-| clamav (profil opcjonalny) | `clamav/clamav:1.4.3@sha256:75fb5fd95fcbe1d7e6d240c369c1572b686ee2c95949d1042b5148de8eddebb4` |
+| redis | `redis:8.10.2-alpine@sha256:9f8d2d789b9a1d1e3f283f979aa9cbf393373806472e1ccd460e2f9c869b833b` |
+| clamav (profil opcjonalny) | `clamav/clamav:1.5.3@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb` |
 
 Wynik: `baza-wiedzy-images-X.Y.Z.tar` (około 0,7 GB), `.tar.sha256` i `baza-wiedzy-images-X.Y.Z.txt` (każde odwołanie z identyfikatorem obrazu). Skopiuj te trzy pliki oraz `docker-compose.yml`, `.env.example` i `scripts/` z wydania na serwer, potem:
 
@@ -165,7 +185,7 @@ Dotyczy to każdej zmiany polskiego słownika, listy stop words, konfiguracji wy
 
 `scripts/backup.sh` (Faza 6) tworzy `/srv/baza-wiedzy/backups/RRRR-MM-DD_GGMMSS/` zawierający:
 - `db.dump` — `docker compose exec -T db pg_dump -Fc -U postgres <APP_DB_NAME>` (spójny zrzut przy działającej aplikacji)
-- `storage.tar` — wolumen `storage` (pliki oryginalne i pochodne), czytany przez krótko żyjący kontener: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <obraz app> tar -C /data -cf /backup/storage.tar storage`
+- `storage.tar` — wolumen `storage` (oryginały oraz `.batches/`: wyniki wgrań i pliki wstrzymane jako możliwe duplikaty najwyżej przez `UPLOAD_BATCH_HOURS`; `.incoming/` i `.work/` zawierają tylko niedokończoną pracę i można je pominąć), czytany przez krótko żyjący kontener: `docker run --rm -v baza-wiedzy_storage:/data/storage:ro -v "$BACKUP_DIR":/backup <obraz app> tar -C /data -cf /backup/storage.tar storage`
 - `env.backup` — kopia `.env` (zawiera sekrety; zabezpiecz miejsce backupu)
 - `SHA256SUMS`
 
@@ -185,7 +205,7 @@ Wolumenów Dockera nie kopiuje się bezpośrednio (kopia `pgdata` działającej 
 ./scripts/restore.sh /srv/baza-wiedzy/backups/2026-11-12_021500
 ```
 
-Zatrzymuje `app` i `worker`, odtwarza bazę (`pg_restore --clean --if-exists`), odtwarza pliki, uruchamia usługi i sprawdza liczbę dokumentów i plików.
+Zatrzymuje `app`, `worker` i `ocr-worker`, odtwarza bazę (`pg_restore --clean --if-exists`), odtwarza pliki (z `.batches/`: odtworzona partia starsza niż `UPLOAD_BATCH_HOURS` jest usuwana przy następnym wgraniu albo `storage-cleanup`; nowsza nadal oferuje „Wgraj mimo to” / „Pomiń”), uruchamia usługi i sprawdza liczbę dokumentów i plików.
 
 **Test odtwarzania:** raz w miesiącu odtwórz ostatni backup na zapasowej maszynie lub w tymczasowym projekcie Compose i wykonaj kilka wyszukiwań. Backup, który nigdy nie został odtworzony, nie jest backupem.
 
@@ -194,12 +214,12 @@ Zatrzymuje `app` i `worker`, odtwarza bazę (`pg_restore --clean --if-exists`), 
 | Endpoint | Znaczenie |
 |---|---|
 | `/health` | Proces żyje (bez sprawdzania zależności) |
-| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera, schemat zmigrowany dla włączonych modułów. JSON; HTTP 200, gdy każde sprawdzenie ma wartość `ok`, w przeciwnym razie 503 |
+| `/ready` | Baza osiągalna, Redis osiągalny, świeży heartbeat workera (`worker`: proces obsługujący kolejkę `ingestion`; `ocr-worker`: proces obsługujący `ocr`, tylko przy `OCR_ENABLED=true`), schemat zmigrowany dla włączonych modułów. JSON; HTTP 200, gdy każde sprawdzenie ma wartość `ok`, w przeciwnym razie 503 |
 
 Przykład poprawnej odpowiedzi (`curl -k https://<PUBLIC_HOSTNAME>/ready`):
 
 ```
-{"status":"ok","version":"1.0.0","checks":{"database":"ok","redis":"ok","schema":"ok","worker":"ok"}}
+{"status":"ok","version":"1.0.0","checks":{"database":"ok","redis":"ok","schema":"ok","worker":"ok","ocr-worker":"ok"}}
 ```
 
 | Sprawdzenie | Wartość inna niż `ok` | Znaczenie i co zrobić |
@@ -207,17 +227,20 @@ Przykład poprawnej odpowiedzi (`curl -k https://<PUBLIC_HOSTNAME>/ready`):
 | `database` | `unreachable` | `docker compose ps db`, `docker compose logs db`; sprawdź `APP_DB_PASSWORD` |
 | `redis` | `unreachable` / `authentication failed` | `docker compose ps redis`; `REDIS_PASSWORD` w `.env` różni się od tego, z którym wystartował Redis: `docker compose up -d redis app worker` |
 | `schema` | `not migrated` / `outdated` / `unknown` | Uruchom `docker compose run --rm app baza-wiedzy migrate`. `ok (schema newer than application)` jest normalne przez chwilę podczas rollbacku |
-| `worker` | `no heartbeat` | Żaden proces workera nie zapisał heartbeatu w ostatnich 60 s: `docker compose ps worker`, `docker compose logs worker` |
+| `worker` | `no heartbeat` | Żaden proces `worker` nie zapisał heartbeatu w ostatnich 60 s: `docker compose ps worker`, `docker compose logs worker`. Wgrane pliki zostają „oczekuje” |
+| `ocr-worker` | `no heartbeat` | `ocr-worker` nie działa: `docker compose ps ocr-worker`, `docker compose logs ocr-worker`, `docker compose up -d ocr-worker`. Wgrywanie działa dalej; skany czekają „OCR w kolejce”. Podczas aktualizacji z 0.4.x stary worker liczy się dla każdej kolejki |
+
+`docker compose ps` pokazuje też `worker` i `ocr-worker` jako `healthy` albo `unhealthy`: ich healthcheck Dockera (`python -m baza_wiedzy.core.queue`, co 30 s) sprawdza, czy proces workera w tym kontenerze utrzymuje heartbeat (zapisuje go osobny wątek, więc długi OCR nie robi z kontenera `unhealthy`). Docker sam nie restartuje kontenera `unhealthy`; kontener, który się wywrócił, jest uruchamiany ponownie (`restart: unless-stopped`). Powód ostatnich sprawdzeń: `docker inspect --format '{{json .State.Health}}' <kontener>`.
 
 Sprawdzenie kolejki od początku do końca: `docker compose exec worker baza-wiedzy worker-ping` wysyła zadanie testowe i wypisuje `Worker answered in 0.6 s.` (kod wyjścia 0) albo `No answer from a worker within 10.0 s.` (kod wyjścia 1).
 
 Zabbix: sprawdzenie HTTP na `/ready` (oczekiwane 200) oraz trigger na czas odpowiedzi. Endpoint z metrykami i długość kolejki to opcjonalne dodatki na później.
 
-Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
+Logi to linie JSON, jeden obiekt na linię: `{"ts": "2026-11-12T11:10:39.174+00:00", "level": "INFO", "logger": "uvicorn.access", "message": "10.0.0.5:0 - \"GET /ready HTTP/1.1\" 200", "process": 8}`; błędy mają dodatkowo `exc` ze śladem stosu. `app` pisze na stdout, procesy workera na stderr. Wyjątek: proces główny Dramatiq w `worker` wypisuje swoje nieliczne linie startu i zatrzymania we własnym formacie tekstowym Dramatiq (`[2026-11-12 11:10:33,910] [PID 1] [MainThread] [dramatiq.MainProcess] [INFO] ...`). `LOG_LEVEL` ustawia poziom (domyślnie `INFO`). Compose ustawia rotację logów Dockera (`max-size 10m`, `max-file 5`). Czytaj je przez `docker compose logs -f app worker ocr-worker`; filtruj przez `jq`, na przykład `docker compose logs --no-log-prefix app | jq -R 'fromjson? | select(.level=="ERROR")'`.
 
 ## Przetwarzanie dokumentów (przewodnik operatora)
 
-Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje; `worker` wyciąga tekst w tle. Szczegóły i reguły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
+Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje; `worker` wyciąga tekst w tle; `ocr-worker` rozpoznaje zeskanowane strony. Szczegóły i reguły: [ingestion-and-ocr.md](ingestion-and-ocr.md).
 
 **Start i migracje.** Kolejność na nowym serwerze i w środowisku deweloperskim: uruchom stos (`docker compose up -d` / `make up`), potem migruj (`docker compose run --rm app baza-wiedzy migrate` / `make migrate`). Worker uruchomiony przed migracją raz na minutę loguje `worker startup: waiting for database migrations`, a zadania startowe wykonuje potem: usuwa pozostałe katalogi tymczasowe, kolejkuje oczekujące wersje, odzyskuje zawieszone, dostarcza niedostarczone zdarzenia.
 
@@ -228,7 +251,7 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | oczekuje | w kolejce | nic; jeśli trwa: czy worker działa (`docker compose ps`)? |
 | przetwarzanie | trwa próba | nic; po `INGEST_STALE_MINUTES` (30) bez postępu wersja jest odzyskiwana przy najbliższym starcie workera albo przez `baza-wiedzy reprocess --stuck` |
 | gotowe | tekst wyciągnięty | — |
-| wymaga OCR | strony z tekstem wyciągnięte, co najmniej jedna zeskanowana strona bez tekstu | OCR dojdzie w Fazie 4; strony z tekstem są już zapisane |
+| wymaga OCR | strony z tekstem wyciągnięte i wyszukiwalne, co najmniej jedna zeskanowana strona czeka na OCR; druga etykieta mówi, gdzie: „OCR w kolejce”, „OCR w toku”, „OCR wstrzymany (duży dokument)”, „OCR nieudany”, „OCR pominięty (za dużo stron)”, „OCR nieuruchomiony” | w kolejce / w toku: nic (czy `ocr-worker` działa?); wstrzymany: „Uruchom OCR”, gdy serwer nie jest zajęty; nieudany: przeczytaj komunikat, „Uruchom OCR ponownie”; nieuruchomiony (dokumenty sprzed 0.5): `baza-wiedzy ocr --pending` |
 | błąd | błąd trwały (uszkodzony, zabezpieczony hasłem, nieznane kodowanie, limit) albo błędy przejściowe we wszystkich próbach | komunikat na stronie mówi, który; popraw plik i wgraj go ponownie albo po usunięciu przyczyny „Przetwórz ponownie” |
 
 **Ponawianie**: tylko błędy przejściowe (baza, Redis, limity czasu), do `INGEST_MAX_ATTEMPTS` (3) razy, po 30 s, 60 s, 120 s… (najwyżej 600 s). Błędy trwałe nie są ponawiane.
@@ -236,6 +259,8 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 **LibreOffice (DOC)**: jedna konwersja naraz na kontener workera, każda najwyżej `LIBREOFFICE_TIMEOUT_SECONDS` (120 s) i `LIBREOFFICE_MEMORY_MB` (1 GB); parsowanie PDF też działa w procesie potomnym (`INGEST_CHILD_*`). Ani worker, ani te procesy nie mają dostępu do internetu (ADR-024).
 
 **Pamięć workera**: zmierzona przy 2 procesach 173 MiB w spoczynku, poniżej 0,5 GB pod obciążeniem. Reguła: `WORKER_MEMORY_LIMIT` ≥ 1,4 GB + 0,6 GB × `WORKER_PROCESSES` (domyślnie 2 procesy, 2 GB). Więcej procesów niż rdzeni CPU nie pomaga.
+
+**OCR** działa w usłudze `ocr-worker` (ten sam obraz co `worker`, `dramatiq … --queues ocr --processes 1 --threads 1`), zwykły `worker` obsługuje tylko kolejkę `ingestion`: wgranie jest przetwarzane od razu nawet w trakcie długiego OCR. Jeden dokument OCR naraz, w środku `OCR_JOBS` procesów Tesseracta, limity kontenera `OCR_MEMORY_LIMIT` (2g) i `OCR_CPUS` (2); tylko sieć wewnętrzna. Małe skany (do `OCR_AUTO_MAX_PAGES`, 30 stron) startują same, najkrótsze najpierw; większe czekają na „Uruchom OCR”. Jego wiersze logu: `ocr: start version=… pages=…`, `ocr: done version=… pages=… recognised=… left=… seconds=…`, `ocr: failed version=… reason=timeout`; nigdy tekst. Zatrzymanie `ocr-worker` (`docker compose stop ocr-worker`) tylko wstrzymuje OCR: dokumenty w kolejce czekają, wgrywanie działa; przy następnym starcie wiadomości utracone w międzyczasie są wysyłane ponownie.
 
 **Polecenia** (w kontenerze `app`: `docker compose exec app baza-wiedzy …`):
 
@@ -245,7 +270,10 @@ Co działa gdzie: aplikacja webowa (`app`) zapisuje wgrane pliki i je kolejkuje;
 | `reprocess --failed` | każda wersja ze statusem „błąd” | jak wyżej, z liczbą |
 | `reprocess --stuck` | zawieszone i oczekujące wersje z powrotem do kolejki (bez audytu) | `Stuck versions: 0 queued again, 0 failed (no attempts left); waiting versions queued again: 0.` |
 | `events redeliver` | dostarcz niedostarczone zdarzenia, usuń stare dostarczone | `Events delivered: 0, failed: 0, still undelivered: 0; old delivered entries removed: 0.` |
-| `storage-cleanup [--older-than GODZINY]` | usuń pliki przerwanych wgrań | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` |
+| `ocr --pending [--max-pages N]` | uruchom OCR każdej wersji „wymaga OCR” nigdy nieuruchomionej albo wstrzymanej (na przykład dokumentów sprzed 0.5), z `--max-pages` tylko do N zeskanowanych stron; audyt `document.ocr_request` (`source: cli`); po aktualizacji nie ma automatycznej fali | `Queued for OCR: 3; nothing to do: 0.` oraz `Left out (more scanned pages than --max-pages 30): 1.` |
+| `ocr <ID dokumentu lub wersji> …` | uruchom OCR tych dokumentów (wstrzymanych, nieudanych, nieuruchomionych) | `Queued for OCR: 1; nothing to do: 0.` |
+| `ocr <ID> … --ignore-page-limit` | uruchom OCR dokumentów „OCR pominięty (za dużo stron)” (więcej niż `OCR_MAX_PAGES` zeskanowanych stron); ta próba ignoruje limit (nadal obowiązuje `OCR_TIMEOUT_SECONDS`: zwiększ go dla bardzo długich dokumentów). Celowo bez przycisku w UI; audyt `document.ocr_request` z `source: cli_override` | `Queued for OCR: 1; nothing to do: 0.` |
+| `storage-cleanup [--older-than HOURS]` | usuń pliki przerwanych wgrań (`.incoming/`, starsze niż HOURS, domyślnie 1) i przeterminowane partie wgrań z możliwymi duplikatami bez decyzji (`.batches/`, starsze niż `UPLOAD_BATCH_HOURS`, 24) | `Removed 0 orphaned incoming file(s) from /data/storage/.incoming.` oraz `Removed 0 expired upload batch(es) from /data/storage/.batches (older than UPLOAD_BATCH_HOURS=24).` |
 | `search-check` | porównaj indeks wyszukiwania z wyodrębnionym tekstem (tylko identyfikatory; kod 1 przy różnicy) | `Extracted versions: 26` … `Search index OK.` |
 | `reindex-search --missing` | zaindeksuj to, co zgłasza `search-check`, usuń osierocone wiersze | `Indexed 1 version(s); removed 0 orphaned; took 0.2 s.` |
 | `reindex-search --all` | przebuduj cały indeks (po zmianie słownika albo konfiguracji) | ta sama linia z sumą |
@@ -268,17 +296,18 @@ Wszystko idzie przez `Makefile` (z Git Basha na Windows lub z powłoki Linuksa).
 | `make lint-workflows` | Tylko sprawdzenie workflowów przez actionlint |
 | `make fmt` | Formatuje i naprawia automatycznie przez `ruff` |
 | `make test` | Uruchamia testy `pytest` (testy integracyjne i wzorcowe wyszukiwania są pomijane) |
-| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 4 × `ok`, sprawdza izolację sieci (worker sięga do db i redis, do niczego poza nimi), sprawdza, że obraz app nie zawiera bs4 ani soupsieve, a worker ma soupsieve >= 4.0, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Oczekiwany koniec: `==> Smoke test passed: /ready 4 x ok, network isolation, login, admin panel, TXT and PDF processed to "ready", publish and download, no search phrase in logs, logout` (około 1–2 minut przy zbuforowanych warstwach) |
-| `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (Faza 2): `… passed, 2 skipped`. Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
+| `make smoke` | Test dymny produkcyjnego pliku Compose: buduje cztery obrazy (`linux/amd64`), uruchamia `docker-compose.yml` jako projekt `baza-wiedzy-smoke` na portach 18080/18443 z wygenerowanymi sekretami, migruje, wymaga `/ready` = 5 × `ok` oraz `worker` i `ocr-worker` w stanie `healthy` (i `/ready` 503 przy zatrzymanym `ocr-worker`), sprawdza izolację sieci (`worker` i `ocr-worker` sięgają do db i redis, do niczego poza nimi), sprawdza, że obraz app nie zawiera bs4 ani soupsieve, a worker ma soupsieve >= 4.0, potem tworzy admina awaryjnego `smoke-admin` z wygenerowanym hasłem i sprawdza przez proxy: panel admina bez sesji 303, złe hasło 401, logowanie 303, `/admin/users` i `/admin/audit` 200, wgranie małego PDF z tekstem i pliku TXT o nazwie `smoke Łódź.txt` (po 204) i oczekiwanie, aż worker przetworzy oba („gotowe”, najwyżej 2 minuty każdy), strony części 200, publikację TXT 303, jego pobranie (te same bajty; `application/octet-stream`, `nosniff`, `attachment` z nazwą ASCII i UTF-8, `CSP sandbox`), potem unikalną frazę w parametrach zapytania, `Referer` i `HX-Current-URL`, która nie może się pojawić w żadnym logu proxy, app, worker i db (a log proxy nie może zawierać nazwy pliku ani tokenu CSRF), wylogowanie 303. Na koniec sprząta wszystko. Dalej: skan rozpoznany w `ocr-worker` (znajdowany, z etykietą „tekst z OCR”, bez tekstu w logach), skan wstrzymany i „Uruchom OCR”, formularz wielu plików bez JavaScriptu i limity wgrywania. Oczekiwany koniec: `==> Smoke test passed: /ready 5 x ok, worker healthchecks, network isolation, login, admin panel, TXT, PDF and scan (OCR in ocr-worker; on hold + "Uruchom OCR") processed to "ready", multi-file form without JavaScript and upload limits, publish, search and download, no search phrase in logs, logout` (około 2 minut przy zbuforowanych warstwach) |
+| `make test-db` | Uruchamia testy integracyjne i wzorcowe wyszukiwania w Dockerze: jednorazowy PostgreSQL z `docker/db` na tmpfs i jednorazowy kontener testowy w prywatnej sieci Compose (`docker-compose.test.yml`); żaden port nie jest publikowany. Kontener testowy to etap `test` obrazu workera (LibreOffice, Tesseract; ADR-023) i uruchamia znaczniki `integration` i `tools`. Oczekiwany koniec (0.5.0): `326 passed` (nic pominiętego: Tesseract i LibreOffice są w obrazie; około 4 minut). Pierwsze uruchomienie buduje obraz testowy (około 2 minut) i pobiera pakiety Pythona do wolumenu Dockera |
 | `make docs-check` | Sprawdza spójność dokumentacji angielskiej i polskiej |
 | `make messages` | Wyciąga teksty interfejsu do `messages.pot` i aktualizuje polski katalog `messages.po`; potem uzupełnij nowe pozycje `msgstr` |
 | `make up` / `make down` / `make logs` / `make build` | Uruchamia, zatrzymuje, pokazuje logi i buduje stos Dockera (wymaga Dockera) |
-| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0002, ingestion_0001, search_0001).` |
+| `make migrate` | Stosuje migracje bazy w stosie dev (`baza-wiedzy migrate` w jednorazowym kontenerze `app`). Oczekiwany wynik: `Database schema is up to date (heads: core_0003, documents_0006, ingestion_0002, search_0003).` |
 | `make revision branch=<gałąź> m="tekst"` | Tworzy pusty plik migracji w gałęzi rdzenia lub modułu (`core`, `search`, ...), na hoście, bez bazy |
 | `make shell` | Powłoka w kontenerze `app` (wymaga Dockera) |
 | `make probki DIR=<katalog>` | Zapisuje do katalogu syntetyczne pliki do ręcznego testu każdego formatu i przypadku błędu (TXT cp1250 i cp852, DOCX, DOC, PDF z tekstem, PDF skan, PDF zaszyfrowany, EML i MSG z załącznikami, pliki uszkodzone) z plikiem `OCZEKIWANE.txt` opisującym oczekiwany wynik każdego; podkatalog `wyszukiwanie/` zawiera korpus wyszukiwania (26 dokumentów polskich i angielskich, tych samych co w testach golden wyszukiwania, `tests/fixtures/search_corpus.py`), a `OCZEKIWANE-wyszukiwanie.txt` podaje ich docelowy stan (publikacja, szkic, archiwum) i zapytania z oczekiwanymi dokumentami; działa w obrazie testowym (LibreOffice dla DOC) |
 | `make perf N=20000` | Wydajność wyszukiwania na N syntetycznych dokumentach (ręcznie, nigdy w CI; około 10 minut dla 20 000, godzina dla 100 000): jednorazowy PostgreSQL z ustawieniami produkcyjnymi (`docker-compose.perf.yml`), pełne indeksowanie prawdziwym indekserem, rozmiary, p50/p95 zapytań, `EXPLAIN (ANALYZE, BUFFERS)`, 10 równoczesnych wyszukiwań, ocena słownika bez polskich znaków. Wyniki w `perf-results/perf-N.md` i `.json` (ignorowane przez git); aktualne liczby są w [search.md](search.md#cel-wydajnościowy) |
-| `make relevance DIR=<dokumenty> QUERIES=<plik> AS=<użytkownik> [TOP=5] [ONLY=1]` | Ocena trafności na własnych dokumentach i zapytaniach na **lokalnym stosie deweloperskim** (najpierw `make up`; użytkownik musi istnieć i móc wgrywać). Wgrywa każdy plik z DIR jako szkic tego użytkownika (ponownie tylko nowe), czeka na przetworzenie, wykonuje każde zapytanie z pliku jako ten użytkownik i drukuje pierwsze TOP wyników z wynikiem, tytułem, nazwą pliku, miejscem trafienia i fragmentem; `ONLY=1` ukrywa inne dokumenty widoczne dla użytkownika. Plik zapytań: UTF-8, jedno zapytanie w linii, komentarze `#`, opcjonalnie `zapytanie => fragment oczekiwanego tytułu albo nazwy pliku` (OK/MISSING). **Repozytorium jest publiczne: DIR i QUERIES muszą być poza nim** (inaczej odmowa; typowe nazwy są w `.gitignore`); nigdy nie commituj, nie wklejaj ani nie załączaj wyniku. Szczegóły: [search.md](search.md#testy-wzorcowe-golden) |
+| `make perf-ocr PAGES=50 [BEST=1]` | Szybkość, pamięć i jakość OCR na syntetycznych skanach (ręcznie, nigdy w CI; około 2 minut na wariant dla 50 stron): obraz testowy workera z limitami `ocr-worker` (`OCR_CPUS`, `OCR_MEMORY_LIMIT`, `OCR_JOBS`; można je nadpisać w wierszu polecenia), produkcyjne polecenie OCR; wypisuje strony na minutę dla jednego długiego dokumentu, p50/p95 na dokument 1–5 stron, trafność słów dla każdej wady, największy proces i szczyt pamięci wszystkich procesów OCR. `BEST=1` pobiera też modele tessdata_best 4.1.0 (pol, eng, osd) do `.perf-tessdata/` (ignorowany przez git, wypisuje ich SHA-256) i uruchamia to samo z nimi; obraz zostaje przy modelach Debiana „fast”. Wyniki: `perf-results/ocr-<data>.txt` (ignorowany przez git) |
+| `make relevance DIR=<dokumenty> QUERIES=<plik> AS=<użytkownik> [TOP=5] [ONLY=1] [OCR=1]` | Ocena trafności na własnych dokumentach i zapytaniach na **lokalnym stosie deweloperskim** (najpierw `make up`; użytkownik musi istnieć i móc wgrywać). Wgrywa każdy plik z DIR jako szkic tego użytkownika (ponownie tylko nowe), czeka na przetworzenie, wykonuje każde zapytanie z pliku jako ten użytkownik i drukuje pierwsze TOP wyników z wynikiem, tytułem, nazwą pliku, miejscem trafienia i fragmentem; `ONLY=1` ukrywa inne dokumenty widoczne dla użytkownika. Plik zapytań: UTF-8, jedno zapytanie w linii, komentarze `#`, opcjonalnie `zapytanie => fragment oczekiwanego tytułu albo nazwy pliku` (OK/MISSING). **Repozytorium jest publiczne: DIR i QUERIES muszą być poza nim** (inaczej odmowa; typowe nazwy są w `.gitignore`); nigdy nie commituj, nie wklejaj ani nie załączaj wyniku. Szczegóły: [search.md](search.md#testy-wzorcowe-golden); czeka na OCR skanów, oznacza trafienia w tekście z OCR „(OCR)”, a `OCR=1` uruchamia duże skany wstrzymane |
 | `make seed-samples` | Zarezerwowane na ładowanie syntetycznych dokumentów przykładowych (jeszcze niedostępne) |
 
 Jeśli `make` jest niedostępny, uruchom te same narzędzia przez `uv run`, na przykład `uv run pytest`.
@@ -292,7 +321,7 @@ Zależności: wersje są przypięte w `uv.lock`, a rozwiązywane są tylko wydan
 
 Alert bezpieczeństwa dla paczki Pythona, której Dependabot nie może podnieść z powodu `exclude-newer`: (1) oceń ekspozycję (czy podatny kod jest osiągalny w tej aplikacji? zapisz wniosek, najlepiej jako test); (2) odblokuj tylko tę paczkę: dodaj ją do `exclude-newer-package` w `[tool.uv]` w `pyproject.toml` z datą tuż po wydaniu z poprawką, potem `uv lock --upgrade-package <nazwa>`; (3) sprawdź `git diff uv.lock`: zmienić się może tylko ta paczka (i, jeśli nie da się inaczej, jej bezpośrednie zależności); (4) wpis w `### Security` w `[Unreleased]` obu dzienników zmian i linia w ADR-015; (5) `make lint test test-db docs-check smoke`; (6) usuń wyjątek przy najbliższym przeglądzie miesięcznym. Przykład: alert Dependabota #1 (`opentelemetry-api` 1.45.2) w ADR-015.
 
-Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną wartość (aplikacja odrzuca wartość zastępczą); pozostałe wartości domyślne wystarczą do rozwoju. Potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app` i `worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi czterema sprawdzeniami `ok`. Utwórz lokalnego admina poleceniem `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` i zaloguj się na `https://localhost/login`. W dev `app` i `worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker`.
+Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną wartość (aplikacja odrzuca wartość zastępczą); pozostałe wartości domyślne wystarczą do rozwoju. Potem `make build` i `make up`. `make up` buduje obrazy lokalnie (`docker-compose.dev.yml`), montuje `src/` w `app`, `worker` i `ocr-worker` i przeładowuje serwer WWW po zmianie. Otwórz `https://localhost`: certyfikat pochodzi z wewnętrznego CA Caddy, więc **przeglądarka pokaże ostrzeżenie o certyfikacie**; zaakceptuj je dla `localhost` (albo zaimportuj certyfikat główny: `docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt .`). Z wiersza poleceń użyj `curl -k https://localhost/`. `http://localhost` odpowiada `301` na `https://localhost/`. Na maszynie z małą ilością pamięci (na przykład WSL2, które domyślnie dostaje połowę RAM-u hosta) obniż limity w deweloperskim `.env`: `POSTGRES_MAX_CONNECTIONS=20`, `DB_MEMORY_LIMIT=1g`, `WORKER_MEMORY_LIMIT=1536m`, `APP_MEMORY_LIMIT=512m`; pamięć dostępną dla Dockera sprawdzisz przez `docker info --format '{{.MemTotal}}'`. Wartości domyślne są dobrane pod serwer. Po pierwszym `make up` uruchom `make migrate`; potem `curl -k https://localhost/ready` zwraca `"status":"ok"` ze wszystkimi pięcioma sprawdzeniami `ok`. Utwórz lokalnego admina poleceniem `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app baza-wiedzy create-admin bw-admin` i zaloguj się na `https://localhost/login`. W dev `app`, `worker` i `ocr-worker` poddają się po 3 nieudanych startach (`restart: on-failure:3`) zamiast restartować się w nieskończoność; `make logs` pokazuje przyczynę. Serwer WWW przeładowuje się po zmianie kodu, worker nie: po zmianie kodu zadań uruchom `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker ocr-worker`.
 
 ## Rozwiązywanie problemów
 
@@ -307,7 +336,9 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 | „błąd”: „Przetwarzanie trwało dłużej niż limit czasu.” dla DOC lub PDF | LibreOffice albo proces potomny PDF przekroczył `LIBREOFFICE_TIMEOUT_SECONDS` / `INGEST_CHILD_TIMEOUT_SECONDS` w każdej próbie (bardzo duży lub uszkodzony plik, przeciążony serwer) | `docker compose logs worker \| grep <id wersji>` (`IsolationTimeout`); jeśli plik jest prawidłowy, zwiększ limit w `.env`, `docker compose up -d worker`, potem „Przetwórz ponownie” |
 | „błąd”: „…zabezpieczony hasłem…” | PDF, DOC albo DOCX zabezpieczony hasłem | Wgraj kopię bez hasła; aplikacja nigdy nie pyta o hasła |
 | `baza-wiedzy events redeliver` zgłasza nieudane dostarczenia | Handler zdarzenia zgłasza wyjątek (klasa wyjątku w logu) | Popraw handler (błąd w kodzie: zgłoś go), uruchom polecenie ponownie; wpisy czekają do skutecznego dostarczenia |
-| `failed` z timeoutem na skanie | Bardzo duży lub słabej jakości skan | Zwiększ `OCR_TIMEOUT_SECONDS`, zeskanuj ponownie, przetwórz ponownie |
+| „OCR nieudany”: „OCR trwał dłużej niż limit czasu…” | Bardzo duży lub słabej jakości skan, wolny serwer | `docker compose logs ocr-worker` (`ocr: failed … reason=timeout`); zwiększ `OCR_TIMEOUT_SECONDS`, `docker compose up -d ocr-worker`, potem „Uruchom OCR ponownie” |
+| „OCR w kolejce” nie rusza dalej | `ocr-worker` nie działa albo Redis zgubił wiadomość | `docker compose ps ocr-worker`, `docker compose logs ocr-worker`; `docker compose restart ocr-worker` wysyła utracone wiadomości ponownie |
+| „OCR nieudany”: „OCR został przerwany…” | `ocr-worker` zabity w trakcie OCR (brak pamięci: `docker inspect <kontener ocr-worker> --format '{{.State.OOMKilled}}'`) | Zwiększ `OCR_MEMORY_LIMIT` albo zmniejsz `OCR_JOBS`, potem „Uruchom OCR ponownie” |
 | Użytkownicy AD widzą „Logowanie kontem firmowym jest chwilowo niedostępne” | Kontrolery domeny nieosiągalne, problem z certyfikatem albo odrzucone konto serwisowe (audyt `auth.ad_unavailable`, `reason`) | `docker compose logs app \| grep 'Active Directory'`; `docker compose exec app baza-wiedzy ad-check`; przy `tls`: `openssl s_client -connect <dc>:636 -CAfile secrets/ldap/ca.pem` i nazwa hosta w `LDAP_URI`. Admin awaryjny dalej działa |
 | `app` kończy się komunikatem `Active Directory configuration: ...` | `LDAP_ENABLED=true` przy niepełnej konfiguracji (brak pliku CA, adres `ldap://`, pusty bind DN) | Popraw zmienną wskazaną w komunikacie albo ustaw `LDAP_ENABLED=false` |
 | Jeden użytkownik AD nie może się zalogować, inni mogą | Złe hasło, konto wyłączone lub wygasłe w AD, nazwa zajęta przez konto lokalne, nazwa poza `LDAP_BASE_DN` | `docker compose exec app baza-wiedzy ad-check --user <nazwa> --password`; audyt `auth.login_failed` `reason`; `docker compose logs app` pod kątem `AD login refused` |
@@ -319,15 +350,15 @@ Lokalny stos: raz `cp .env.example .env` i ustaw `SECRET_KEY` na wygenerowaną w
 | „Zbyt wiele nieudanych prób” (HTTP 429) przy logowaniu | Blokada po nieudanych logowaniach dla nazwy i/lub adresu | Odczekaj `LOGIN_LOCKOUT_MINUTES` albo `docker compose exec app baza-wiedzy unlock-login --user <nazwa>` / `--ip <adres>` |
 | `docker compose up`: `Pool overlaps with other one on this address space` | `DOCKER_SUBNET` koliduje z inną siecią Dockera albo trasą | Wybierz inne `DOCKER_SUBNET` i `PROXY_IP` (Konfiguracja) |
 | Strona 403 „Żądanie odrzucone” | Strona otwarta długo, w międzyczasie zmiana `SECRET_KEY` albo nowa sesja, albo zablokowane żądanie z innej witryny | Odśwież stronę i powtórz czynność; powód jest w logu: `docker compose logs app \| grep 'CSRF check refused'` (`missing_token` przy każdym wysłaniu jednego formularza = błąd szablonu, zgłoś go) |
-| Wgranie kończy się komunikatem „Plik jest większy niż dozwolony rozmiar” (413) albo przeglądarka pokazuje błąd proxy przy dużych plikach | Plik większy niż `MAX_UPLOAD_MB` albo `MAX_REQUEST_MB` (proxy) nie większy od `MAX_UPLOAD_MB` | Zwiększ oba w `.env` (`MAX_REQUEST_MB` = `MAX_UPLOAD_MB` + 1), `docker compose up -d proxy app` |
+| Wgranie kończy się komunikatem „Plik jest większy niż dozwolony rozmiar” albo „Pliki są razem większe…” (413) albo stroną proxy „Za duże żądanie” | Plik większy niż `MAX_UPLOAD_MB`, pliki razem większe niż `UPLOAD_MAX_TOTAL_MB` albo `MAX_REQUEST_MB` (proxy) mniejszy | Wgraj w częściach albo zwiększ limity w `.env` (`MAX_REQUEST_MB` = `UPLOAD_MAX_TOTAL_MB` + 1), `docker compose up -d proxy app` |
 | W `/data/storage/.incoming` gromadzą się pliki | Przerwane wgrania (zamknięta przeglądarka, restart aplikacji) | Nieszkodliwe; usuwane po godzinie przy następnym wgraniu albo od razu: `docker compose exec app baza-wiedzy storage-cleanup` (oczekiwane: `Removed N orphaned incoming file(s) ...`) |
 | Aplikacja nie startuje: `module ... requires ...` | `ENABLED_MODULES` zawiera moduł bez modułu, od którego zależy | Dodaj wymagany moduł do `ENABLED_MODULES` w `.env` albo usuń moduł zależny |
 
 ## Uwagi bezpieczeństwa dla operatorów
 
 - Wystawione są tylko porty 80/443. Baza i Redis nie są osiągalne z sieci; Redis wymaga też hasła (`REDIS_PASSWORD`).
-- `worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
-- Kontenery działają bez roota: `app` i `worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
+- `worker`, `ocr-worker`, `db` i `redis` są wyłącznie w wewnętrznej sieci Dockera `backend` (bez drogi do internetu, bez rozwiązywania publicznych nazw); `app` jest w niej i w `default` (dostęp z proxy, wychodzące LDAPS do Active Directory). Healthchecki działają wewnątrz kontenerów i zmiana ich nie dotyczy; `scripts/offline_bundle.sh` wymienia tylko obrazy i nie wymaga zmian; przyszły `update.sh` (Faza 6) uruchamia `docker compose`, który tworzy albo aktualizuje obie sieci. Sprawdzenie: `make smoke` („Network isolation”) albo na serwerze `docker compose exec worker python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"` musi się skończyć `OSError` (sieć nieosiągalna).
+- Kontenery działają bez roota: `app`, `worker` i `ocr-worker` jako uid 10001, `proxy` jako uid 10002 (nasłuch 8080/8443 wewnątrz, bez capabilities), `db` i `redis` przechodzą na własnych użytkowników po starcie. `app`, `worker`, `ocr-worker` i `proxy` odrzucają wszystkie capabilities Linuksa; wszystkie usługi mają `no-new-privileges`.
 - Logi Dockera są rotowane: najwyżej 5 plików × 10 MB na kontener.
 - Logi nigdy nie zawierają wyszukiwanych fraz, treści dokumentów, nazw plików ani tematów maili (ADR-025): log proxy usuwa parametry zapytania, `Referer`, `HX-Current-URL`, cele przekierowań, `Content-Disposition` i `X-CSRF-Token`; log dostępu aplikacji usuwa parametry zapytania; błędy bazy są logowane tylko z typem i SQLSTATE. Żądanie wygląda więc w logu proxy jak `"uri":"/documents?[removed]"`. Jeśli dodajesz własne zbieranie logów (na przykład kolejne proxy przed tym), skonfiguruj to samo; `make smoke` to sprawdza. Przeglądarki zapisują adresy wyszukiwań we własnej historii; to jest poza serwerem.
 - `.env` i backupy zawierają sekrety i dane osobowe; ogranicz uprawnienia.

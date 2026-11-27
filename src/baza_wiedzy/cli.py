@@ -319,11 +319,18 @@ def _user_active(args: argparse.Namespace) -> int:
 
 def _storage_cleanup(args: argparse.Namespace) -> int:
     from baza_wiedzy.core.config import Settings
+    from baza_wiedzy.modules.documents.batches import BatchStore
     from baza_wiedzy.modules.documents.storage import LocalStorage
 
     settings = Settings()
     removed = LocalStorage(settings.storage_dir).cleanup_incoming(int(args.older_than * 3600))
     print(f"Removed {removed} orphaned incoming file(s) from {settings.storage_dir}/.incoming.")
+    # Upload results and files held as possible duplicates: UPLOAD_BATCH_HOURS (ADR-032).
+    batches = BatchStore(settings.storage_dir).cleanup(settings.upload_batch_hours * 3600)
+    print(
+        f"Removed {batches} expired upload batch(es) from {settings.storage_dir}/.batches "
+        f"(older than UPLOAD_BATCH_HOURS={settings.upload_batch_hours})."
+    )
     return 0
 
 
@@ -390,6 +397,75 @@ def _reprocess(args: argparse.Namespace) -> int:
             queued += 1
         if targets:
             print(f"Queued for processing again: {queued}; skipped (busy): {busy}.")
+    finally:
+        rt.close()
+    return 0
+
+
+def _ocr(args: argparse.Namespace) -> int:
+    """`ocr --pending [--max-pages N]` and `ocr ID...` (Phase 4 stage B, ADR-033)."""
+    import uuid
+
+    from baza_wiedzy.core.audit.service import CLI_ACTOR
+    from baza_wiedzy.modules.documents.services import api as documents
+    from baza_wiedzy.modules.ingestion.services import api
+    from baza_wiedzy.modules.ingestion.tasks import enqueue_ocr
+
+    if bool(args.ids) == bool(args.pending):
+        raise _CliError("Give document or version IDs, or --pending (not both).")
+    if args.max_pages is not None and not args.pending:
+        raise _CliError("--max-pages works with --pending only.")
+    if args.ignore_page_limit and not args.ids:
+        raise _CliError("--ignore-page-limit works with document or version IDs only.")
+    rt = _cli_runtime()
+    try:
+        if not rt.settings.ocr_enabled:
+            raise _CliError("OCR is switched off (OCR_ENABLED=false).")
+        targets: list[uuid.UUID] = []
+        too_large = 0
+        with rt.session_factory() as db:
+            if args.pending:
+                for version_id, pages in documents.ocr_candidates(db):
+                    if pages is None:
+                        pages = api.count_scanned_pages(db, version_id)
+                    if args.max_pages is not None and pages > args.max_pages:
+                        too_large += 1
+                        continue
+                    targets.append(version_id)
+            for raw in args.ids:
+                try:
+                    key = uuid.UUID(raw)
+                except ValueError as exc:
+                    raise _CliError(f"Not an ID: {raw!r}.") from exc
+                if db.get(documents.Version, key) is not None:
+                    targets.append(key)
+                    continue
+                document = db.get(documents.Document, key)
+                if document is None or document.latest_version_id is None:
+                    raise _CliError(f"No document or version with ID {raw}.")
+                targets.append(document.latest_version_id)
+        queued = unchanged = 0
+        for version_id in dict.fromkeys(targets):
+            with rt.session_factory.begin() as db:
+                started = api.request_ocr(
+                    db,
+                    version_id,
+                    actor=CLI_ACTOR,
+                    ip=None,
+                    source="cli_override" if args.ignore_page_limit else "cli",
+                    ignore_page_limit=args.ignore_page_limit,
+                )
+            if started:
+                queued += 1
+            else:
+                unchanged += 1
+                hint = "" if args.ignore_page_limit else "; skipped ones need --ignore-page-limit"
+                print(f"  {version_id}: no scanned pages waiting for OCR (or already queued){hint}")
+        if queued:
+            enqueue_ocr(rt.settings, count=queued)
+        print(f"Queued for OCR: {queued}; nothing to do: {unchanged}.")
+        if too_large:
+            print(f"Left out (more scanned pages than --max-pages {args.max_pages}): {too_large}.")
     finally:
         rt.close()
     return 0
@@ -564,10 +640,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     user_active.set_defaults(handler=_user_active)
 
     cleanup = commands.add_parser(
-        "storage-cleanup", help="remove orphaned files of interrupted uploads from .incoming/"
+        "storage-cleanup",
+        help="remove orphaned files of interrupted uploads (.incoming/) and expired upload "
+        "batches with their undecided duplicates (.batches/)",
     )
     cleanup.add_argument(
-        "--older-than", type=float, default=1.0, metavar="HOURS", help="age limit (default 1)"
+        "--older-than",
+        type=float,
+        default=1.0,
+        metavar="HOURS",
+        help="age limit for .incoming/ (default 1; .batches/ uses UPLOAD_BATCH_HOURS)",
     )
     cleanup.set_defaults(handler=_storage_cleanup)
 
@@ -585,6 +667,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="versions processing longer than INGEST_STALE_MINUTES, and waiting ones (no audit)",
     )
     reprocess.set_defaults(handler=_reprocess)
+
+    ocr = commands.add_parser(
+        "ocr",
+        help="start OCR of scanned pages (audited): documents by ID, or every one still waiting",
+    )
+    ocr.add_argument(
+        "ids", nargs="*", metavar="ID", help="document ID (its latest version) or version ID"
+    )
+    ocr.add_argument(
+        "--pending",
+        action="store_true",
+        help='every version "wymaga OCR" never started or on hold (none, on_hold)',
+    )
+    ocr.add_argument(
+        "--max-pages",
+        type=int,
+        metavar="N",
+        help="with --pending: only versions with at most N scanned pages",
+    )
+    ocr.add_argument(
+        "--ignore-page-limit",
+        action="store_true",
+        help='with IDs: also documents "OCR pominięty" (more than OCR_MAX_PAGES scanned pages); '
+        "that attempt ignores the limit (audited, source cli_override)",
+    )
+    ocr.set_defaults(handler=_ocr)
 
     events = commands.add_parser("events", help="event outbox of the ingestion module")
     events_commands = events.add_subparsers(dest="events_command", metavar="ACTION", required=True)

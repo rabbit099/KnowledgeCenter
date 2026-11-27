@@ -7,6 +7,10 @@
 {% set done_messages = {
   "uploaded": _("The file was uploaded. Processing runs in the background."),
   "reprocess": _("The document was queued for processing again."),
+  "ocr_request": _("OCR was queued; it runs in the background."),
+  "ocr_cancel": _("OCR was stopped; you can start it again later."),
+  "ocr_unchanged": _("Nothing changed: the OCR state has changed meanwhile."),
+  "ocr_off": _("OCR is switched off on this server."),
   "publish": _("The document was published."),
   "unpublish": _("The document was unpublished; it is a draft again."),
   "archive": _("The document was archived."),
@@ -27,6 +31,7 @@
 {% endif %}
 <dl class="facts">
   <dt>{{ _("Status") }}</dt><dd>{{ state_badge(document.status) }}{% if document.published_at and document.status == "published" %} <span class="muted">{{ _("since %(when)s", when=document.published_at.astimezone(tz).strftime("%Y-%m-%d %H:%M")) }}</span>{% endif %}{% if document.archived_at and document.status == "archived" %} <span class="muted">{{ _("since %(when)s", when=document.archived_at.astimezone(tz).strftime("%Y-%m-%d %H:%M")) }}</span>{% endif %}</dd>
+  {% if version.ocr_applied %}<dt>{{ _("Text") }}</dt><dd><span class="badge badge-ocr">{{ _("text from OCR") }}</span> <span class="muted">{{ _("Recognised automatically from scanned pages: words and especially numbers (tax numbers, account and phone numbers, dates) may contain errors. Check them in the original before relying on them.") }}</span></dd>{% endif %}
   <dt>{{ _("File") }}</dt><dd>{{ version.original_filename }} ({{ version.kind|upper }}, {{ version.size_bytes|filesize }})</dd>
   <dt>SHA-256</dt><dd><code>{{ version.sha256 }}</code></dd>
   <dt>{{ _("Uploaded") }}</dt><dd>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</dd>

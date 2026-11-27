@@ -28,6 +28,15 @@ services:
       - ./src:/src:ro
       - ./alembic:/opt/app/alembic:ro
 
+  ocr-worker:
+    image: baza-wiedzy-worker:dev
+    restart: on-failure:3
+    environment:
+      PYTHONPATH: /src
+    volumes:
+      - ./src:/src:ro
+      - ./alembic:/opt/app/alembic:ro
+
   db:
     image: baza-wiedzy-db:dev
     build: docker/db

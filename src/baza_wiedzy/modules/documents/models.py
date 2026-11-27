@@ -39,6 +39,16 @@ PENDING, PROCESSING, DONE, FAILED, NEEDS_OCR = (
     "needs_ocr",
 )
 PROCESSING_STATUSES = (PENDING, PROCESSING, DONE, FAILED, NEEDS_OCR)
+# OCR of the scanned pages of a version (ADR-033).
+OCR_NONE, OCR_QUEUED, OCR_RUNNING, OCR_DONE, OCR_FAILED, OCR_ON_HOLD, OCR_SKIPPED = (
+    "none",
+    "queued",
+    "running",
+    "done",
+    "failed",
+    "on_hold",
+    "skipped",
+)
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -105,6 +115,16 @@ class Version(Base):
         UniqueConstraint("document_id", "version_no"),
         Index("ix_doc_versions_sha256", "sha256"),
         Index("ix_doc_versions_processing_status", "processing_status"),
+        CheckConstraint(
+            "ocr_status IN ('none', 'queued', 'running', 'done', 'failed', 'on_hold', 'skipped')",
+            name="ocr_status",
+        ),
+        Index(
+            "ix_doc_versions_ocr_queue",
+            "ocr_pages",
+            "ocr_requested_at",
+            postgresql_where=text("ocr_status = 'queued'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -131,6 +151,17 @@ class Version(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     page_count: Mapped[int | None] = mapped_column(Integer)
     ocr_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # OCR of the scanned pages (Phase 4 stage B, ADR-033): state, pages to recognise, queue
+    # order, start of the running attempt, readable message of the last failure.
+    ocr_status: Mapped[str] = mapped_column(Text, nullable=False, server_default=OCR_NONE)
+    ocr_pages: Mapped[int | None] = mapped_column(Integer)
+    ocr_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ocr_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ocr_error: Mapped[str | None] = mapped_column(Text)
+    # The next OCR attempt ignores OCR_MAX_PAGES (CLI --ignore-page-limit, audited).
+    ocr_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
 
 class EmailMetadata(Base):

@@ -24,7 +24,8 @@ from sqlalchemy import select
 from baza_wiedzy.core.config import Settings
 from baza_wiedzy.core.db.models import AdGroupRoleMap, Role
 from baza_wiedzy.main import create_app
-from baza_wiedzy.modules.documents.models import Document
+from baza_wiedzy.modules.documents.models import Document, Version
+from baza_wiedzy.modules.ingestion import routes as ingestion_routes
 from baza_wiedzy.modules.ingestion import tasks
 from route_helpers import protected_endpoints
 from web_helpers import PASSWORD, client, csrf, login, make_user
@@ -119,6 +120,7 @@ class Case:
 @pytest.fixture
 def app(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setattr(tasks, "enqueue", lambda *a, **k: None)
+    monkeypatch.setattr(ingestion_routes, "enqueue_ocr", lambda *a, **k: None)
     return create_app(settings.model_copy(update={"db_pool_size": 3}), setup_logging=False)
 
 
@@ -139,15 +141,45 @@ def cases(app: FastAPI) -> dict[str, Callable[[], Case]]:
         db.flush()
         role_id, doomed_id, mapping_id = role.id, doomed.id, mapping.id
     up = login(app, publisher)
+    text = f"tekst testowy {tag}".encode()  # unique: earlier cases publish their documents
     response = up.post(
         "/documents/upload",
-        files={"file": ("a.txt", b"tekst testowy", "text/plain")},
+        files={"file": ("a.txt", text, "text/plain")},
         headers={"HX-Request": "true", "X-CSRF-Token": csrf(up, "/documents/upload")},
         follow_redirects=False,
     )
     doc_id = uuid.UUID(response.headers["hx-redirect"].split("/")[2].split("?")[0])
     with app.state.session_factory() as db:
         version_id = db.scalar(select(Document.latest_version_id).where(Document.id == doc_id))
+    # Two files, the first identical to a.txt: held as a possible duplicate (row 0).
+    batch = up.post(
+        "/documents/upload",
+        files=[
+            ("files", ("kopia.txt", text, "text/plain")),
+            ("files", ("nowy.txt", uuid.uuid4().hex.encode(), "text/plain")),
+        ],
+        headers={"HX-Request": "true", "X-CSRF-Token": csrf(up, "/documents/upload")},
+        follow_redirects=False,
+    )
+    batch_id = batch.headers["hx-redirect"].split("batch=")[1]
+    # Two scanned versions waiting for OCR: one on hold ("Uruchom OCR"), one queued ("Anuluj").
+    ocr_docs: dict[str, uuid.UUID] = {}
+    for state in ("on_hold", "queued"):
+        response = up.post(
+            "/documents/upload",
+            files={"file": (f"{state}.txt", f"{state} {tag}".encode(), "text/plain")},
+            headers={"HX-Request": "true", "X-CSRF-Token": csrf(up, "/documents/upload")},
+            follow_redirects=False,
+        )
+        ocr_doc = uuid.UUID(response.headers["hx-redirect"].split("/")[2].split("?")[0])
+        with app.state.session_factory.begin() as db:
+            document = db.get(Document, ocr_doc)
+            assert document is not None
+            version = db.get(Version, document.latest_version_id)
+            assert version is not None
+            version.processing_status, version.ocr_status, version.ocr_pages = "needs_ocr", state, 2
+            ocr_docs[state] = version.id
+        ocr_docs[f"{state}-doc"] = ocr_doc
     app.state.publisher = publisher
     return {
         "/login": lambda: Case(
@@ -188,6 +220,17 @@ def cases(app: FastAPI) -> dict[str, Callable[[], Case]]:
         ),
         "/admin/audit/export": lambda: Case("/admin/audit", "/admin/audit/export"),
         "/documents/upload": lambda: Case("/documents/upload", "/documents/upload"),
+        "/documents/upload/batches/{batch_id}/{row}": lambda: Case(
+            f"/documents?batch={batch_id}", f"/documents/upload/batches/{batch_id}/0"
+        ),
+        "/ingestion/versions/{version_id}/ocr": lambda: Case(
+            f"/documents/{ocr_docs['on_hold-doc']}",
+            f"/ingestion/versions/{ocr_docs['on_hold']}/ocr",
+        ),
+        "/ingestion/versions/{version_id}/ocr/cancel": lambda: Case(
+            f"/documents/{ocr_docs['queued-doc']}",
+            f"/ingestion/versions/{ocr_docs['queued']}/ocr/cancel",
+        ),
         "/ingestion/versions/{version_id}/reprocess": lambda: Case(
             f"/ingestion/versions/{version_id}/parts", f"/ingestion/versions/{version_id}/reprocess"
         ),
@@ -217,7 +260,10 @@ ROUTES = [
     "/admin/ad-groups/{mapping_id}/delete",
     "/admin/audit/export",
     "/documents/upload",
+    "/documents/upload/batches/{batch_id}/{row}",
     "/ingestion/versions/{version_id}/reprocess",
+    "/ingestion/versions/{version_id}/ocr",
+    "/ingestion/versions/{version_id}/ocr/cancel",
     "/documents/{document_id}/lifecycle",
     "/logout",
 ]
@@ -232,7 +278,10 @@ def test_form_submits_with_the_token_it_renders(
         c = client(app)
     elif route in (
         "/documents/upload",
+        "/documents/upload/batches/{batch_id}/{row}",
         "/ingestion/versions/{version_id}/reprocess",
+        "/ingestion/versions/{version_id}/ocr",
+        "/ingestion/versions/{version_id}/ocr/cancel",
         "/documents/{document_id}/lifecycle",
     ):
         c = login(app, app.state.publisher)

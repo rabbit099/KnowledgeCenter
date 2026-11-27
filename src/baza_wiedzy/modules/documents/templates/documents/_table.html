@@ -1,4 +1,4 @@
-{% from "documents/_macros.html" import status_badge, state_badge %}
+{% from "documents/_macros.html" import status_badge, state_badge, ocr_badge %}
 {% from "admin/_macros.html" import pagination %}
 <div{% if busy %} hx-get="/documents?{{ dict(filters, page=result.page)|urlencode }}" hx-trigger="every 5s" hx-target="#documents-table" hx-swap="innerHTML"{% endif %}>
 <table class="grid">
@@ -13,7 +13,7 @@
       <td>{{ version.size_bytes|filesize }}</td>
       <td>{{ version.uploaded_at.astimezone(tz).strftime("%Y-%m-%d %H:%M") }}</td>
       <td>{{ state_badge(document.status) }}</td>
-      <td>{{ status_badge(version.processing_status) }}</td>
+      <td>{{ status_badge(version.processing_status) }}{{ ocr_badge(version) }}</td>
     </tr>
   {% else %}
     <tr><td colspan="{{ 8 if show_authors else 7 }}">{{ _("No documents yet.") }}</td></tr>

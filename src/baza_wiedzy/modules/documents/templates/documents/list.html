@@ -2,7 +2,8 @@
 {% block title %}{{ _("My documents") }} · {{ app_name }}{% endblock %}
 {% block content %}
 <h1>{{ _("My documents") }}</h1>
-{% if has_perm("documents.upload") %}<p><a class="button" href="/documents/upload">{{ _("Upload a document") }}</a></p>{% endif %}
+{% if has_perm("documents.upload") %}<p><a class="button" href="/documents/upload">{{ _("Upload documents") }}</a></p>{% endif %}
+{% if batch %}{% include "documents/_batch.html" %}{% endif %}
 <form method="get" action="/documents" class="filters" hx-get="/documents" hx-target="#documents-table" hx-push-url="true" hx-trigger="input changed delay:300ms from:input[name=q], change, submit">
   <label>{{ _("Search in titles and file names") }} <input type="search" name="q" value="{{ filters.q }}" maxlength="100"></label>
   {% if has_perm("documents.read_drafts") %}

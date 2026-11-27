@@ -1,10 +1,45 @@
 # Dziennik zmian
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 Format oparty na [Keep a Changelog](https://keepachangelog.com/pl/). Wersjonowanie: [SemVer](https://semver.org/lang/pl/).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-11-27
+
+Faza 4: OCR zeskanowanych PDF-ów i wgrywanie wielu plików. Zalecany serwer: 4 vCPU, 8 GB pamięci.
+
+### Dodano
+- **OCR** zeskanowanych stron PDF po polsku i angielsku (OCRmyPDF + Tesseract, modele Debiana „fast”), także skanów w załącznikach maili (EML, MSG). Rozpoznawane są tylko strony bez warstwy tekstu; zachowywany jest tylko tekst (bez pochodnego PDF-a; „Pobierz oryginał” zwraca oryginał). Strony położone bokiem są obracane (próg `OCR_ROTATE_THRESHOLD` 5); `--deskew` zostaje wyłączony (ADR-031, ADR-034).
+- **Nowa usługa `ocr-worker`** (obraz `worker`, kolejka `ocr`, jeden dokument naraz, własne limity `OCR_MEMORY_LIMIT` 2g i `OCR_CPUS` 2, tylko sieć wewnętrzna, healthcheck): OCR nigdy nie spowalnia wgrywania. Skany do `OCR_AUTO_MAX_PAGES` (30) zeskanowanych stron są rozpoznawane automatycznie, najkrótsze najpierw (kolejność z bazy, `FOR UPDATE SKIP LOCKED`); większe czekają jako „OCR wstrzymany (duży dokument)” na „Uruchom OCR”; powyżej `OCR_MAX_PAGES` (200) „OCR pominięty (za dużo stron)”. „Anuluj OCR” zatrzymuje OCR w kolejce lub w toku; „OCR nieudany” pokazuje przyczynę i „Uruchom OCR ponownie”; przerwany OCR jest odzyskiwany przy następnym starcie (ADR-033). Stany OCR na stronie dokumentu i w „Moje dokumenty”; adnotacje „OCR nie znalazł żadnego tekstu…” / „…bardzo mało tekstu (N znaków)” z polskimi formami liczby mnogiej.
+- **Wgrywanie wielu plików** w jednym formularzu („Wgraj dokumenty”, przeciąganie, także bez JavaScriptu): wynik każdego pliku i podsumowanie w „Moje dokumenty”; odrzucony plik nigdy nie zatrzymuje pozostałych (ADR-032). Ustawienia `UPLOAD_MAX_FILES` (50), `UPLOAD_MAX_TOTAL_MB` (500), `UPLOAD_BATCH_HOURS` (24). Proxy odpowiada na za duże żądanie czytelną polską stroną.
+- **Polecenia**: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID> …` i `baza-wiedzy ocr <ID> --ignore-page-limit` (dokumenty „OCR pominięty”; celowo bez przycisku); wszystkie audytowane jako `document.ocr_request` (`source`: `button`, `cli`, `cli_override`), anulowanie jako `document.ocr_cancel`.
+- **Wyszukiwanie**: trafienia w tekście z OCR mają w wynikach etykietę „tekst z OCR” (dla każdej roli, także Czytelnika) i ranking × 0,9 poniżej tych samych słów w warstwie tekstu; strona dokumentu ostrzega, że numery w tekście z OCR mogą być źle odczytane.
+- **`/ready` sprawdza osobno `ocr-worker`** (`"ocr-worker":"ok"`, tylko przy `OCR_ENABLED=true`): zatrzymany `ocr-worker` nie chowa się już za działającym `worker`. `worker` i `ocr-worker` mają healthcheck Dockera na własnym heartbeacie (`docker compose ps` pokazuje `healthy`).
+- **Pomiary i narzędzia**: `make perf-ocr PAGES=50 [BEST=1]` (strony na minutę, p95 na dokument, szczytowa pamięć, fast kontra `tessdata_best` tylko jako wariant); `make relevance … [OCR=1]` czeka na OCR, oznacza trafienia „(OCR)” i uruchamia skany wstrzymane; złote testy wyszukiwania na 11 syntetycznych skanach z wadami; `make probki` ma skan 25-stronicowy i próbkę „bardzo mało tekstu”. Wyniki w kontenerze 2 CPU / 2 GB: 60 stron na minutę, p95 5,4 s dla dokumentów 1–5 stron, szczyt pamięci 468 MB ([ingestion-and-ocr.md](ingestion-and-ocr.md#ocr)).
+- Ustawienia `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS` (1800 s na dokument), `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD`, `OCR_MEMORY_LIMIT`, `OCR_CPUS` (wszystkie w `.env.example`); budżet pamięci i rdzeni dla 8 GB / 4 vCPU w deployment-operations.
+
+### Zmieniono
+- Domyślne `MAX_REQUEST_MB` 51 → 501 (limit żądania w proxy dla formularza wielu plików). Trzymaj `UPLOAD_MAX_TOTAL_MB` + 1; istniejący `.env` z 51 ogranicza jeden formularz do 50 MB łącznie.
+- Ghostscript usunięty z obrazu workera (niepotrzebny przy rasteryzacji pypdfium i wyniku tylko tekstowym; AGPL; ADR-031).
+- Plik identyczny z dokumentem, który widzisz, nie jest już wgrywany z ostrzeżeniem: czeka na „Wgraj mimo to” / „Pomiń” (dla każdego pliku, przez `UPLOAD_BATCH_HOURS`, potem jest usuwany). Duplikaty są liczone tylko wśród dokumentów, które wgrywający może widzieć.
+- Zwykły `worker` obsługuje tylko kolejkę `ingestion` i nigdy nie uruchamia OCR.
+- `storage-cleanup` usuwa też przeterminowane partie wgrań (`/data/storage/.batches/`).
+- Otwarcie `/logout` w pasku adresu prowadzi na stronę logowania (303) zamiast JSON-a „Method Not Allowed”; wylogowanie to nadal przycisk (POST z CSRF).
+- `scripts/offline_bundle.sh` wypisuje obraz workera raz (używają go `worker` i `ocr-worker`); opisane odwołania do `redis` i `clamav` znów zgadzają się z `docker-compose.yml`.
+
+### Migracje
+- `documents_0005` (`doc_versions.ocr_status`, `ocr_pages`, `ocr_requested_at`, `ocr_started_at`, `ocr_error`; indeks częściowy dla OCR w kolejce), `documents_0006` (`doc_versions.ocr_override`), `ingestion_0002` (`ing_parts.ocr_applied`), `search_0003` (`srch_parts.ocr_applied`). Głowy: `core_0003`, `documents_0006`, `ingestion_0002`, `search_0003`.
+- Wszystkie dodają kolumny z wartościami domyślnymi (tylko expand): 0.4.x dalej działa na nowym schemacie, więc wycofanie nie wymaga odtwarzania kopii. **Bez reindeksacji** po aktualizacji z 0.4.x (przed 0.5.0 nie było tekstu z OCR; `search-check` i tak musi wypisać `Search index OK.`).
+
+### Uwagi do aktualizacji
+- **Nowa usługa `ocr-worker`** w `docker-compose.yml`: weź nowe `docker-compose.yml` i `.env.example` z wydania; `docker compose up -d` ją uruchamia (ten sam obraz co `worker`, nic więcej do pobrania). Dopisz nowe zmienne do `.env` albo zostaw wartości domyślne; ustaw `MAX_REQUEST_MB=501` (`UPLOAD_MAX_TOTAL_MB` + 1), inaczej jeden formularz jest ograniczony do `MAX_REQUEST_MB` − 1 MB. Kolejność: `APP_VERSION=0.5.0` w `.env`, `docker compose pull`, `docker compose stop worker ocr-worker`, `docker compose run --rm app baza-wiedzy migrate`, `docker compose up -d`; potem `/ready` musi pokazać pięć sprawdzeń `ok`, w tym `"ocr-worker":"ok"`.
+- **Istniejące dokumenty „wymaga OCR” nie startują same** po aktualizacji (widoczne jako „OCR nieuruchomiony”): operator uruchamia je, najlepiej gdy serwer jest mniej obciążony, poleceniem `docker compose exec app baza-wiedzy ocr --pending [--max-pages N]` (na przykład najpierw `--max-pages 30`, resztę później). Oczekiwane: `Queued for OCR: N; nothing to do: 0.`
+- **Zalecane zasoby: 4 vCPU i 8 GB pamięci**; domyślne limity kontenerów sumują się do 7,25 GB (typowe zużycie 2–3 GB). Przy mniejszej liczbie rdzeni obniż `OCR_CPUS` i `OCR_JOBS`; przy większej pamięci najpierw podnieś `OCR_MEMORY_LIMIT` ([deployment-operations.md](deployment-operations.md#budżet-pamięci-i-rdzeni-8-gb--4-vcpu)).
+- Kontener `app` potrzebuje do `UPLOAD_MAX_TOTAL_MB` (500 MB) wolnego miejsca tymczasowego na jedno wgrywanie wielu plików.
+- Kopie zapasowe (skrypty Fazy 6) obejmują `/data/storage/.batches/`; `update.sh` i `restore.sh` zatrzymują `ocr-worker` razem z `worker`.
+- Prywatność bez zmian: rozpoznany tekst, nazwy plików, tematy maili i wyszukiwane frazy nigdy nie trafiają do logów ani audytu; `make smoke` sprawdza też logi `ocr-worker`.
 
 ## [0.4.1] - 2026-11-20
 

@@ -1,10 +1,10 @@
 # Moduł: ingestion
 
-> Dotyczy: v0.4.1 · Ostatnia aktualizacja: 2026-11-20
+> Dotyczy: v0.5.0 · Ostatnia aktualizacja: 2026-11-27
 
 ## Zakres
 
-Zamienia zapisany plik na części tekstu w `worker`: uruchamia ekstraktor dla typu wersji (TXT, EML, DOCX, PDF, DOC, MSG; kod natywny w procesach potomnych; OCR w Fazie 4), przetwarza załączniki maili, dzieli długi tekst, wykrywa język każdej części, pilnuje limitów bezpieczeństwa, prowadzi status przetwarzania (ponawianie, odzyskiwanie zawieszonych) i publikuje `document.version.extracted` przez swój outbox. Szczegóły: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
+Zamienia zapisany plik na części tekstu w `worker`: uruchamia ekstraktor dla typu wersji (TXT, EML, DOCX, PDF, DOC, MSG; kod natywny w procesach potomnych; OCR zeskanowanych stron w usłudze `ocr-worker`), przetwarza załączniki maili, dzieli długi tekst, wykrywa język każdej części, pilnuje limitów bezpieczeństwa, prowadzi status przetwarzania (ponawianie, odzyskiwanie zawieszonych) i publikuje `document.version.extracted` przez swój outbox. Szczegóły: [ingestion-and-ocr.md](../ingestion-and-ocr.md).
 
 ## Zależności
 
@@ -14,9 +14,11 @@ Wymaga [documents](documents.md) (status, metadane maila, widoczność, nazwy pl
 
 Brak własnych. „Przetwórz ponownie” (`POST /ingestion/versions/<id>/reprocess`) może wykonać właściciel z `documents.upload` (własne dokumenty) i posiadacz `documents.edit_any` (dowolne), i tylko dla dokumentów, które użytkownik widzi (w przeciwnym razie 404, a 403, gdy widzi, ale nie ma prawa). Strona części: `GET /ingestion/versions/<id>/parts` (fragment HTMX na stronie dokumentu), każdy, kto widzi dokument. Audyt: `document.reprocess` (identyfikator dokumentu, `version_id`, `sha256`).
 
+„Uruchom OCR” (`POST /ingestion/versions/<id>/ocr`) i „Anuluj OCR” (`POST /ingestion/versions/<id>/ocr/cancel`, Faza 4 etap B) podlegają tej samej regule co „Przetwórz ponownie” (właściciel z `documents.upload` albo `documents.edit_any`; 404 dla niewidocznych dokumentów, 403 bez uprawnienia). Audyt: `document.ocr_request`, `document.ocr_cancel`.
+
 ## Tabele
 
-Gałąź `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`):
+Gałąź `ingestion` (`ingestion_0001`, `depends_on` `documents_0002`; `ingestion_0002`: `ing_parts.ocr_applied`):
 - `ing_parts`: wyciągnięty tekst, jeden wiersz na kawałek (ADR-020); `version_id` → `doc_versions` z `ON DELETE CASCADE`.
 - `ing_results`: dla każdej wersji adnotacje (wykryte kodowanie, pominięte załączniki, odczyt zapasowy), liczba części i znaków.
 - `ing_outbox`: trwałe zdarzenia `document.version.extracted`.
@@ -37,6 +39,8 @@ Kolumny: [data-model.md](../data-model.md#ingestion).
 
 Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (pliki tymczasowe, zawieszone i oczekujące wersje, outbox). CLI: `baza-wiedzy reprocess`, `baza-wiedzy events redeliver` ([deployment-operations.md](../deployment-operations.md)).
 
+Faza 4 etap B: `request_ocr` (kolejkuje wersję do OCR, z audytem), `cancel_ocr`, `count_scanned_pages`. Aktorzy: `ingestion.process_version` (kolejka `ingestion`, usługa `worker`) i `ingestion.ocr_next` (kolejka `ocr`, usługa `ocr-worker`; bierze wersję w kolejce z najmniejszą liczbą zeskanowanych stron, ADR-033). CLI: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID> [--ignore-page-limit]`.
+
 ## Punkty rozszerzeń
 
 - Rejestr ekstraktorów (`extractors/__init__.py`): nowy format to nowy plik z `extract(path, ctx)` i jeden wiersz w rejestrze. `ctx.add_text()`, `ctx.note()` i `ctx.attachment()` dają za darmo limity, pochodzenie i rekurencję.
@@ -44,4 +48,4 @@ Hook startu workera (manifest `worker_startup`): `startup.on_worker_start` (plik
 
 ## Status
 
-Faza 2, etapy B i C: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML, DOCX, PDF (proces potomny, zeskanowane strony oznaczane „wymaga OCR”), DOC (LibreOffice w procesie potomnym) i MSG, limity przeciw bombom ZIP i XML, strona części i „Przetwórz ponownie” (UI i CLI), temat maila jako domyślny tytuł. Worker nie ma dostępu do internetu (ADR-024). Faza 3: wyszukiwarka czyta części; Faza 4: OCR.
+Faza 2, etapy B i C: pipeline (przejęcie, hook skanowania, ekstrakcja, podział, język, zapis w jednej transakcji, outbox), statusy z ponawianiem błędów przejściowych i odzyskiwaniem zawieszonych, ekstraktory TXT, EML, DOCX, PDF (proces potomny, zeskanowane strony oznaczane „wymaga OCR”), DOC (LibreOffice w procesie potomnym) i MSG, limity przeciw bombom ZIP i XML, strona części i „Przetwórz ponownie” (UI i CLI), temat maila jako domyślny tytuł. Worker nie ma dostępu do internetu (ADR-024). Faza 3: wyszukiwarka czyta części. Faza 4 (0.5.0): OCR przez OCRmyPDF + Tesseract we własnej kolejce i usłudze (ADR-031, ADR-033), automatycznie do `OCR_AUTO_MAX_PAGES`, powyżej wstrzymany, anulowanie, limity czasu na dokument, odzyskiwanie przerwanego OCR, `ocr_applied` na część dla etykiety i rankingu wyszukiwania (ADR-034).

@@ -2,8 +2,10 @@
 
 Token = HMAC-SHA256(SECRET_KEY, binding). The binding is the session cookie (logged in) or a
 random pre-session cookie (login form). The token travels in the `X-CSRF-Token` header (HTMX,
-set once on <body> with hx-headers) or in the form field `csrf_token`. Requests whose Origin is
-another site, or whose Sec-Fetch-Site says cross-site, are refused as well.
+set once on <body> with hx-headers) or in the form field `csrf_token`. In a multipart form (file
+upload without JavaScript) the field must be the FIRST part of the body: only the beginning of
+the body is read here, the files stream on to the application untouched (ADR-032). Requests
+whose Origin is another site, or whose Sec-Fetch-Site says cross-site, are refused as well.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 HEADER = "x-csrf-token"
 FORM_FIELD = "csrf_token"
-MAX_FORM_BYTES = 64 * 1024  # larger bodies (uploads) must send the header
+MAX_FORM_BYTES = 64 * 1024  # urlencoded forms; multipart: the first part must fit in it
 
 
 def cookie_names(secure: bool) -> tuple[str, str]:
@@ -98,6 +100,38 @@ def rejection_reason(
     return None
 
 
+def _boundary(scope: Scope) -> bytes | None:
+    for param in (_header(scope, b"content-type") or "").split(";")[1:]:
+        name, _, value = param.strip().partition("=")
+        if name.lower() == "boundary" and value:
+            return value.strip('"').encode("latin-1")
+    return None
+
+
+def _first_part(body: bytes, scope: Scope) -> str | None:
+    """The value of the first multipart part if it is the csrf_token field, else None."""
+    boundary = _boundary(scope)
+    if boundary is None:
+        return None
+    start = b"--" + boundary + b"\r\n"
+    if not body.startswith(start):
+        return None
+    head_end = body.find(b"\r\n\r\n", len(start))
+    if head_end < 0:
+        return None
+    headers = body[len(start) : head_end].decode("latin-1").lower()
+    disposition = next(
+        (line for line in headers.split("\r\n") if line.startswith("content-disposition:")), ""
+    )
+    params = [p.strip() for p in disposition.split(";")[1:]]
+    if f'name="{FORM_FIELD}"' not in params or any(p.startswith("filename") for p in params):
+        return None
+    value_end = body.find(b"\r\n--" + boundary, head_end + 4)
+    if value_end < 0:
+        return None
+    return body[head_end + 4 : value_end].decode("latin-1").strip() or None
+
+
 class CSRFMiddleware:
     """Pure ASGI middleware: validates unsafe requests, exposes the token to templates."""
 
@@ -157,27 +191,29 @@ class CSRFMiddleware:
     @staticmethod
     async def _buffer(receive: Receive, scope: Scope) -> tuple[bytes, Receive]:
         content_type = (_header(scope, b"content-type") or "").split(";")[0].strip().lower()
-        if content_type != "application/x-www-form-urlencoded":
+        if content_type == "application/x-www-form-urlencoded":
+            multipart = False
+        elif content_type == "multipart/form-data" and _header(scope, HEADER.encode()) is None:
+            multipart = True
+        else:
             return b"", receive
-        chunks: list[bytes] = []
+        messages: list[Message] = []
         size = 0
         more = True
-        while more:
+        while more and size <= MAX_FORM_BYTES:
             message = await receive()
-            chunk = message.get("body", b"")
-            size += len(chunk)
-            if size > MAX_FORM_BYTES:
-                break
-            chunks.append(chunk)
-            more = message.get("more_body", False)
-        body = b"".join(chunks)
-        replayed = False
+            messages.append(message)
+            size += len(message.get("body", b""))
+            more = bool(message.get("more_body", False))
+            if multipart and _first_part(b"".join(m.get("body", b"") for m in messages), scope):
+                break  # the token field is complete: the rest (files) is not read here
+        body = b"".join(m.get("body", b"") for m in messages)
+        if not multipart and size > MAX_FORM_BYTES:
+            body = b""  # an oversized urlencoded body never carries a usable token
 
         async def replay() -> Message:
-            nonlocal replayed
-            if not replayed:
-                replayed = True
-                return {"type": "http.request", "body": body, "more_body": False}
+            if messages:
+                return messages.pop(0)
             return await receive()
 
         return body, replay
@@ -186,6 +222,9 @@ class CSRFMiddleware:
     def _form_token(scope: Scope, body: bytes) -> str | None:
         if not body:
             return None
+        content_type = (_header(scope, b"content-type") or "").split(";")[0].strip().lower()
+        if content_type == "multipart/form-data":
+            return _first_part(body, scope)
         values = parse_qs(body.decode("latin-1"), max_num_fields=100).get(FORM_FIELD)
         return values[0] if values else None
 

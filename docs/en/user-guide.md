@@ -1,10 +1,24 @@
-# Search — guide for users and administrators
+# User guide — uploading and searching
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
-How to find documents, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
+How to upload documents, how to find them, what search can and cannot do, who sees what, and what the administrator runs. Technical details (indexes, ranking, measurements): [search.md](search.md).
 
 ## For users
+
+### Uploading documents
+
+"Moje dokumenty" → "Wgraj dokumenty" (needs the permission to upload; Publisher and Admin have it).
+
+1. Choose one or more files (PDF, DOCX, DOC, TXT, EML, MSG) in the file field, or drag them onto the field "…albo przeciągnij pliki tutaj". The page lists the chosen files and warns before sending when there are too many (at most 50 at once), when they are together too large (at most 500 MB), or when a file is above 50 MB (that one will be refused). The numbers are the defaults; the administrator may set others, and the form shows the current ones.
+2. "Tytuł" applies only when you upload one file; several files get their file names as titles (an e-mail: its subject).
+3. Click "Wgraj". One file: you land on its page ("Plik został wgrany…"). Several files: you land on "Moje dokumenty" with the table "Wynik wgrywania": for each file "wgrano" (link to the document), "możliwy duplikat" or "odrzucono" with the reason (too large, wrong type, empty, more files than allowed), and a summary like "Wgrano: 10 · pominięto: 1".
+4. A possible duplicate is a file whose content is identical to a document you can already see. It is not uploaded until you decide: "Wgraj mimo to" uploads it, "Pomiń" drops it. You decide per file; the other files are already uploaded and nothing has to be chosen again. Undecided files are removed after 24 hours.
+5. A refused file never stops the others. Upload it again after fixing the reason.
+6. Every new document is a draft that only you and administrators see; processing (text extraction, OCR of scans) runs in the background.
+7. Scans: the text pages are searchable right after processing; the scanned pages wait for OCR, shown next to "wymaga OCR": "OCR w kolejce" (documents with fewer pages go first), "OCR w toku", then "gotowe" with "tekst z OCR". A document with more than 30 scanned pages waits as "OCR wstrzymany (duży dokument)": click "Uruchom OCR" when it suits you. "Anuluj OCR" stops it; "OCR nieudany" shows the reason and "Uruchom OCR ponownie". "OCR pominięty (za dużo stron)" (more than 200 scanned pages) has no button: ask the administrator. "OCR nieuruchomiony" marks scans uploaded before version 0.5.0 that the administrator has not started yet. Check numbers read from a scan in the original.
+
+Uploading also works with JavaScript switched off (without dragging and without the checks before sending).
 
 ### Searching
 
@@ -44,6 +58,7 @@ Results are grouped by document, best first (a match in the title or e-mail subj
 - the title (a link to the document page, where the file can be downloaded);
 - type, file name, date (e-mail: the sending date, otherwise the upload date) and, for users who work with other people's documents, the author;
 - where the best match is ("strona 7", "załącznik: umowa.pdf › strona 2") and a fragment with the matching words highlighted; "Dopasowanie w tytule, nazwie pliku albo nagłówkach maila" when only those matched;
+- "tekst z OCR" when the match is in text read from a scan: words and especially numbers there may contain recognition errors, so check them in the original (with the same words, a document with real text ranks above a scan);
 - "szkic" or "zarchiwizowany" when the document is not published.
 
 The page says how many documents were found; 20 per page, page links at the bottom, at most 50 pages (make the query more specific to see beyond).
@@ -57,7 +72,8 @@ Under "Filtry i sortowanie": file type (PDF, Word, e-mail, text), language of th
 - **No synonyms**: "kopia zapasowa" does not find "backup", "umowa" does not find "kontrakt". Try the other word, or both: `"kopia zapasowa" or backup`.
 - **Without Polish letters only the exact form**: `lodz` finds "Łódź" but not "w Łodzi" (`lodzi` does). Type Polish letters to find every form.
 - **No partial words or numbers**: `faktu` does not find "faktura" in the text; `7251` does not find "7251801126"; `1002` does not find "600 100 200". Small typos and incomplete words are forgiven only in titles, file names, e-mail subjects and senders (never in numbers).
-- **Scanned pages** are found only after OCR (Phase 4; the document page then says "wymaga OCR"). Documents whose processing failed and documents without text are found only by title and file name.
+- **Scanned pages** are found only after OCR (until then the document page says "wymaga OCR" with the OCR state). Documents whose processing failed and documents without text are found only by title and file name.
+- **OCR has limits**: handwriting is not recognised (the page gets the note "OCR nie znalazł żadnego tekstu…" or "…bardzo mało tekstu…"); numbers (tax, account, phone numbers) may be misread, so a number may not find a scan: search for a word from it instead and check the number in the original; very poor, dark or noisy scans and pages skewed by more than about 5° lose words (scan them again, straight, at 200–300 dpi); images inside DOCX files and standalone image files are not read.
 - **Limits**: 2 to 200 characters; 20 results per page; at most 50 pages; a search that takes longer than 3 seconds is shown by date instead of relevance with a note ("Zapytanie jest bardzo ogólne…"); if even that is too slow, the page asks to narrow the query.
 
 ### Who sees what
@@ -91,8 +107,21 @@ New documents are indexed right after processing; publishing, archiving and rest
 
 ### Local tools (development machine only)
 
-- `make relevance DIR=<documents> QUERIES=<file> AS=<user> [ONLY=1]` uploads your own documents as drafts to the **local development stack** and prints the first results of each query for a manual rating. **The output contains document text**: never commit it, attach it to tickets or paste it anywhere public. The repository is public: keep the documents and the query file outside it (the command refuses paths inside it). Details: [search.md](search.md#golden-tests).
+- `make relevance DIR=<documents> QUERIES=<file> AS=<user> [ONLY=1] [OCR=1]` uploads your own documents as drafts to the **local development stack** and prints the first results of each query for a manual rating. **The output contains document text**: never commit it, attach it to tickets or paste it anywhere public. The repository is public: keep the documents and the query file outside it (the command refuses paths inside it). It waits until OCR of scans has finished, marks hits in OCR text "(OCR)", and `OCR=1` also starts scans on hold. Details: [search.md](search.md#golden-tests).
+- `make perf-ocr PAGES=50 [BEST=1]` measures OCR speed and memory on synthetic scans; results in [ingestion-and-ocr.md](ingestion-and-ocr.md#ocr).
 - `make perf N=20000` measures search on synthetic documents (no real data); results in [search.md](search.md#performance-target).
+
+### OCR operations
+
+Commands in the application container (`docker compose exec app baza-wiedzy …`); each start is audited as `document.ocr_request`:
+
+| Command | When | Expected output |
+|---|---|---|
+| `ocr --pending [--max-pages N]` | once after the update to 0.5.0: scans uploaded earlier ("OCR nieuruchomiony") are not started by themselves; with `--max-pages 30` only the smaller ones, the rest later when the server is quiet | `Queued for OCR: N; nothing to do: 0.` |
+| `ocr <document ID>` | one document on hold or failed | `Queued for OCR: 1; nothing to do: 0.` |
+| `ocr <document ID> --ignore-page-limit` | a document "OCR pominięty (za dużo stron)" that a user really needs (one long OCR; raise `OCR_TIMEOUT_SECONDS` for several hundred pages) | the same line |
+
+OCR runs in the service `ocr-worker`, one document at a time, shortest first; while it runs, uploads and search are not slowed down. If documents stay "OCR w kolejce", check `docker compose ps ocr-worker` and `/ready` (`"ocr-worker":"ok"`). Details: [deployment-operations.md](deployment-operations.md#document-processing-operator-guide).
 
 ### Users and access
 
@@ -101,4 +130,4 @@ New documents are indexed right after processing; publishing, archiving and rest
 
 ### Privacy checks
 
-Search phrases, file names and e-mail subjects never reach logs, the audit log or error messages (ADR-025). `make smoke` checks it on every release; on a server: search for a unique word, then `docker compose logs proxy app worker db | grep -c <word>` must print `0`.
+Search phrases, file names and e-mail subjects never reach logs, the audit log or error messages (ADR-025). `make smoke` checks it on every release; on a server: search for a unique word, then `docker compose logs proxy app worker ocr-worker db | grep -c <word>` must print `0`. The text recognised by OCR never reaches a log either.

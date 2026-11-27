@@ -16,6 +16,7 @@ e-mail headers.
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 import logging
 import shutil
@@ -23,6 +24,7 @@ import tempfile
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,6 +41,7 @@ from baza_wiedzy.core.runtime import Runtime
 from baza_wiedzy.core.web.i18n import N_
 from baza_wiedzy.modules.documents.services import api as documents
 from baza_wiedzy.modules.ingestion import chunks, language, outbox, scanning
+from baza_wiedzy.modules.ingestion import ocr as ocr_module
 from baza_wiedzy.modules.ingestion.extractors.base import (
     Collector,
     Context,
@@ -82,6 +85,7 @@ class StoredPart:
     language: str
     text: str
     needs_ocr: bool
+    ocr_applied: bool = False
 
 
 TRANSIENT = (TransientError, OperationalError, DBAPIError, redis.RedisError, TimeLimitExceeded)
@@ -95,7 +99,8 @@ def stale_before(settings: Settings) -> datetime:
     return _now() - timedelta(minutes=settings.ingest_stale_minutes)
 
 
-def limits_of(settings: Settings) -> Limits:
+def limits_of(settings: Settings, *, ocr: bool = False) -> Limits:
+    """Limits of a pass: the text pass never runs OCR (ocr=False), the OCR pass does."""
     return Limits(
         max_depth=settings.ingest_max_depth,
         max_parts=settings.ingest_max_parts,
@@ -106,6 +111,15 @@ def limits_of(settings: Settings) -> Limits:
         child_timeout_seconds=settings.ingest_child_timeout_seconds,
         libreoffice_timeout_seconds=settings.libreoffice_timeout_seconds,
         libreoffice_memory_mb=settings.libreoffice_memory_mb,
+        ocr_enabled=settings.ocr_enabled and ocr,
+        ocr_languages=settings.ocr_languages,
+        ocr_max_pages=settings.ocr_max_pages,
+        ocr_timeout_seconds=settings.ocr_timeout_seconds,
+        ocr_page_timeout_seconds=settings.ocr_page_timeout_seconds,
+        ocr_jobs=settings.ocr_jobs,
+        ocr_memory_mb=settings.ocr_memory_mb,
+        ocr_max_image_mpixels=settings.ocr_max_image_mpixels,
+        ocr_rotate_threshold=settings.ocr_rotate_threshold,
     )
 
 
@@ -167,6 +181,7 @@ def build_parts(settings: Settings, collector: Collector) -> list[StoredPart]:
                     language=language.detect(piece, min_letters=settings.language_min_letters),
                     text=piece,
                     needs_ocr=raw.needs_ocr,
+                    ocr_applied=raw.ocr_applied,
                 )
             )
     if len(stored) > settings.ingest_max_parts:
@@ -174,12 +189,32 @@ def build_parts(settings: Settings, collector: Collector) -> list[StoredPart]:
     return stored
 
 
+def scanned_pages(parts: list[StoredPart]) -> int:
+    """Pages still waiting for OCR (one part per page; attachments count too)."""
+    return sum(1 for part in parts if part.needs_ocr and part.chunk_no == 1)
+
+
+def ocr_decision(settings: Settings, pages: int) -> str:
+    """What happens to the scanned pages after the text pass (ADR-033)."""
+    if pages == 0 or not settings.ocr_enabled:
+        return documents.OCR_NONE
+    if pages > settings.ocr_max_pages:
+        return documents.OCR_SKIPPED
+    if pages > settings.ocr_auto_max_pages:
+        return documents.OCR_ON_HOLD
+    return documents.OCR_QUEUED
+
+
 def store(
-    db: Session, claim: documents.Claim, collector: Collector, parts: list[StoredPart]
+    db: Session,
+    claim: documents.Claim | documents.OcrClaim,
+    collector: Collector,
+    parts: list[StoredPart],
+    finish: Callable[[Session], bool],
 ) -> bool:
-    """Write the whole result; False (caller rolls back) when the attempt is no longer current."""
-    needs_ocr = any(part.needs_ocr for part in parts)
-    if not documents.finish(db, claim, needs_ocr=needs_ocr, page_count=collector.page_count):
+    """Write the whole result; False (caller rolls back) when the attempt is no longer current.
+    `finish` moves the version to its final state (text pass or OCR pass)."""
+    if not finish(db):
         return False
     db.execute(delete(Part).where(Part.version_id == claim.version_id))
     db.execute(delete(Result).where(Result.version_id == claim.version_id))
@@ -195,6 +230,7 @@ def store(
             text=part.text,
             char_count=len(part.text),
             needs_ocr=part.needs_ocr,
+            ocr_applied=part.ocr_applied,
         )
         for seq, part in enumerate(parts, start=1)
     )
@@ -279,8 +315,22 @@ def process(rt: Runtime, version_id: uuid.UUID) -> Outcome:
         scanning.scan(settings, source)
         collector = extract(settings, claim, source, workdir)
         parts = build_parts(settings, collector)
+        pages = scanned_pages(parts)
+        decision = ocr_decision(settings, pages)
+
+        def finish(db: Session) -> bool:
+            return documents.finish(
+                db,
+                claim,
+                needs_ocr=pages > 0,
+                page_count=collector.page_count,
+                ocr_applied=any(part.ocr_applied for part in parts),
+                ocr_status=decision,
+                ocr_pages=pages or None,
+            )
+
         with rt.session_factory.begin() as db:
-            if not store(db, claim, collector, parts):
+            if not store(db, claim, collector, parts, finish):
                 raise _Superseded()
     except _Superseded:
         log.info("ingestion: result discarded, attempt superseded: version=%s", version_id)
@@ -315,15 +365,148 @@ def process(rt: Runtime, version_id: uuid.UUID) -> Outcome:
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
     log.info(
-        "ingestion: done version=%s parts=%s chars=%s notes=%s seconds=%.2f",
+        "ingestion: done version=%s parts=%s chars=%s notes=%s scanned=%s ocr=%s seconds=%.2f",
         version_id,
         len(parts),
         sum(len(p.text) for p in parts),
         len(collector.notes),
+        pages,
+        decision,
         time.monotonic() - started,
     )
+    if decision == documents.OCR_QUEUED:
+        _enqueue_ocr(settings, version_id)
+    _deliver(rt)
+    return Outcome.DONE
+
+
+def _deliver(rt: Runtime) -> None:
     try:
         outbox.deliver(rt.session_factory, rt.events, max_rows=100)
     except Exception as exc:  # stays in the outbox; the next run or the CLI delivers it
         log.warning("outbox: delivery postponed: error=%s", type(exc).__name__)
+
+
+def _enqueue_ocr(settings: Settings, version_id: uuid.UUID) -> None:
+    from baza_wiedzy.modules.ingestion.tasks import enqueue_ocr
+
+    try:
+        enqueue_ocr(settings)
+    except Exception as exc:  # stays "queued"; the next worker start sends the message again
+        log.warning("ocr: enqueue failed: version=%s error=%s", version_id, type(exc).__name__)
+
+
+OCR_TIMEOUT = N_("OCR took longer than the time limit. Start OCR again or ask the administrator.")
+OCR_FAILED = N_("OCR failed. Start OCR again; if it fails again, the scan cannot be read.")
+OCR_INTERNAL = N_("OCR failed because of an internal error. Details are in the log.")
+
+
+def ocr_stale_before(settings: Settings) -> datetime:
+    return _now() - timedelta(seconds=settings.ocr_timeout_seconds + 600)
+
+
+def process_ocr(rt: Runtime) -> Outcome:
+    """One OCR attempt: the queued version with the fewest scanned pages (ADR-033).
+
+    The whole file is extracted again with OCR on (scans may sit in e-mail attachments), the
+    new parts replace the old ones in one transaction and document.version.extracted goes to
+    the outbox, so search picks up the recognised text. A failure (time limit for the whole
+    document, crash, out of memory) keeps the previous parts: text pages stay searchable."""
+    settings = rt.settings
+    with rt.session_factory.begin() as db:
+        claim = documents.claim_ocr(db)
+    if claim is None:
+        log.info("ocr: nothing queued")
+        return Outcome.SKIPPED
+    version_id = claim.version_id
+    log.info("ocr: start version=%s kind=%s pages=%s", version_id, claim.kind, claim.pages)
+    started = time.monotonic()
+    workdir = Path(
+        tempfile.mkdtemp(prefix=f"ocr-{version_id.hex[:8]}-", dir=workdir_root(settings))
+    )
+
+    def cancelled() -> bool:
+        try:
+            with rt.session_factory() as db:
+                return not documents.ocr_still_running(db, claim)
+        except Exception:  # database briefly away: keep going, the result is checked at the end
+            return False
+
+    try:
+        source = documents.original_path(settings.storage_dir, claim.storage_key)
+        limits = limits_of(settings, ocr=True)
+        if claim.ignore_page_limit:  # `baza-wiedzy ocr --ignore-page-limit` (audited)
+            limits = dataclasses.replace(limits, ocr_max_pages=settings.ingest_max_pages)
+        collector = Collector(
+            limits=limits,
+            workdir=workdir,
+            ocr_deadline=time.monotonic() + settings.ocr_timeout_seconds,
+            ocr_should_stop=cancelled,
+        )
+        extractor = find(claim.kind)
+        if extractor is None:
+            raise PermanentError(NOT_YET, "kind_not_supported")
+        extractor(source, Context(collector=collector))
+        parts = build_parts(settings, collector)
+        failure = next((n for n in collector.notes if n.get("code") == "ocr_failed"), None)
+        if failure is not None:
+            reason = str(failure.get("reason"))
+            log.warning("ocr: failed version=%s reason=%s", version_id, reason)
+            _fail_ocr(rt, claim, OCR_TIMEOUT if reason == "timeout" else OCR_FAILED)
+            return Outcome.FAILED
+        remaining = scanned_pages(parts)
+
+        def finish(db: Session) -> bool:
+            return documents.finish_ocr(
+                db,
+                claim,
+                needs_ocr=remaining > 0,
+                page_count=collector.page_count,
+                ocr_applied=any(part.ocr_applied for part in parts),
+                ocr_status=documents.OCR_SKIPPED if remaining else documents.OCR_DONE,
+            )
+
+        with rt.session_factory.begin() as db:
+            if not store(db, claim, collector, parts, finish):
+                raise _Superseded()
+    except (_Superseded, ocr_module.OcrFailed):  # cancelled, reprocessed or recovered meanwhile
+        log.info("ocr: result discarded, cancelled or superseded: version=%s", version_id)
+        return Outcome.SKIPPED
+    except PermanentError as exc:
+        log.info("ocr: failed version=%s reason=%s", version_id, exc.code)
+        _fail_ocr(rt, claim, exc.message)
+        return Outcome.FAILED
+    except TimeLimitExceeded:
+        log.warning("ocr: worker time limit exceeded: version=%s", version_id)
+        _fail_ocr(rt, claim, OCR_TIMEOUT)
+        return Outcome.FAILED
+    except Exception as exc:
+        log.error(
+            "ocr: unexpected error version=%s error=%s\n%s",
+            version_id,
+            type(exc).__name__,
+            _safe_trace(exc),
+        )
+        _fail_ocr(rt, claim, OCR_INTERNAL)
+        return Outcome.FAILED
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    recognised = sum(1 for part in parts if part.ocr_applied and part.chunk_no == 1)
+    log.info(
+        "ocr: done version=%s pages=%s recognised=%s left=%s seconds=%.1f",
+        version_id,
+        claim.pages,
+        recognised,
+        remaining,
+        time.monotonic() - started,
+    )
+    _deliver(rt)
     return Outcome.DONE
+
+
+def _fail_ocr(rt: Runtime, claim: documents.OcrClaim, message: str) -> None:
+    try:
+        with rt.session_factory.begin() as db:
+            documents.fail_ocr(db, claim, message)
+    except Exception as exc:  # the recovery at worker start marks it failed later
+        log.warning("ocr: could not record the failure: error=%s", type(exc).__name__)

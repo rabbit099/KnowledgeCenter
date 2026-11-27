@@ -1,10 +1,45 @@
 # Changelog
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-11-27
+
+Phase 4: OCR of scanned PDFs and upload of several files. Recommended server: 4 vCPU, 8 GB of memory.
+
+### Added
+- **OCR** of scanned PDF pages in Polish and English (OCRmyPDF + Tesseract, Debian "fast" models), also of scans in e-mail attachments (EML, MSG). Only the pages without a text layer are recognised; only the text is kept (no derived PDF; "Pobierz oryginał" returns the original). Rotated pages are turned (threshold `OCR_ROTATE_THRESHOLD` 5); `--deskew` stays off (ADR-031, ADR-034).
+- **New service `ocr-worker`** (the `worker` image, queue `ocr`, one document at a time, own limits `OCR_MEMORY_LIMIT` 2g and `OCR_CPUS` 2, internal network only, healthcheck): uploads are never slowed down by OCR. Scans up to `OCR_AUTO_MAX_PAGES` (30) scanned pages are recognised automatically, shortest first (order from the database, `FOR UPDATE SKIP LOCKED`); larger ones wait as "OCR wstrzymany (duży dokument)" for "Uruchom OCR"; above `OCR_MAX_PAGES` (200) "OCR pominięty (za dużo stron)". "Anuluj OCR" stops queued or running OCR; "OCR nieudany" shows the reason and "Uruchom OCR ponownie"; interrupted OCR is recovered at the next start (ADR-033). OCR states on the document page and in "Moje dokumenty"; notes "OCR nie znalazł żadnego tekstu…" / "…bardzo mało tekstu (N znaków)" with Polish plural forms.
+- **Upload of several files** in one form ("Wgraj dokumenty", drag and drop, also without JavaScript): a result per file and a summary on "Moje dokumenty"; a refused file never stops the others (ADR-032). Settings `UPLOAD_MAX_FILES` (50), `UPLOAD_MAX_TOTAL_MB` (500), `UPLOAD_BATCH_HOURS` (24). The proxy answers an oversized request with a readable Polish page.
+- **Commands**: `baza-wiedzy ocr --pending [--max-pages N]`, `baza-wiedzy ocr <ID> …` and `baza-wiedzy ocr <ID> --ignore-page-limit` (documents "OCR pominięty"; no button on purpose); all audited as `document.ocr_request` (`source`: `button`, `cli`, `cli_override`), cancel as `document.ocr_cancel`.
+- **Search**: hits in OCR text show the label "tekst z OCR" in the results (for every role, Readers included) and rank × 0.9 below the same words in a text layer; the document page warns that numbers in OCR text may be misread.
+- **`/ready` checks `ocr-worker`** separately (`"ocr-worker":"ok"`, only with `OCR_ENABLED=true`): a stopped `ocr-worker` is no longer hidden behind a running `worker`. `worker` and `ocr-worker` have a Docker healthcheck on their own heartbeat (`docker compose ps` shows `healthy`).
+- **Measurements and tools**: `make perf-ocr PAGES=50 [BEST=1]` (pages per minute, p95 per document, peak memory, fast vs `tessdata_best` as a variant only); `make relevance … [OCR=1]` waits for OCR, marks hits "(OCR)" and starts scans on hold; golden search tests on 11 defective synthetic scans; `make probki` has a 25-page scan and a "very little text" sample. Results on a 2-CPU / 2 GB container: 60 pages per minute, p95 5.4 s for documents of 1–5 pages, 468 MB peak memory ([ingestion-and-ocr.md](ingestion-and-ocr.md#ocr)).
+- Settings `OCR_ENABLED`, `OCR_LANGUAGES`, `OCR_AUTO_MAX_PAGES`, `OCR_MAX_PAGES`, `OCR_TIMEOUT_SECONDS` (1800 s per document), `OCR_PAGE_TIMEOUT_SECONDS`, `OCR_JOBS`, `OCR_MEMORY_MB`, `OCR_MAX_IMAGE_MPIXELS`, `OCR_ROTATE_THRESHOLD`, `OCR_MEMORY_LIMIT`, `OCR_CPUS` (all in `.env.example`); memory and CPU budget for 8 GB / 4 vCPU in deployment-operations.
+
+### Changed
+- Default `MAX_REQUEST_MB` 51 → 501 (proxy request limit for the multi-file form). Keep it `UPLOAD_MAX_TOTAL_MB` + 1; an existing `.env` with 51 caps one form at 50 MB in total.
+- Ghostscript removed from the worker image (not needed with the pypdfium rasteriser and text-only output; AGPL; ADR-031).
+- A file identical to a document you can see is no longer uploaded with a warning: it waits for "Wgraj mimo to" / "Pomiń" (per file, for `UPLOAD_BATCH_HOURS`, then removed). Duplicates are computed only against documents the uploader may see.
+- The ordinary `worker` consumes only the queue `ingestion` and never runs OCR.
+- `storage-cleanup` also removes expired upload batches (`/data/storage/.batches/`).
+- Opening `/logout` in the address bar leads to the login page (303) instead of a JSON "Method Not Allowed"; logging out stays the button (POST with CSRF).
+- `scripts/offline_bundle.sh` lists the worker image once (it is used by `worker` and `ocr-worker`); the documented `redis` and `clamav` references match `docker-compose.yml` again.
+
+### Migrations
+- `documents_0005` (`doc_versions.ocr_status`, `ocr_pages`, `ocr_requested_at`, `ocr_started_at`, `ocr_error`; partial index for queued OCR), `documents_0006` (`doc_versions.ocr_override`), `ingestion_0002` (`ing_parts.ocr_applied`), `search_0003` (`srch_parts.ocr_applied`). Heads: `core_0003`, `documents_0006`, `ingestion_0002`, `search_0003`.
+- All add columns with defaults (expand only): 0.4.x keeps working on the new schema, so a rollback needs no restore. **No reindex** after an upgrade from 0.4.x (before 0.5.0 there was no OCR text; `search-check` must still print `Search index OK.`).
+
+### Upgrade notes
+- **New service `ocr-worker`** in `docker-compose.yml`: take the new `docker-compose.yml` and `.env.example` of the release; `docker compose up -d` starts it (same image as `worker`, nothing extra to pull). Add the new variables to `.env` or keep the defaults; set `MAX_REQUEST_MB=501` (`UPLOAD_MAX_TOTAL_MB` + 1), otherwise one form is limited to `MAX_REQUEST_MB` − 1 MB. Order: `APP_VERSION=0.5.0` in `.env`, `docker compose pull`, `docker compose stop worker ocr-worker`, `docker compose run --rm app baza-wiedzy migrate`, `docker compose up -d`; then `/ready` must show five checks `ok`, including `"ocr-worker":"ok"`.
+- **Existing "wymaga OCR" documents do not start by themselves** after the update (shown as "OCR nieuruchomiony"): the operator starts them, ideally when the server is quiet, with `docker compose exec app baza-wiedzy ocr --pending [--max-pages N]` (for example `--max-pages 30` first, the rest later). Expected: `Queued for OCR: N; nothing to do: 0.`
+- **Recommended resources: 4 vCPU and 8 GB of memory**; the default container limits add up to 7.25 GB (typical use 2–3 GB). On fewer cores lower `OCR_CPUS` and `OCR_JOBS`; on more memory raise `OCR_MEMORY_LIMIT` first ([deployment-operations.md](deployment-operations.md#memory-and-cpu-budget-8-gb--4-vcpu)).
+- The `app` container needs up to `UPLOAD_MAX_TOTAL_MB` (500 MB) of free temporary disk for one multi-file upload.
+- Backups (Phase 6 scripts) include `/data/storage/.batches/`; `update.sh` and `restore.sh` stop `ocr-worker` together with `worker`.
+- Privacy unchanged: recognised text, file names, e-mail subjects and search phrases never reach logs or the audit log; `make smoke` also checks the logs of `ocr-worker`.
 
 ## [0.4.1] - 2026-11-20
 

@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Computed,
     DateTime,
     ForeignKey,
@@ -30,6 +31,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -78,6 +80,8 @@ class SearchPart(Base):
     chunk_no: Mapped[int] = mapped_column(Integer, nullable=False)
     language: Mapped[str] = mapped_column(Text, nullable=False)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
+    # The text was recognised by OCR (search_0003): ranking x 0.9, label in the results.
+    ocr_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     ident_terms: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     tsv_pl: Mapped[Any] = mapped_column(TSVECTOR, Computed(content_tsvector(CONFIGS["pl"])))
     tsv_en: Mapped[Any] = mapped_column(TSVECTOR, Computed(content_tsvector(CONFIGS["en"])))

@@ -1,6 +1,6 @@
 # Baza Wiedzy — Documentation (English)
 
-> Applies to: v0.4.1 · Last reviewed: 2026-11-20
+> Applies to: v0.5.0 · Last reviewed: 2026-11-27
 
 Baza Wiedzy ("Knowledge Base", working name) is an internal web application. People upload documents (PDF, DOCX, DOC, TXT, EML, MSG); the system reads their text (OCR for scans) and finds documents containing a typed phrase. It runs in Docker on a Linux server.
 
@@ -64,9 +64,11 @@ Tick items when they are finished and documented.
 
 ### Phase 4 — OCR
 - [x] Detection of pages without text (Phase 2: pages marked, version "wymaga OCR")
-- [ ] OCRmyPDF (`pol+eng`) for the marked pages of `needs_ocr` versions, then `done`
-- [ ] Derived searchable PDF, `ocr_applied` flag, timeouts and limits
-- [ ] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search then replaces the rows of the version; no change in search needed)
+- [x] OCRmyPDF + Tesseract (`pol+eng`) in a child process for the marked pages, also in e-mail attachments; `ocr_applied` per part and version; no derived PDF, no Ghostscript (stage A, ADR-031)
+- [x] After OCR, store the parts again and write `document.version.extracted` again in the same transaction (search replaces the rows of the version)
+- [x] Upload of several files in one form, without JavaScript too; duplicates held for a decision (stage B, ADR-032)
+- [x] Separate queue and service `ocr-worker`; automatic OCR up to `OCR_AUTO_MAX_PAGES`, "Uruchom OCR" / "Anuluj OCR", OCR states, `baza-wiedzy ocr --pending` (stage B, ADR-033)
+- [x] Label "tekst z OCR" in search results and ranking × 0.9 for OCR text; measurements (`make perf-ocr`, fast vs `tessdata_best`, `--deskew`); golden search tests on defective scans; `make relevance` waits for OCR (stage C, ADR-034)
 
 ### Phase 5 — Document lifecycle
 - [ ] Versions, publishing a chosen version (draft / published / archived: Phase 3)
@@ -80,6 +82,7 @@ Tick items when they are finished and documented.
 - [ ] Release workflow (tags → GHCR)
 - [ ] `update.sh`, `rollback.sh`
 - [ ] `backup.sh`, `restore.sh`, restore test procedure
+- [ ] `update.sh`, `backup.sh`, `restore.sh` cover `ocr-worker` (stopped during migrations and restore) and `/data/storage/.batches/` (in the files backup), as described in deployment-operations.md since 0.5.0
 - [ ] Operator guide complete
 
 ### Phase 7 — Hardening and acceptance
@@ -92,6 +95,8 @@ Tick items when they are finished and documented.
 - [ ] Remove the `exclude-newer-package` exception for `soupsieve` at the monthly dependency review in December 2026, once `exclude-newer` is past 2026-11-05 (ADR-015, Dependabot alert #2)
 - [ ] On the server: the worker has no internet access (`make smoke` network check, or the command in deployment-operations.md, Security notes)
 - [ ] Search relevance with the owner's real (non-confidential) documents and typical queries (locally, never committed)
+- [ ] Search relevance in OCR text with the owner's own scans (`make relevance … OCR=1`, locally); decide again on `tessdata_best` and the rotation threshold if words are missed (ADR-034)
+- [ ] On the server after the update to 0.5.0: `baza-wiedzy ocr --pending [--max-pages 30]` for scans from before 0.5.0; check OCR speed on the server CPU (`docker compose logs ocr-worker`, `seconds=` per document)
 - [ ] Evaluate (backlog): typo correction in the text (vocabulary from `ts_stat` + trigrams); failed versions findable by title (a dictionary without diacritics was evaluated and rejected, ADR-028)
 - [ ] Search under concurrency: fewer relations per statement or PostgreSQL 18, if more than ~10 searches/s are needed (ADR-028); memory settings before 100,000 documents
 - [ ] Delete or shorten old proxy logs from before 0.4.0 if they may contain CSRF tokens (changelog 0.4.0, Security)

@@ -68,6 +68,7 @@ def index_version(db: Session, version_id: uuid.UUID) -> int | None:
                 language=part.language,
                 text_content=content,
                 ident_terms=index_terms(content),
+                ocr_applied=part.ocr_applied,
             )
         )
         count += 1

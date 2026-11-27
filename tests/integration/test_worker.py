@@ -64,6 +64,7 @@ def test_worker_heartbeat_and_ready(
         "redis": "ok",
         "schema": "ok",
         "worker": "ok",
+        "ocr-worker": "ok",  # this worker consumes every queue
     }
 
 
